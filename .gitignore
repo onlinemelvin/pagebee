@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+build/
+
+# env & secrets — never commit these (the pre-commit hook also blocks them)
+.env
+.env.*
+!.env.example
+
+# prisma generated client (if output is set inside the repo)
+# /generated
+
+# claude code — personal/local settings (keep machine-specific perms out of the repo)
+.claude/settings.local.json
+
+# misc
+.DS_Store
+*.log
+.vercel

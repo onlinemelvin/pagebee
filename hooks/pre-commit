@@ -1,0 +1,63 @@
+#!/bin/bash
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# ── 1. TypeScript type check ─────────────────────────────────────────────────
+echo "→ Type checking..."
+# npx tsc --noEmit
+# Uncomment above when tsconfig.json exists
+
+# ── 2. Lint ──────────────────────────────────────────────────────────────────
+echo "→ Linting..."
+# npx eslint . --ext .ts,.tsx --max-warnings 0
+# Uncomment above when eslint is configured
+
+# ── 3. Secrets scan ──────────────────────────────────────────────────────────
+echo "→ Scanning for secrets..."
+
+# Block commits containing likely secrets. Patterns match the secret *value*
+# (prefix + key body), not just the name — so listing a var in .env.example or
+# this hook's own pattern list does not trip the scan.
+FORBIDDEN_PATTERNS=(
+  "sk_live_[0-9A-Za-z]{16,}"
+  "sk_test_[0-9A-Za-z]{16,}"
+  "rk_live_[0-9A-Za-z]{16,}"
+  "SUPABASE_SERVICE_ROLE_KEY[\"']?[[:space:]]*[:=][[:space:]]*[\"']?eyJ"
+  "-----BEGIN[A-Z ]*PRIVATE KEY-----"
+  "ghp_[0-9A-Za-z]{20,}"
+  "xox[baprs]-[0-9A-Za-z-]{10,}"
+  "AIza[0-9A-Za-z_-]{20,}"
+)
+
+STAGED_FILES=$(git diff --cached --name-only)
+
+# Scan only added lines (leading '+'), excluding the diff header lines.
+ADDED=$(git diff --cached --unified=0 | grep -E '^\+' | grep -vE '^\+\+\+')
+
+for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+  # `--` stops grep treating patterns that start with `-` (e.g. PEM headers) as flags
+  if printf '%s' "$ADDED" | grep -qE -- "$pattern"; then
+    echo "❌ Possible secret detected matching pattern: $pattern"
+    echo "   Remove the secret and use environment variables instead."
+    exit 1
+  fi
+done
+
+# ── 4. No real .env files committed (templates like .env.example are allowed) ─
+ENV_FILES=$(echo "$STAGED_FILES" \
+  | grep -E "(^|/)\.env($|\.)" \
+  | grep -vE "\.(example|sample|template|dist)$" || true)
+if [ -n "$ENV_FILES" ]; then
+  echo "❌ .env file staged for commit:"
+  echo "$ENV_FILES" | sed 's/^/   - /'
+  echo "   Add it to .gitignore."
+  exit 1
+fi
+
+# ── 5. Unit tests ────────────────────────────────────────────────────────────
+echo "→ Running unit tests..."
+# npx vitest run --reporter=dot
+# Uncomment above when tests exist
+
+echo "✅ Pre-commit checks passed."
