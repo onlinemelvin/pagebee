@@ -51,30 +51,17 @@ function buildComponents(config: WebsiteConfig, limits: PlanLimits) {
 }
 
 /**
- * Generate (or regenerate) a website for a client from intake. Produces a new
- * PREVIEW version with config + pages, awaiting admin review before publish.
+ * Enqueue a background website generation: ensure a Website exists and create a
+ * QUEUED job. Returns immediately. Call runGenerationJob(jobId) (fire-and-forget
+ * or from a worker) to do the heavy Claude + Magic work — so it survives the
+ * client closing their browser.
  */
-export async function generateForClient(clientId: string, form: WebsiteIntakeForm) {
+export async function startGeneration(clientId: string, form: WebsiteIntakeForm) {
   const client = await prisma.client.findUnique({
     where: { id: clientId },
-    include: { subscription: { include: { plan: true } }, websites: true },
+    include: { websites: true },
   });
   if (!client) throw new Error("client_not_found");
-
-  const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
-  const limits = planLimits(flags, client.subscription?.plan.maxPages ?? 5);
-
-  const intake: WebsiteIntake = {
-    businessName: client.businessName,
-    businessType: client.businessType,
-    phone: client.ownerPhone,
-    email: client.ownerEmail,
-    about: form.about,
-    services: form.services,
-    serviceAreas: form.serviceAreas,
-    hours: form.hours,
-    tone: form.tone,
-  };
 
   let website = client.websites[0];
   if (!website) {
@@ -86,25 +73,64 @@ export async function generateForClient(clientId: string, form: WebsiteIntakeFor
   const job = await prisma.websiteGenerationJob.create({
     data: {
       websiteId: website.id,
-      status: "GENERATING",
-      inputIntake: intake as unknown as Prisma.InputJsonValue,
-      startedAt: new Date(),
+      status: "QUEUED",
+      inputIntake: form as unknown as Prisma.InputJsonValue,
     },
   });
+  return { jobId: job.id, websiteId: website.id };
+}
 
-  let result;
-  let site;
+/** Latest generation job for a client's website — for status polling. */
+export async function getLatestJobStatus(clientId: string) {
+  return prisma.websiteGenerationJob.findFirst({
+    where: { website: { clientId } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, error: true, createdAt: true },
+  });
+}
+
+/**
+ * Process a queued generation job (heavy: Claude + Magic). Drives the job through
+ * GENERATING → NEEDS_REVIEW (or FAILED). Never throws — safe to run fire-and-forget.
+ */
+export async function runGenerationJob(jobId: string): Promise<void> {
+  const job = await prisma.websiteGenerationJob.findUnique({
+    where: { id: jobId },
+    include: {
+      website: { include: { client: { include: { subscription: { include: { plan: true } } } } } },
+    },
+  });
+  if (!job) throw new Error("job_not_found");
+
+  const website = job.website;
+  const client = website.client;
+  const clientId = client.id;
+  const form = (job.inputIntake ?? {}) as unknown as WebsiteIntakeForm;
+
+  await prisma.websiteGenerationJob.update({
+    where: { id: job.id },
+    data: { status: "GENERATING", startedAt: new Date() },
+  });
+
   try {
-    result = await generateWebsiteConfig(intake, limits);
+    const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
+    const limits = planLimits(flags, client.subscription?.plan.maxPages ?? 5);
+
+    const intake: WebsiteIntake = {
+      businessName: client.businessName,
+      businessType: client.businessType,
+      phone: client.ownerPhone,
+      email: client.ownerEmail,
+      about: form.about,
+      services: form.services,
+      serviceAreas: form.serviceAreas,
+      hours: form.hours,
+      tone: form.tone,
+    };
+
+    const result = await generateWebsiteConfig(intake, limits);
     // Code-generated full site (HTML) wired to PageBee shared APIs.
-    site = await generateSiteHtml(intake, limits);
-  } catch (err) {
-    await prisma.websiteGenerationJob.update({
-      where: { id: job.id },
-      data: { status: "FAILED", error: String(err), finishedAt: new Date() },
-    });
-    throw err;
-  }
+    const site = await generateSiteHtml(intake, limits);
 
   const enabledFeatures = {
     contactForm: true,
@@ -184,8 +210,13 @@ export async function generateForClient(clientId: string, form: WebsiteIntakeFor
     } as Prisma.InputJsonValue,
   });
   await emit("website.generated", { websiteId: website.id, versionId: version.id, clientId });
-
-  return { websiteId: website.id, versionId: version.id, version: versionNo, engine: site.engine };
+  } catch (err) {
+    await prisma.websiteGenerationJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", error: String(err), finishedAt: new Date() },
+    });
+    console.error("[website] generation job failed:", jobId, err);
+  }
 }
 
 /** Versions awaiting admin review. */

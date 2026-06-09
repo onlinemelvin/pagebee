@@ -1,5 +1,7 @@
 export {
-  generateForClient,
+  startGeneration,
+  runGenerationJob,
+  getLatestJobStatus,
   listReviewQueue,
   getVersionDetail,
   approveAndPublish,
