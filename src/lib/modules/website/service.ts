@@ -192,11 +192,16 @@ export async function runGenerationJob(jobId: string): Promise<void> {
   await prisma.websiteGenerationJob.update({
     where: { id: job.id },
     data: {
-      status: "NEEDS_REVIEW",
+      status: client.isTest ? "PUBLISHED" : "NEEDS_REVIEW",
       output: result.config as unknown as Prisma.InputJsonValue,
       finishedAt: new Date(),
     },
   });
+
+  // Test accounts (@test.com) skip admin review and go live immediately.
+  if (client.isTest) {
+    await approveAndPublish(version.id, null);
+  }
 
   await writeAudit({
     action: "website.generated",
@@ -217,6 +222,41 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     });
     console.error("[website] generation job failed:", jobId, err);
   }
+}
+
+/** Atomically claim a specific QUEUED job and process it (inline trigger from the API). */
+export async function claimAndRun(jobId: string): Promise<void> {
+  const claimed = await prisma.websiteGenerationJob.updateMany({
+    where: { id: jobId, status: "QUEUED" },
+    data: { status: "GENERATING", startedAt: new Date() },
+  });
+  if (claimed.count !== 1) return; // already claimed by the worker
+  await runGenerationJob(jobId);
+}
+
+/** Atomically claim the oldest QUEUED job; returns its id (used by the background worker). */
+export async function claimNextQueuedJob(): Promise<string | null> {
+  const next = await prisma.websiteGenerationJob.findFirst({
+    where: { status: "QUEUED" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (!next) return null;
+  const claimed = await prisma.websiteGenerationJob.updateMany({
+    where: { id: next.id, status: "QUEUED" },
+    data: { status: "GENERATING", startedAt: new Date() },
+  });
+  return claimed.count === 1 ? next.id : null;
+}
+
+/** Requeue jobs stuck in GENERATING (e.g. a crashed worker) older than the cutoff. */
+export async function requeueStaleJobs(olderThanMs = 10 * 60 * 1000): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanMs);
+  const res = await prisma.websiteGenerationJob.updateMany({
+    where: { status: "GENERATING", startedAt: { lt: cutoff } },
+    data: { status: "QUEUED" },
+  });
+  return res.count;
 }
 
 /** Versions awaiting admin review. */
@@ -240,8 +280,8 @@ export async function getVersionDetail(versionId: string) {
   });
 }
 
-/** Approve a generated version and publish it as the live site version. */
-export async function approveAndPublish(versionId: string, reviewerId: string) {
+/** Approve a generated version and publish it as the live site version. reviewerId is null for auto-publish. */
+export async function approveAndPublish(versionId: string, reviewerId: string | null = null) {
   const version = await prisma.websiteVersion.findUnique({
     where: { id: versionId },
     include: { website: true },

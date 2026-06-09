@@ -1,6 +1,9 @@
 export {
   startGeneration,
   runGenerationJob,
+  claimAndRun,
+  claimNextQueuedJob,
+  requeueStaleJobs,
   getLatestJobStatus,
   listReviewQueue,
   getVersionDetail,

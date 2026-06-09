@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireClient, AuthError } from "@/lib/auth/session";
 import {
   startGeneration,
-  runGenerationJob,
+  claimAndRun,
   getLatestJobStatus,
   websiteIntakeSchema,
 } from "@/lib/modules/website";
@@ -32,9 +32,12 @@ export async function POST(req: Request) {
 
   try {
     const { jobId } = await startGeneration(client.id, parsed.data);
-    // Fire-and-forget: continues on the server even if the client navigates away.
-    // (Production should hand this to a durable worker; see runGenerationJob.)
-    void runGenerationJob(jobId).catch((e) => console.error("[generate] job failed", jobId, e));
+    // Dev / single-node: process in-process (atomic claim). In production set
+    // GENERATION_WORKER=external (or on Vercel) so the durable worker handles it instead.
+    const useWorker = process.env.GENERATION_WORKER === "external" || Boolean(process.env.VERCEL);
+    if (!useWorker) {
+      void claimAndRun(jobId).catch((e) => console.error("[generate] inline job failed", jobId, e));
+    }
     return NextResponse.json({ jobId, status: "queued" }, { status: 202 });
   } catch (err) {
     console.error("[POST /api/v1/client/website/generate]", err);
