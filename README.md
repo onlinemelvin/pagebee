@@ -37,7 +37,7 @@ commissions, contracts, finances).
 
 Next.js + React + TypeScript · Tailwind + shadcn/ui · **Supabase** (Postgres +
 Auth + Storage) + Prisma · **Vercel** hosting · Stripe Billing + Stripe Connect
-(Express) · Resend · Twilio · OpenAI · jobs (Inngest/Trigger.dev) + Vercel
+(Express) · Resend · Twilio · Claude (Anthropic) · jobs (Inngest/Trigger.dev) + Vercel
 Cron · Sentry · PostHog.
 
 Client sites are served from one Vercel project: Launch at

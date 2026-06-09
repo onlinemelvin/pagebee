@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 // ── Intake & plan limits ─────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ const websiteConfigSchema = z.object({
 export type WebsiteConfig = z.infer<typeof websiteConfigSchema>;
 export interface GenerateResult {
   config: WebsiteConfig;
-  engine: "openai" | "stub";
+  engine: "claude" | "stub";
 }
 
 const SHAPE = `{
@@ -84,29 +84,29 @@ export async function generateWebsiteConfig(
   intake: WebsiteIntake,
   limits: PlanLimits,
 ): Promise<GenerateResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey) {
     try {
-      const config = await generateWithOpenAI(intake, limits, apiKey);
-      return { config, engine: "openai" };
+      const config = await generateWithClaude(intake, limits, apiKey);
+      return { config, engine: "claude" };
     } catch (err) {
-      console.error("[ai] OpenAI generation failed; using stub:", err);
+      console.error("[ai] Claude generation failed; using stub:", err);
     }
   }
   return { config: stubConfig(intake, limits), engine: "stub" };
 }
 
-async function generateWithOpenAI(
+async function generateWithClaude(
   intake: WebsiteIntake,
   limits: PlanLimits,
   apiKey: string,
 ): Promise<WebsiteConfig> {
-  const client = new OpenAI({ apiKey });
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const client = new Anthropic({ apiKey });
+  const model = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
 
   const system = [
     "You are an expert website copywriter for local service businesses.",
-    "Return ONLY valid JSON (no markdown) matching the requested shape exactly.",
+    "Respond with ONLY a single valid JSON object and nothing else — no markdown, no code fences, no commentary.",
     "Use ONLY facts present in the intake. Never invent services, prices, guarantees,",
     "licenses, certifications, or hours that were not provided.",
     "Write concise, warm, professional copy in the requested tone.",
@@ -115,18 +115,24 @@ async function generateWithOpenAI(
     `Required JSON shape:\n${SHAPE}`,
   ].join(" ");
 
-  const res = await client.chat.completions.create({
+  const res = await client.messages.create({
     model,
-    response_format: { type: "json_object" },
-    max_tokens: 4000,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify({ intake, maxPages: limits.maxPages }) },
-    ],
+    max_tokens: 8000,
+    thinking: { type: "disabled" },
+    system,
+    messages: [{ role: "user", content: JSON.stringify({ intake, maxPages: limits.maxPages }) }],
   });
 
-  const content = res.choices[0]?.message?.content ?? "{}";
-  const config = websiteConfigSchema.parse(JSON.parse(content));
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const json = (fenced ? fenced[1] : text).trim();
+
+  const config = websiteConfigSchema.parse(JSON.parse(json));
   config.pages = config.pages.slice(0, limits.maxPages);
   return config;
 }
