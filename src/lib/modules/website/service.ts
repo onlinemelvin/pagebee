@@ -116,6 +116,13 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
     const limits = planLimits(flags, client.subscription?.plan.maxPages ?? 5);
 
+    // Respect the client's opt-in choices: a feature appears on the site only if the
+    // plan allows it AND the client enabled it (so the site auto-customizes too).
+    const choices = await prisma.featureFlag.findMany({ where: { clientId } });
+    const want = (k: string) => choices.find((c) => c.key === k)?.enabled === true;
+    limits.booking = limits.booking && want("booking");
+    limits.payments = limits.payments && want("invoices");
+
     const intake: WebsiteIntake = {
       businessName: client.businessName,
       businessType: client.businessType,

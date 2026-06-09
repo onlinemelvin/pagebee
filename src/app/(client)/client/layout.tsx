@@ -1,31 +1,34 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { getCurrentClient } from "@/lib/auth/session";
+import { getClientWorkspace } from "@/lib/modules/client";
+import { ClientNav } from "@/components/client/ClientNav";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
-  const result = await getCurrentClient();
-  if (!result) redirect("/login");
+  const ws = await getClientWorkspace();
+  if (!ws) redirect("/login");
 
   return (
-    <div className="flex min-h-screen flex-col bg-stone-50">
-      <header className="flex h-16 items-center justify-between border-b border-stone-200 bg-white px-6 sm:px-8">
-        <div className="flex items-center gap-2">
+    <div className="grid min-h-screen grid-cols-1 bg-stone-50 sm:grid-cols-[240px_1fr]">
+      <aside className="flex flex-col border-b border-stone-200 bg-white px-4 py-4 sm:border-b-0 sm:border-r sm:py-6">
+        <div className="mb-2 flex items-center gap-2 px-2 sm:mb-6">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 text-lg">🐝</span>
-          <span className="font-display text-lg font-semibold text-stone-900">{result.client.businessName}</span>
+          <div className="leading-tight">
+            <p className="max-w-[150px] truncate font-display text-sm font-semibold text-stone-900">
+              {ws.client.businessName}
+            </p>
+            <p className="text-xs text-stone-400">{ws.planName} plan</p>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <nav className="hidden items-center gap-6 text-sm font-medium text-stone-600 sm:flex">
-            <Link href="/client" className="hover:text-stone-900">Overview</Link>
-            <Link href="/client/inquiries" className="hover:text-stone-900">Inquiries</Link>
-            <Link href="/client/appointments" className="hover:text-stone-900">Appointments</Link>
-            <Link href="/client/website" className="hover:text-stone-900">Website</Link>
-          </nav>
-          <span className="hidden text-sm text-stone-500 sm:inline">{result.ctx.email}</span>
+        <ClientNav tabs={ws.tabs} />
+      </aside>
+
+      <div className="flex min-w-0 flex-col">
+        <header className="flex h-16 items-center justify-end gap-4 border-b border-stone-200 bg-white px-6">
+          <span className="hidden text-sm text-stone-500 sm:inline">{ws.email}</span>
           <SignOutButton />
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-4xl flex-1 p-6 sm:p-8">{children}</main>
+        </header>
+        <main className="mx-auto w-full max-w-4xl flex-1 p-6 sm:p-8">{children}</main>
+      </div>
     </div>
   );
 }

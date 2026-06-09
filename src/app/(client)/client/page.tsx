@@ -1,69 +1,75 @@
-import { getCurrentClient } from "@/lib/auth/session";
-import { PLANS } from "@/lib/plans";
-import { formatUsd } from "@/lib/utils";
+import Link from "next/link";
+import { getClientWorkspace } from "@/lib/modules/client";
+import { SetupWizard } from "@/components/client/SetupWizard";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_COPY: Record<string, { label: string; tone: string; note: string }> = {
-  ACTIVE: { label: "Active", tone: "bg-green-100 text-green-800", note: "Your account is active. We're preparing your website — we'll email you when the preview is ready." },
-  SETUP_PENDING: { label: "Setup pending", tone: "bg-amber-100 text-amber-800", note: "Your account is created. Next: complete your one-time setup payment to start your build. (Payments coming soon.)" },
-  TRIAL: { label: "Trial", tone: "bg-blue-100 text-blue-800", note: "You're on a trial." },
-  PAST_DUE: { label: "Past due", tone: "bg-red-100 text-red-700", note: "A payment didn't go through. Please update your billing." },
-  SUSPENDED: { label: "Suspended", tone: "bg-stone-200 text-stone-600", note: "Your account is suspended." },
-  CANCELLED: { label: "Cancelled", tone: "bg-stone-200 text-stone-600", note: "Your subscription is cancelled." },
-};
-
 export default async function ClientHomePage() {
-  const result = await getCurrentClient();
-  if (!result) return null; // layout already redirects
-  const { client } = result;
-  const sub = client.subscription;
-  const planDef = sub ? PLANS.find((p) => p.name === sub.plan.name) : undefined;
-  const status = sub ? STATUS_COPY[sub.status] ?? { label: sub.status, tone: "bg-stone-100 text-stone-600", note: "" } : null;
+  const ws = await getClientWorkspace();
+  if (!ws) return null;
 
   return (
-    <div>
-      <h1 className="font-display text-3xl text-stone-900">Welcome, {client.ownerName ?? client.businessName}</h1>
-      <p className="mt-1 text-stone-500">Here&apos;s your PageBee account.</p>
-
-      {client.isTest && (
-        <p className="mt-4 inline-block rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-800">
-          Test account
-        </p>
-      )}
-
-      <div className="mt-6 grid gap-6 sm:grid-cols-2">
-        {/* Plan card */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Your plan</p>
-          <p className="mt-1 font-display text-2xl text-stone-900">{planDef?.label ?? sub?.plan.name ?? "—"}</p>
-          {sub && (
-            <p className="mt-1 text-sm text-stone-500">
-              {formatUsd(sub.agreedMonthlyFee)}/mo · {formatUsd(sub.agreedSetupFee)} setup
-            </p>
-          )}
-          {status && (
-            <span className={`mt-4 inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${status.tone}`}>
-              {status.label}
-            </span>
-          )}
-        </div>
-
-        {/* Business card */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Business</p>
-          <p className="mt-1 font-display text-2xl text-stone-900">{client.businessName}</p>
-          <p className="mt-1 text-sm text-stone-500">{client.businessType ?? "—"}</p>
-          <p className="mt-3 text-sm text-stone-500">{client.ownerEmail}</p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="font-display text-3xl text-stone-900">
+          Welcome, {ws.client.ownerName ?? ws.client.businessName}
+        </h1>
+        <p className="mt-1 text-stone-500">Here&apos;s what&apos;s happening with your business.</p>
+        {ws.client.isTest && (
+          <span className="mt-3 inline-block rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-800">
+            Test account
+          </span>
+        )}
       </div>
 
-      {status?.note && (
-        <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
-          <p className="text-sm font-semibold text-stone-900">Next steps</p>
-          <p className="mt-1 text-sm text-stone-600">{status.note}</p>
-        </div>
+      {!ws.onboarding.complete && <SetupWizard steps={ws.onboarding.steps} />}
+
+      {ws.actions.length > 0 && (
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">Needs your attention</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {ws.actions.map((a, i) => (
+              <Link
+                key={i}
+                href={a.href}
+                className={cn(
+                  "rounded-2xl border p-5 transition-shadow hover:shadow-sm",
+                  a.primary ? "border-amber-400 bg-amber-50" : "border-stone-200 bg-white",
+                )}
+              >
+                <p className="font-medium text-stone-900">{a.title}</p>
+                <p className="mt-1 text-sm text-stone-600">{a.desc}</p>
+                <span className="mt-3 inline-block text-sm font-semibold text-amber-700">{a.cta} →</span>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
+
+      <section>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">At a glance</h2>
+        <div className="mt-3 grid gap-4 sm:grid-cols-3">
+          <Stat label="New inquiries" value={String(ws.counts.newInquiries)} href="/client/inquiries" />
+          {ws.caps.booking && ws.choices.booking && (
+            <Stat label="Pending appointments" value={String(ws.counts.pendingAppointments)} href="/client/appointments" />
+          )}
+          <Stat
+            label="Website"
+            value={ws.website.published ? "Live" : ws.website.exists ? "In review" : "Not started"}
+            href="/client/website"
+          />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function Stat({ label, value, href }: { label: string; value: string; href: string }) {
+  return (
+    <Link href={href} className="rounded-2xl border border-stone-200 bg-white p-5 transition-shadow hover:shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{label}</p>
+      <p className="mt-2 font-display text-3xl text-stone-900">{value}</p>
+    </Link>
   );
 }
