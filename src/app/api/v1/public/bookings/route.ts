@@ -1,0 +1,44 @@
+import { NextResponse } from "next/server";
+import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
+import { createBooking, bookingInputSchema, BookingError } from "@/lib/modules/booking";
+import "@/lib/events/subscribers"; // register booking.created handlers
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+function json(body: unknown, status: number) {
+  return NextResponse.json(body, { status, headers: CORS });
+}
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS });
+}
+
+/**
+ * POST /api/v1/public/bookings — appointment request from a client website.
+ * Auth: site token. Plan-gated (Connect/Automate).
+ */
+export async function POST(req: Request) {
+  const site = await resolveSite(getSiteToken(req));
+  if (!site) return json({ error: "unauthorized" }, 401);
+
+  const body = await req.json().catch(() => null);
+  const parsed = bookingInputSchema.safeParse(body);
+  if (!parsed.success) {
+    return json({ error: "validation_error", issues: parsed.error.flatten() }, 400);
+  }
+
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  try {
+    const booking = await createBooking({ clientId: site.clientId, input: parsed.data, ip });
+    return json({ id: booking.id, status: booking.status, startAt: booking.startAt }, 201);
+  } catch (err) {
+    if (err instanceof BookingError) return json({ error: err.code }, err.status);
+    console.error("[POST /api/v1/public/bookings]", err);
+    return json({ error: "internal_error" }, 500);
+  }
+}
