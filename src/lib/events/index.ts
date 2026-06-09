@@ -8,7 +8,9 @@ export type DomainEvent =
   | "invoice.created"
   | "invoice.paid"
   | "payment.failed"
-  | "quote.created";
+  | "quote.created"
+  | "website.generated"
+  | "website.published";
 
 type Handler = (payload: unknown) => void | Promise<void>;
 

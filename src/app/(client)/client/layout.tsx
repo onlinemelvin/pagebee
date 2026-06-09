@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentClient } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 
@@ -14,6 +15,10 @@ export default async function ClientLayout({ children }: { children: React.React
           <span className="font-display text-lg font-semibold text-stone-900">{result.client.businessName}</span>
         </div>
         <div className="flex items-center gap-4">
+          <nav className="hidden items-center gap-6 text-sm font-medium text-stone-600 sm:flex">
+            <Link href="/client" className="hover:text-stone-900">Overview</Link>
+            <Link href="/client/website" className="hover:text-stone-900">Website</Link>
+          </nav>
           <span className="hidden text-sm text-stone-500 sm:inline">{result.ctx.email}</span>
           <SignOutButton />
         </div>

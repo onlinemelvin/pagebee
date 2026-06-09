@@ -28,7 +28,7 @@ Fixed per project decision — no substitutions.
 | Payments           | Stripe Billing (PageBee→clients) + Stripe Connect **Express** (clients→their customers, destination charges) |
 | Email              | Resend                                             |
 | SMS                | Twilio (or similar)                               |
-| AI                 | Claude API                                         |
+| AI                 | OpenAI (`openai` SDK)                              |
 | File / asset store | **Supabase Storage** (assets, contracts, receipts, statement PDFs) |
 | Background jobs    | Inngest / Trigger.dev (serverless-native) + Vercel Cron |
 | Errors             | Sentry                                             |

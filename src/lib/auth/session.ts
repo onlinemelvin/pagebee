@@ -50,6 +50,13 @@ export async function requireAdmin(): Promise<AuthContext> {
   return ctx;
 }
 
+/** For client API routes: throws AuthError(401) when the caller has no client tenant. */
+export async function requireClient() {
+  const result = await getCurrentClient();
+  if (!result) throw new AuthError(401);
+  return result; // { ctx, client }
+}
+
 /** The client business (tenant) owned by the current user, with subscription + plan. */
 export async function getCurrentClient() {
   const ctx = await getAuthContext();

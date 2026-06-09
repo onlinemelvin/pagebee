@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Inbox, LayoutDashboard } from "lucide-react";
+import { Inbox, LayoutDashboard, Globe } from "lucide-react";
 import { getAuthContext } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 
@@ -19,8 +19,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-600 hover:bg-stone-100">
             <LayoutDashboard size={18} /> Overview
           </Link>
-          <Link href="/admin/leads" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-900 hover:bg-stone-100">
+          <Link href="/admin/leads" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
             <Inbox size={18} /> Leads
+          </Link>
+          <Link href="/admin/websites" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
+            <Globe size={18} /> Websites
           </Link>
         </nav>
       </aside>
