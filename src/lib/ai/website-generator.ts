@@ -3,6 +3,7 @@ import { z } from "zod";
 import { UI_UX_DIRECTION } from "./ui-ux-direction";
 import { SITE_TOKEN_PLACEHOLDER } from "./site-constants";
 import { fetchMagicReferences, type MagicRef } from "./magic";
+import { fetchStockImages, type StockImage } from "./stock";
 
 export { SITE_TOKEN_PLACEHOLDER };
 
@@ -132,6 +133,9 @@ No markdown, no code fences, no commentary before or after.
 - Use ONLY facts present in the intake. Never invent services, prices, guarantees, licenses, hours, or testimonials.
 - Wire the contact form (and any booking/payment UI the plan allows) to the PageBee shared API via fetch, with success/error states.
 - Mobile-first, semantic, accessible (labels, focus states, alt text).
+- SEO: include a descriptive <title>, <meta name="description">, <link rel="canonical" href="__SITE_URL__/">, and Open Graph tags (og:title, og:description, og:url="__SITE_URL__", og:type="website"). One <h1>; use header/main/section/footer landmarks.
+- IMAGERY: use the provided STOCK IMAGES (real royalty-free URLs) for the hero and section visuals, each with descriptive alt text and loading="lazy". If none are provided, use tasteful CSS gradients/patterns — NEVER emit broken or placeholder image URLs.
+- ANIMATION: add tasteful, performant motion — CSS transitions on hover/focus, subtle keyframe accents, and scroll-reveal via a small inline IntersectionObserver that reveals sections as they enter the viewport. Wrap motion in @media (prefers-reduced-motion: no-preference) with a no-animation fallback. Elegant, not flashy.
 `.trim();
 
 /** Generate a complete code site (HTML) that calls PageBee shared APIs. Stub when no key. */
@@ -142,9 +146,12 @@ export async function generateSiteHtml(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey) {
     try {
-      // Pull reference components from 21st.dev Magic (headless tools only); [] if unavailable.
-      const refs = await fetchMagicReferences(buildMagicQueries(intake, limits));
-      const html = await generateHtmlWithClaude(intake, limits, apiKey, refs);
+      // Pull reference components (21st.dev Magic) + stock photos (Pexels) in parallel; [] if unavailable.
+      const [refs, images] = await Promise.all([
+        fetchMagicReferences(buildMagicQueries(intake, limits)),
+        fetchStockImages(buildImageQueries(intake)),
+      ]);
+      const html = await generateHtmlWithClaude(intake, limits, apiKey, refs, images);
       return { html, engine: refs.length ? "claude+magic" : "claude" };
     } catch (err) {
       console.error("[ai] Claude HTML generation failed; using stub:", err);
@@ -160,11 +167,17 @@ function buildMagicQueries(intake: WebsiteIntake, limits: PlanLimits): string[] 
   return queries;
 }
 
+function buildImageQueries(intake: WebsiteIntake): string[] {
+  const base = intake.businessType ?? "local business";
+  return [base, ...(intake.services ?? [])].slice(0, 5);
+}
+
 async function generateHtmlWithClaude(
   intake: WebsiteIntake,
   limits: PlanLimits,
   apiKey: string,
   refs: MagicRef[] = [],
+  images: StockImage[] = [],
 ): Promise<string> {
   const client = new Anthropic({ apiKey });
   const model = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
@@ -174,6 +187,13 @@ async function generateHtmlWithClaude(
       "",
       "REFERENCE COMPONENTS (from 21st.dev Magic). Adapt their structure and visual quality into your self-contained HTML: convert any React/shadcn/lucide into semantic HTML + Tailwind (inline SVG where needed). Do NOT import React/shadcn/lucide and do NOT leave JSX in the output.",
       ...refs.map((r) => `/* ${r.query} — ${r.componentName} */\n${r.code}`),
+    );
+  }
+  if (images.length) {
+    parts.push(
+      "",
+      'STOCK IMAGES (real royalty-free URLs — use for hero/section visuals with descriptive alt + loading="lazy"):',
+      ...images.map((im) => `${im.url}  (alt: ${im.alt})`),
     );
   }
   const system = parts.join("\n");
