@@ -3,19 +3,8 @@ set -e
 
 echo "🚀 Running pre-push checks..."
 
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-# ── 1. Block direct push to an EXISTING main/master (allow initial creation) ──
-# git feeds "<local_ref> <local_sha> <remote_ref> <remote_sha>" on stdin.
-# remote_sha all-zeros => the remote branch doesn't exist yet (initial push), so allow it.
-ZERO="0000000000000000000000000000000000000000"
-while read -r _local_ref _local_sha remote_ref remote_sha; do
-  branch="${remote_ref#refs/heads/}"
-  if [[ "$branch" == "main" || "$branch" == "master" ]] && [[ "$remote_sha" != "$ZERO" ]]; then
-    echo "❌ Direct push to $branch is not allowed. Open a pull request instead."
-    exit 1
-  fi
-done
+# Workflow: feature work lands on `development`; `main` is updated by merging
+# `development` and pushing directly. Direct pushes to main are allowed by design.
 
 # ── 2. Full test suite ───────────────────────────────────────────────────────
 echo "→ Running full test suite..."

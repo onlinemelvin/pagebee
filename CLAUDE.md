@@ -54,13 +54,19 @@ extension because it's a CI script, not a git event.
 | Hook | Runs automatically | Does |
 | --- | --- | --- |
 | [hooks/pre-commit](hooks/pre-commit) | on every `git commit` | Type check, lint, **secrets scan**, block `.env` files, unit tests. |
-| [hooks/pre-push](hooks/pre-push) | on every `git push` | Block direct push to `main`/`master`, full test suite, build check. |
+| [hooks/pre-push](hooks/pre-push) | on every `git push` | Full test suite, build check. (Direct pushes to `main` are allowed — see Branching.) |
 | [hooks/pr-check.sh](hooks/pr-check.sh) | in CI / before merge (invoke manually or from CI) | Full type check, lint (zero warnings), full + integration tests, TODO/FIXME scan, `npm audit`. |
 
 Most heavy steps (`tsc`, ESLint, Vitest, `next build`, `npm audit`) are
 **commented out** until the tooling exists (`tsconfig.json`, ESLint, Vitest,
 `package.json`). Uncomment each block when its tool lands. The live checks today
-are the secrets scan, the `.env` block, and the `main`/`master` push block.
+are the secrets scan and the `.env` block.
+
+**Branching (two-branch model):** only two long-lived branches —
+**`main`** (the primary/release branch; GitHub default) and **`development`**.
+All feature work and commits go to `development`; `main` is updated periodically
+by merging `development` into it and pushing directly. Don't create other
+long-lived branches.
 
 **Secrets the pre-commit hook blocks:** `sk_live_`, `sk_test_`,
 `SUPABASE_SERVICE_ROLE_KEY`, PEM private keys, `ghp_`, `xoxb-`, `AIza`. Keep all
