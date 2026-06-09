@@ -19,6 +19,11 @@ export default async function ClientWebsitePage() {
   const copy = (latest?.config?.copy ?? null) as unknown as { heroHeadline?: string; heroSubheadline?: string } | null;
   const status = latest ? VERSION_STATUS[latest.status] ?? null : null;
 
+  const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
+  const proto = root.includes("localhost") ? "http" : "https";
+  const liveUrl = website?.subdomain ? `${proto}://${website.subdomain}.${root}` : null;
+  const isPublished = website?.status === "published";
+
   return (
     <div>
       <h1 className="font-display text-3xl text-stone-900">Your website</h1>
@@ -38,9 +43,18 @@ export default async function ClientWebsitePage() {
             <p className="mt-3 font-display text-2xl text-stone-900">{copy.heroHeadline}</p>
           )}
           {copy?.heroSubheadline && <p className="mt-1 text-stone-600">{copy.heroSubheadline}</p>}
-          {website?.subdomain && (
+          {liveUrl && (
             <p className="mt-3 text-sm text-stone-500">
-              Address: <span className="font-medium text-stone-700">{website.subdomain}.pagebee.com</span>
+              Address:{" "}
+              {isPublished ? (
+                <a href={liveUrl} target="_blank" rel="noreferrer" className="font-medium text-amber-700 hover:underline">
+                  {liveUrl.replace(/^https?:\/\//, "")}
+                </a>
+              ) : (
+                <span className="font-medium text-stone-700">
+                  {liveUrl.replace(/^https?:\/\//, "")} <span className="text-stone-400">(live once published)</span>
+                </span>
+              )}
             </p>
           )}
           {status.note && <p className="mt-3 text-sm text-stone-600">{status.note}</p>}

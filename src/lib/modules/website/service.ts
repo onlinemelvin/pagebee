@@ -229,6 +229,29 @@ export async function approveAndPublish(versionId: string, reviewerId: string) {
   });
 }
 
+const publishedInclude = {
+  client: true,
+  publishedVersion: { include: { config: true, pages: { orderBy: { order: "asc" as const } } } },
+};
+
+/** A live (published) site resolved by subdomain — for the public renderer. */
+export async function getPublishedSiteBySubdomain(subdomain: string) {
+  return prisma.website.findFirst({
+    where: { subdomain, status: "published", publishedVersionId: { not: null } },
+    include: publishedInclude,
+  });
+}
+
+/** A live (published) site resolved by custom domain. */
+export async function getPublishedSiteByDomain(domain: string) {
+  return prisma.website.findFirst({
+    where: { domain, status: "published", publishedVersionId: { not: null } },
+    include: publishedInclude,
+  });
+}
+
+export type PublishedSite = NonNullable<Awaited<ReturnType<typeof getPublishedSiteBySubdomain>>>;
+
 /** The client's website with its latest version + published state. */
 export async function getClientWebsite(clientId: string) {
   return prisma.website.findFirst({
