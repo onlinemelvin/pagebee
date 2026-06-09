@@ -17,6 +17,8 @@ export default async function ClientLayout({ children }: { children: React.React
         <div className="flex items-center gap-4">
           <nav className="hidden items-center gap-6 text-sm font-medium text-stone-600 sm:flex">
             <Link href="/client" className="hover:text-stone-900">Overview</Link>
+            <Link href="/client/inquiries" className="hover:text-stone-900">Inquiries</Link>
+            <Link href="/client/appointments" className="hover:text-stone-900">Appointments</Link>
             <Link href="/client/website" className="hover:text-stone-900">Website</Link>
           </nav>
           <span className="hidden text-sm text-stone-500 sm:inline">{result.ctx.email}</span>

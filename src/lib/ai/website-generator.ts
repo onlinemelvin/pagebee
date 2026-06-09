@@ -114,7 +114,7 @@ function integrationContract(limits: PlanLimits): string {
   ];
   if (limits.booking) {
     lines.push(
-      "- Booking/calendar (ENABLED): GET /api/v1/public/booking/availability?service=<name> ; POST /api/v1/public/bookings  body { serviceName, startAt, name, email, phone? }",
+      "- Booking/calendar (ENABLED): GET /api/v1/public/booking/availability?service=<name> -> { slots:[{ startAt, label }] } ; POST /api/v1/public/bookings  body { serviceName, startAt, name, email, phone? }",
     );
   }
   if (limits.payments) {
@@ -131,7 +131,8 @@ Output ONLY a single complete, self-contained, responsive HTML5 document (begin 
 No markdown, no code fences, no commentary before or after.
 - Load Tailwind via <script src="https://cdn.tailwindcss.com"></script> in <head>; Google Fonts via <link>. No other external scripts or SDKs.
 - Use ONLY facts present in the intake. Never invent services, prices, guarantees, licenses, hours, or testimonials.
-- Wire the contact form (and any booking/payment UI the plan allows) to the PageBee shared API via fetch, with success/error states.
+- Wire the contact/quote form to POST /api/v1/public/leads. On success, REPLACE the form with a clear, friendly confirmation (a checkmark + a line like "Your request has been received — we'll be in touch shortly") inside an aria-live="polite" region; on failure show a retry message. Disable the submit button while sending.
+- BOOKING (only if the plan enables it): add a prominent, INDUSTRY-APPROPRIATE scheduling section — pick the heading/label to fit the business (e.g. "Book a test drive", "Reserve a table", "Schedule a consultation", "Book an appointment"). On load, fetch GET /api/v1/public/booking/availability and populate a <select> of times from the returned { slots:[{startAt,label}] } (option value=startAt, text=label); on submit POST /api/v1/public/bookings { serviceName, startAt, name, email, phone? } and show the same style of success confirmation.
 - Mobile-first, semantic, accessible (labels, focus states, alt text).
 - SEO: include a descriptive <title>, <meta name="description">, <link rel="canonical" href="__SITE_URL__/">, and Open Graph tags (og:title, og:description, og:url="__SITE_URL__", og:type="website"). One <h1>; use header/main/section/footer landmarks.
 - IMAGERY: use the provided STOCK IMAGES (real royalty-free URLs) for the hero and section visuals, each with descriptive alt text and loading="lazy". If none are provided, use tasteful CSS gradients/patterns — NEVER emit broken or placeholder image URLs.

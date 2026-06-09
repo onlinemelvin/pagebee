@@ -2,7 +2,12 @@ import { prisma } from "@/lib/db";
 import type { LeadStatus, Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
+import { sendEmail } from "@/lib/modules/email";
 import type { LeadInput, LeadUpdateInput } from "./schema";
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
+}
 
 export interface CreateLeadParams {
   clientId: string; // resolved from the site token — never trusted from the body
@@ -79,4 +84,29 @@ export async function updateLead(
   });
 
   return lead;
+}
+
+/** Send an email reply to a lead from the client owner; marks the lead CONTACTED. */
+export async function replyToLead(clientId: string, leadId: string, message: string) {
+  const lead = await prisma.lead.findFirst({ where: { id: leadId, clientId } });
+  if (!lead) throw new Error("lead_not_found");
+  if (!lead.email) throw new Error("lead_no_email");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { businessName: true, ownerEmail: true },
+  });
+
+  await sendEmail({
+    to: lead.email,
+    subject: `Re: your inquiry to ${client?.businessName ?? "us"}`,
+    html: `<p>${escapeHtml(message).replace(/\n/g, "<br/>")}</p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
+    replyTo: client?.ownerEmail ?? undefined,
+  });
+
+  if (lead.status === "NEW") {
+    await prisma.lead.update({ where: { id: leadId }, data: { status: "CONTACTED" } });
+  }
+  await writeAudit({ action: "lead.replied", entityType: "Lead", entityId: leadId, clientId });
+  return { ok: true };
 }

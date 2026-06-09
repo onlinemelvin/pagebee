@@ -10,6 +10,7 @@ export interface SendEmailParams {
   subject: string;
   html: string;
   from?: string;
+  replyTo?: string;
 }
 
 /**
@@ -20,7 +21,9 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string |
   const from = params.from ?? DEFAULT_FROM;
 
   if (!resend) {
-    console.log(`[email:stub] to=${params.to} from="${from}" subject="${params.subject}"`);
+    console.log(
+      `[email:stub] to=${params.to} from="${from}"${params.replyTo ? ` replyTo=${params.replyTo}` : ""} subject="${params.subject}"`,
+    );
     return { id: null, stubbed: true };
   }
 
@@ -29,6 +32,7 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string |
     to: params.to,
     subject: params.subject,
     html: params.html,
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
   });
   if (error) {
     console.error("[email] send failed", error);
