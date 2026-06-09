@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
 import {
   generateWebsiteConfig,
+  generateSiteHtml,
   type WebsiteIntake,
   type WebsiteConfig,
   type PlanLimits,
@@ -92,8 +93,11 @@ export async function generateForClient(clientId: string, form: WebsiteIntakeFor
   });
 
   let result;
+  let site;
   try {
     result = await generateWebsiteConfig(intake, limits);
+    // Code-generated full site (HTML) wired to PageBee shared APIs.
+    site = await generateSiteHtml(intake, limits);
   } catch (err) {
     await prisma.websiteGenerationJob.update({
       where: { id: job.id },
@@ -131,6 +135,7 @@ export async function generateForClient(clientId: string, form: WebsiteIntakeFor
       websiteId: website.id,
       version: versionNo,
       status: "PREVIEW",
+      generatedHtml: site.html,
       config: {
         create: {
           theme: result.config.theme as unknown as Prisma.InputJsonValue,
@@ -172,11 +177,15 @@ export async function generateForClient(clientId: string, form: WebsiteIntakeFor
     entityType: "WebsiteVersion",
     entityId: version.id,
     clientId,
-    metadata: { engine: result.engine, version: versionNo } as Prisma.InputJsonValue,
+    metadata: {
+      engine: result.engine,
+      htmlEngine: site.engine,
+      version: versionNo,
+    } as Prisma.InputJsonValue,
   });
   await emit("website.generated", { websiteId: website.id, versionId: version.id, clientId });
 
-  return { websiteId: website.id, versionId: version.id, version: versionNo, engine: result.engine };
+  return { websiteId: website.id, versionId: version.id, version: versionNo, engine: site.engine };
 }
 
 /** Versions awaiting admin review. */

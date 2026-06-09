@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { PublishedSite } from "@/lib/modules/website";
+import { SITE_TOKEN_PLACEHOLDER } from "@/lib/ai/website-generator";
 import { SiteContactForm } from "./SiteContactForm";
 
 interface SiteCopy {
@@ -16,6 +17,21 @@ interface SiteTheme {
 }
 
 export function SiteRenderer({ site, path }: { site: PublishedSite; path: string }) {
+  // Code-generated mode: serve the full generated document in a sandboxed iframe,
+  // with the site token injected so its forms can call the shared API.
+  const generated = site.publishedVersion?.generatedHtml;
+  if (generated) {
+    const doc = generated.replaceAll(SITE_TOKEN_PLACEHOLDER, site.siteToken);
+    return (
+      <iframe
+        title={site.client.businessName}
+        srcDoc={doc}
+        sandbox="allow-scripts allow-forms allow-popups"
+        className="fixed inset-0 h-full w-full border-0"
+      />
+    );
+  }
+
   const version = site.publishedVersion!;
   const copy = (version.config?.copy ?? {}) as unknown as SiteCopy;
   const theme = (version.config?.theme ?? {}) as unknown as SiteTheme;

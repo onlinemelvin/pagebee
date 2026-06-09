@@ -959,6 +959,10 @@ model WebsiteVersion {
   status    WebsiteVersionStatus @default(DRAFT)
   createdAt DateTime             @default(now())
 
+  // Code-generated mode: a complete self-contained HTML/Tailwind document that
+  // calls PageBee's shared /api/v1/public/* endpoints for all dynamic features.
+  generatedHtml String? @db.Text
+
   config WebsiteConfig?
   pages  WebsitePage[]
   publishedFor Website? @relation("PublishedVersion")

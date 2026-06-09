@@ -35,6 +35,11 @@ export default async function AdminWebsiteDetailPage({ params }: { params: Promi
           <p className="text-sm text-stone-500">
             Draft v{version.version} · {version.website.subdomain}.pagebee.com
           </p>
+          {version.generatedHtml && (
+            <span className="mt-2 inline-block rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-800">
+              Code-generated site
+            </span>
+          )}
         </div>
         <PublishButton versionId={version.id} published={published} />
       </div>

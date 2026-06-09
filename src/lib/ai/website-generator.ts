@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { UI_UX_DIRECTION } from "./ui-ux-direction";
+
+/** Placeholder for the site token in generated HTML; replaced at serve time. */
+export const SITE_TOKEN_PLACEHOLDER = "__SITE_TOKEN__";
 
 // ── Intake & plan limits ─────────────────────────────────────────────────────
 export interface WebsiteIntake {
@@ -94,6 +98,148 @@ export async function generateWebsiteConfig(
     }
   }
   return { config: stubConfig(intake, limits), engine: "stub" };
+}
+
+// ── Code-generated full site (HTML) wired to PageBee shared APIs ──────────────
+
+function integrationContract(limits: PlanLimits): string {
+  const lines = [
+    "PAGEBEE SHARED API — wire ALL dynamic features to these same-origin endpoints.",
+    "NEVER embed third-party payment, booking, or calendar widgets/SDKs; NEVER store data client-side.",
+    `Auth header on every call: { "Authorization": "Bearer ${SITE_TOKEN_PLACEHOLDER}", "Content-Type": "application/json" }`,
+    "- Contact / quote / inquiry (ALL plans): POST /api/v1/public/leads  body { type:'CONTACT_FORM'|'QUOTE_REQUEST'|'SERVICE_INQUIRY', name, email, phone?, message?, source:'site' }",
+    "- Analytics (ALL plans): POST /api/v1/public/analytics/events  body { name, properties? }",
+  ];
+  if (limits.booking) {
+    lines.push(
+      "- Booking/calendar (ENABLED): GET /api/v1/public/booking/availability?service=<name> ; POST /api/v1/public/bookings  body { serviceName, startAt, name, email, phone? }",
+    );
+  }
+  if (limits.payments) {
+    lines.push(
+      "- Payments (ENABLED): POST /api/v1/public/payments/payment-link  body { amount, description } -> { url } ; point the pay button at the returned url",
+    );
+  }
+  lines.push(`Use the literal placeholder ${SITE_TOKEN_PLACEHOLDER} for the token — substituted at serve time.`);
+  return lines.join("\n");
+}
+
+const HTML_RULES = `
+Output ONLY a single complete, self-contained, responsive HTML5 document (begin with <!DOCTYPE html>).
+No markdown, no code fences, no commentary before or after.
+- Load Tailwind via <script src="https://cdn.tailwindcss.com"></script> in <head>; Google Fonts via <link>. No other external scripts or SDKs.
+- Use ONLY facts present in the intake. Never invent services, prices, guarantees, licenses, hours, or testimonials.
+- Wire the contact form (and any booking/payment UI the plan allows) to the PageBee shared API via fetch, with success/error states.
+- Mobile-first, semantic, accessible (labels, focus states, alt text).
+`.trim();
+
+/** Generate a complete code site (HTML) that calls PageBee shared APIs. Stub when no key. */
+export async function generateSiteHtml(
+  intake: WebsiteIntake,
+  limits: PlanLimits,
+): Promise<{ html: string; engine: "claude" | "stub" }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (apiKey) {
+    try {
+      return { html: await generateHtmlWithClaude(intake, limits, apiKey), engine: "claude" };
+    } catch (err) {
+      console.error("[ai] Claude HTML generation failed; using stub:", err);
+    }
+  }
+  return { html: stubHtml(intake), engine: "stub" };
+}
+
+async function generateHtmlWithClaude(
+  intake: WebsiteIntake,
+  limits: PlanLimits,
+  apiKey: string,
+): Promise<string> {
+  const client = new Anthropic({ apiKey });
+  const model = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
+  const system = [UI_UX_DIRECTION, "", integrationContract(limits), "", HTML_RULES].join("\n");
+
+  const stream = client.messages.stream({
+    model,
+    max_tokens: 32000,
+    thinking: { type: "disabled" },
+    system,
+    messages: [{ role: "user", content: JSON.stringify({ intake, maxPages: limits.maxPages }) }],
+  });
+  const message = await stream.finalMessage();
+
+  const text = message.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+
+  const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i);
+  const html = (fenced ? fenced[1] : text).trim();
+  if (!/<html[\s>]/i.test(html)) throw new Error("model did not return an HTML document");
+  return html;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
+  );
+}
+
+function stubHtml(intake: WebsiteIntake): string {
+  const services = (intake.services ?? [])
+    .map((s) => `<li class="rounded-lg bg-stone-50 px-4 py-3">${escapeHtml(s)}</li>`)
+    .join("");
+  const areas = intake.serviceAreas?.length ? ` · Serving ${escapeHtml(intake.serviceAreas.join(", "))}` : "";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>${escapeHtml(intake.businessName)}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-white text-stone-900 antialiased">
+<header class="border-b border-stone-200"><div class="mx-auto max-w-5xl px-6 h-16 flex items-center font-bold text-lg">${escapeHtml(intake.businessName)}</div></header>
+<main>
+  <section class="mx-auto max-w-5xl px-6 py-24 text-center">
+    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight">${escapeHtml(intake.businessName)}</h1>
+    <p class="mt-4 text-lg text-stone-600">${escapeHtml(intake.businessType ?? "Quality service you can count on")}${areas}</p>
+    <a href="#contact" class="mt-8 inline-block rounded-full bg-amber-500 px-8 py-4 font-semibold text-white">Get in touch</a>
+  </section>
+  ${services ? `<section class="mx-auto max-w-5xl px-6 py-16"><h2 class="text-2xl font-bold text-center">Our services</h2><ul class="mt-8 grid gap-3 sm:grid-cols-2">${services}</ul></section>` : ""}
+  <section id="contact" class="bg-stone-50 py-20"><div class="mx-auto max-w-xl px-6">
+    <h2 class="text-2xl font-bold text-center">Contact us</h2>
+    <form id="lead-form" class="mt-8 grid gap-3">
+      <input name="name" required placeholder="Your name" class="rounded-xl border border-stone-300 px-4 py-3"/>
+      <input name="email" type="email" required placeholder="Email" class="rounded-xl border border-stone-300 px-4 py-3"/>
+      <input name="phone" placeholder="Phone (optional)" class="rounded-xl border border-stone-300 px-4 py-3"/>
+      <textarea name="message" placeholder="How can we help?" class="rounded-xl border border-stone-300 px-4 py-3"></textarea>
+      <button type="submit" class="rounded-full bg-amber-500 px-6 py-3 font-semibold text-white">Send</button>
+      <p id="lead-status" class="text-sm text-center"></p>
+    </form>
+  </div></section>
+</main>
+<footer class="border-t border-stone-200 py-8 text-center text-sm text-stone-500">Powered by PageBee</footer>
+<script>
+document.getElementById('lead-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var f = e.target; var d = new FormData(f);
+  var status = document.getElementById('lead-status');
+  status.textContent = 'Sending…';
+  try {
+    var res = await fetch('/api/v1/public/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ${SITE_TOKEN_PLACEHOLDER}' },
+      body: JSON.stringify({ type: 'CONTACT_FORM', name: d.get('name'), email: d.get('email'), phone: d.get('phone') || undefined, message: d.get('message') || undefined, source: 'site' })
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    f.reset(); status.textContent = "Thanks — we'll be in touch.";
+  } catch (err) { status.textContent = 'Something went wrong. Please try again.'; }
+});
+</script>
+</body>
+</html>`;
 }
 
 async function generateWithClaude(
