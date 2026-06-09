@@ -49,3 +49,14 @@ export async function requireAdmin(): Promise<AuthContext> {
   if (!ctx.isAdmin) throw new AuthError(403);
   return ctx;
 }
+
+/** The client business (tenant) owned by the current user, with subscription + plan. */
+export async function getCurrentClient() {
+  const ctx = await getAuthContext();
+  if (!ctx) return null;
+  const membership = await prisma.clientUser.findFirst({
+    where: { userId: ctx.userId },
+    include: { client: { include: { subscription: { include: { plan: true } } } } },
+  });
+  return membership ? { ctx, client: membership.client } : null;
+}

@@ -12,20 +12,25 @@ export async function updateSession(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return response;
 
-  const supabase = createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  try {
+    const supabase = createServerClient(url, key, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-      },
-    },
-  });
+    });
 
-  // Touch the session so expired tokens get refreshed into the response cookies.
-  await supabase.auth.getUser();
+    // Touch the session so expired tokens get refreshed into the response cookies.
+    await supabase.auth.getUser();
+  } catch (err) {
+    // Never let session refresh break the request (e.g. missing WebSocket on the edge).
+    console.error("[proxy] session refresh skipped:", err);
+  }
   return response;
 }

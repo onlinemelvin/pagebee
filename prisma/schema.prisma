@@ -801,6 +801,7 @@ model Client {
   ownerEmail    String?
   ownerPhone    String?
   status        String   @default("active") // active, suspended, churned
+  isTest        Boolean  @default(false) // test signup (email @test.com) — skips paid setup
 
   // Stripe Connect (Express) — set once the client completes payout onboarding.
   // PageBee collects via destination charges; funds settle to this account.

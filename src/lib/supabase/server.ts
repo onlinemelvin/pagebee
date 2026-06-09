@@ -1,3 +1,4 @@
+import "./ws-polyfill"; // must precede supabase-js construction on Node < 22
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 

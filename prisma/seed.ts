@@ -1,5 +1,4 @@
 import { PrismaClient, type Prisma } from "@prisma/client";
-import { createClient } from "@supabase/supabase-js";
 import { PLANS } from "../src/lib/plans";
 import { DEMO_SITE_TOKEN } from "../src/lib/constants";
 
@@ -19,23 +18,31 @@ async function seedAdmin() {
 
   const email = process.env.ADMIN_EMAIL ?? "admin@pagebee.com";
   const password = process.env.ADMIN_PASSWORD ?? "pagebee-admin-dev";
-  const supabaseAdmin = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+
+  // Call the GoTrue admin REST API directly (avoids supabase-js, which pulls in a
+  // realtime WebSocket client that Node < 22 can't construct).
+  const authHeaders = {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    "Content-Type": "application/json",
+  };
 
   let supabaseUserId: string | undefined;
-  const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
+  const createRes = await fetch(`${url}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ email, password, email_confirm: true }),
   });
-  if (created?.user) {
-    supabaseUserId = created.user.id;
+  if (createRes.ok) {
+    const user = (await createRes.json()) as { id: string };
+    supabaseUserId = user.id;
   } else {
-    // Likely already exists — find it.
-    if (error) console.log(`• createUser: ${error.message} — looking up existing user`);
-    const { data: list } = await supabaseAdmin.auth.admin.listUsers();
-    supabaseUserId = list?.users.find((u) => u.email === email)?.id;
+    console.log(`• createUser returned ${createRes.status} — looking up existing user`);
+    const listRes = await fetch(`${url}/auth/v1/admin/users?per_page=200`, { headers: authHeaders });
+    if (listRes.ok) {
+      const data = (await listRes.json()) as { users?: Array<{ id: string; email?: string }> };
+      supabaseUserId = data.users?.find((u) => u.email === email)?.id;
+    }
   }
 
   const role = await prisma.role.upsert({

@@ -31,7 +31,7 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    router.push("/admin");
+    router.push("/dashboard");
     router.refresh();
   }
 

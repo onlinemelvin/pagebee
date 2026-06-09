@@ -22,10 +22,10 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             <Link href="/#contact" className="hover:text-stone-900">Contact</Link>
           </nav>
           <div className="flex items-center gap-3">
-            <Link href="/pricing">
-              <Button variant="ghost" size="sm">Pricing</Button>
+            <Link href="/login">
+              <Button variant="ghost" size="sm">Sign in</Button>
             </Link>
-            <Link href="/#contact">
+            <Link href="/register">
               <Button size="sm">Get started</Button>
             </Link>
           </div>

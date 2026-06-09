@@ -47,7 +47,7 @@ export default function PricingPage() {
               </div>
               <p className="mt-1 text-sm text-stone-500">+ {formatUsd(plan.setupFee)} one-time setup</p>
 
-              <Link href="/#contact" className="mt-6">
+              <Link href="/register" className="mt-6">
                 <Button variant={plan.recommended ? "primary" : "outline"} className="w-full">
                   Get started
                 </Button>
