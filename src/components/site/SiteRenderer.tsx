@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { PublishedSite } from "@/lib/modules/website";
-import { SITE_TOKEN_PLACEHOLDER } from "@/lib/ai/website-generator";
+import { SITE_TOKEN_PLACEHOLDER } from "@/lib/ai/site-constants";
 import { SiteContactForm } from "./SiteContactForm";
 
 interface SiteCopy {

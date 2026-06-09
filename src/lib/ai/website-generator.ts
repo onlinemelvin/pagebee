@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { UI_UX_DIRECTION } from "./ui-ux-direction";
+import { SITE_TOKEN_PLACEHOLDER } from "./site-constants";
+import { fetchMagicReferences, type MagicRef } from "./magic";
 
-/** Placeholder for the site token in generated HTML; replaced at serve time. */
-export const SITE_TOKEN_PLACEHOLDER = "__SITE_TOKEN__";
+export { SITE_TOKEN_PLACEHOLDER };
 
 // ── Intake & plan limits ─────────────────────────────────────────────────────
 export interface WebsiteIntake {
@@ -137,11 +138,14 @@ No markdown, no code fences, no commentary before or after.
 export async function generateSiteHtml(
   intake: WebsiteIntake,
   limits: PlanLimits,
-): Promise<{ html: string; engine: "claude" | "stub" }> {
+): Promise<{ html: string; engine: "claude+magic" | "claude" | "stub" }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (apiKey) {
     try {
-      return { html: await generateHtmlWithClaude(intake, limits, apiKey), engine: "claude" };
+      // Pull reference components from 21st.dev Magic (headless tools only); [] if unavailable.
+      const refs = await fetchMagicReferences(buildMagicQueries(intake, limits));
+      const html = await generateHtmlWithClaude(intake, limits, apiKey, refs);
+      return { html, engine: refs.length ? "claude+magic" : "claude" };
     } catch (err) {
       console.error("[ai] Claude HTML generation failed; using stub:", err);
     }
@@ -149,14 +153,30 @@ export async function generateSiteHtml(
   return { html: stubHtml(intake), engine: "stub" };
 }
 
+function buildMagicQueries(intake: WebsiteIntake, limits: PlanLimits): string[] {
+  const t = (intake.businessType ?? "local business").toLowerCase();
+  const queries = [`hero section for a ${t}`, "services or features grid", "contact section with form"];
+  if (limits.booking) queries.push("appointment booking section");
+  return queries;
+}
+
 async function generateHtmlWithClaude(
   intake: WebsiteIntake,
   limits: PlanLimits,
   apiKey: string,
+  refs: MagicRef[] = [],
 ): Promise<string> {
   const client = new Anthropic({ apiKey });
   const model = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
-  const system = [UI_UX_DIRECTION, "", integrationContract(limits), "", HTML_RULES].join("\n");
+  const parts = [UI_UX_DIRECTION, "", integrationContract(limits), "", HTML_RULES];
+  if (refs.length) {
+    parts.push(
+      "",
+      "REFERENCE COMPONENTS (from 21st.dev Magic). Adapt their structure and visual quality into your self-contained HTML: convert any React/shadcn/lucide into semantic HTML + Tailwind (inline SVG where needed). Do NOT import React/shadcn/lucide and do NOT leave JSX in the output.",
+      ...refs.map((r) => `/* ${r.query} — ${r.componentName} */\n${r.code}`),
+    );
+  }
+  const system = parts.join("\n");
 
   const stream = client.messages.stream({
     model,
