@@ -24,14 +24,16 @@ function notFoundDoc(): string {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex"/><title>Coming soon</title><style>body{font-family:ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#fafaf9;color:#1c1917}</style></head><body><div style="text-align:center"><h1 style="font-size:1.5rem;font-weight:600">Coming soon</h1><p style="opacity:.6">This site isn't published yet.</p></div></body></html>`;
 }
 
-const PREVIEW_BANNER = `<div style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#1c1917;color:#fff;font:600 14px/1.4 ui-sans-serif,system-ui,sans-serif;padding:10px 16px;text-align:center;box-shadow:0 -2px 12px rgba(0,0,0,.2)">🐝 This is a free preview — not live yet. Approve it in your dashboard to launch.</div>`;
+// Injected into <head>: noindex + room for the banner + the pulse animation.
+const PREVIEW_HEAD = `<meta name="robots" content="noindex"/><style>body{padding-bottom:80px!important}@keyframes pbPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.75)}}</style>`;
 
-/** Inject noindex + a preview banner into a generated document. */
+// A loud, unmistakable "this is a preview" bar pinned to the bottom.
+const PREVIEW_BANNER = `<div role="status" style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:linear-gradient(90deg,#f59e0b 0%,#fbbf24 100%);color:#1c1917;font:700 15px/1.45 ui-sans-serif,system-ui,-apple-system,sans-serif;padding:14px 18px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 14px;text-align:center;box-shadow:0 -6px 28px rgba(245,158,11,.5);border-top:3px solid #b45309"><span style="display:inline-flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 4px rgba(220,38,38,.25);animation:pbPulse 1.3s ease-in-out infinite"></span><strong style="background:#1c1917;color:#fbbf24;padding:3px 9px;border-radius:6px;font-size:12px;letter-spacing:.06em">🐝 FREE PREVIEW</strong></span><span>This site isn't live yet — approve it in your PageBee dashboard to launch.</span></div>`;
+
+/** Inject noindex + a prominent preview banner into a generated document. */
 function applyPreviewMode(doc: string): string {
   let out = doc;
-  if (out.includes("</head>")) {
-    out = out.replace("</head>", `<meta name="robots" content="noindex"/></head>`);
-  }
+  out = out.includes("</head>") ? out.replace("</head>", `${PREVIEW_HEAD}</head>`) : `${PREVIEW_HEAD}${out}`;
   out = out.includes("</body>") ? out.replace("</body>", `${PREVIEW_BANNER}</body>`) : out + PREVIEW_BANNER;
   return out;
 }
