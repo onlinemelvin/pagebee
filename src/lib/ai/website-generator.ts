@@ -137,7 +137,17 @@ No markdown, no code fences, no commentary before or after.
 - Mobile-first, semantic, accessible (labels, focus states, alt text).
 - SEO: include a descriptive <title>, <meta name="description">, <link rel="canonical" href="__SITE_URL__/">, and Open Graph tags (og:title, og:description, og:url="__SITE_URL__", og:type="website"). One <h1>; use header/main/section/footer landmarks.
 - IMAGERY: use the provided STOCK IMAGES (real royalty-free URLs) for the hero and section visuals, each with descriptive alt text and loading="lazy". If none are provided, use tasteful CSS gradients/patterns — NEVER emit broken or placeholder image URLs.
-- ANIMATION: add tasteful, performant motion — CSS transitions on hover/focus, subtle keyframe accents, and scroll-reveal via a small inline IntersectionObserver that reveals sections as they enter the viewport. Wrap motion in @media (prefers-reduced-motion: no-preference) with a no-animation fallback. Elegant, not flashy.
+- ANIMATION — use Motion (the vanilla/standalone build of Framer Motion; works without React or a bundler). Load it once via a CDN ESM module and use its API for tasteful, production-grade motion:
+    <script type="module">
+      import { animate, inView, stagger } from "https://cdn.jsdelivr.net/npm/motion@11/+esm";
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        document.documentElement.classList.add("motion");           // gate hidden-initial styles on this
+        inView("[data-reveal]", (el) => { animate(el, { opacity: [0, 1], transform: ["translateY(24px)", "translateY(0)"] }, { duration: 0.6, easing: "ease-out" }); }, { amount: 0.2 });
+        // staggered entrances for grids/lists; subtle hover/tap micro-interactions where they help.
+      }
+    </script>
+  Use it for scroll-reveal, staggered section/grid entrances (stagger()), and subtle hover/press feedback — transform/opacity only, elegant not flashy.
+  CRITICAL accessibility/SEO: content MUST be fully visible WITHOUT JS. Only apply the hidden initial state under the JS-added class, e.g. \`html.motion [data-reveal]{opacity:0}\` — never a bare \`opacity:0\`. Skip ALL motion when prefers-reduced-motion is set.
 `.trim();
 
 /** Generate a complete code site (HTML) that calls PageBee shared APIs. Stub when no key. */
