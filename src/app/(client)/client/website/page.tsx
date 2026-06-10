@@ -5,7 +5,7 @@ import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 export const dynamic = "force-dynamic";
 
 const VERSION_STATUS: Record<string, { label: string; tone: string; note: string }> = {
-  PREVIEW: { label: "In review", tone: "bg-amber-100 text-amber-800", note: "Your draft is generated and waiting for our team to review before it goes live." },
+  PREVIEW: { label: "Preview ready", tone: "bg-amber-100 text-amber-800", note: "Your free preview is ready. Review it below, then approve & launch from your dashboard." },
   PUBLISHED: { label: "Published", tone: "bg-green-100 text-green-800", note: "Your website is live." },
   DRAFT: { label: "Draft", tone: "bg-stone-100 text-stone-600", note: "Draft saved." },
   ARCHIVED: { label: "Archived", tone: "bg-stone-100 text-stone-600", note: "" },
@@ -23,6 +23,7 @@ export default async function ClientWebsitePage() {
   const proto = root.includes("localhost") ? "http" : "https";
   const liveUrl = website?.subdomain ? `${proto}://${website.subdomain}.${root}` : null;
   const isPublished = website?.status === "published";
+  const isPreview = website?.status === "preview";
 
   return (
     <div>
@@ -43,6 +44,18 @@ export default async function ClientWebsitePage() {
             <p className="mt-3 font-display text-2xl text-stone-900">{copy.heroHeadline}</p>
           )}
           {copy?.heroSubheadline && <p className="mt-1 text-stone-600">{copy.heroSubheadline}</p>}
+
+          {isPreview && (
+            <a
+              href="/preview"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-amber-300"
+            >
+              View your preview ↗
+            </a>
+          )}
+
           {liveUrl && (
             <p className="mt-3 text-sm text-stone-500">
               Address:{" "}
