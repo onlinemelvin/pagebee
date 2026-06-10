@@ -26,13 +26,26 @@ async function main() {
   const { claimNextQueuedJob, runGenerationJob, requeueStaleJobs } = await import(
     "@/lib/modules/website"
   );
+  const { sweepTrials } = await import("@/lib/modules/billing/trial");
 
   console.log("[worker] PageBee generation worker started");
   const recovered = await requeueStaleJobs();
   if (recovered) console.log(`[worker] requeued ${recovered} stale job(s)`);
 
+  let lastTrialSweep = 0;
+  const TRIAL_SWEEP_MS = 5 * 60 * 1000;
+
   for (;;) {
     try {
+      // Trial lifecycle (reminders + takedown) every ~5 minutes.
+      if (Date.now() - lastTrialSweep > TRIAL_SWEEP_MS) {
+        lastTrialSweep = Date.now();
+        const r = await sweepTrials();
+        if (r.reminded || r.suspended) {
+          console.log(`[worker] trial sweep: reminded=${r.reminded} suspended=${r.suspended}`);
+        }
+      }
+
       const id = await claimNextQueuedJob();
       if (id) {
         console.log(`[worker] processing job ${id}`);

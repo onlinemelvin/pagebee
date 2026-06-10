@@ -871,6 +871,7 @@ model Subscription {
   stripeCustomerId     String?
   stripeSubscriptionId String?
 
+  trialEndsAt        DateTime?
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   cancelAt           DateTime?

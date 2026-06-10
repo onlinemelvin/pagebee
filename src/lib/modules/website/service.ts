@@ -196,17 +196,20 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     },
   });
 
+  // Test accounts and live trials skip admin review and go live immediately, so the
+  // client experiences the real site (and "sees things coming through") during the trial.
+  const autoPublish = client.isTest || client.subscription?.status === "TRIAL";
+
   await prisma.websiteGenerationJob.update({
     where: { id: job.id },
     data: {
-      status: client.isTest ? "PUBLISHED" : "NEEDS_REVIEW",
+      status: autoPublish ? "PUBLISHED" : "NEEDS_REVIEW",
       output: result.config as unknown as Prisma.InputJsonValue,
       finishedAt: new Date(),
     },
   });
 
-  // Test accounts (@test.com) skip admin review and go live immediately.
-  if (client.isTest) {
+  if (autoPublish) {
     await approveAndPublish(version.id, null);
   }
 

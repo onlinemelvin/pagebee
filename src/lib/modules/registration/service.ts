@@ -3,6 +3,7 @@ import type { Prisma, PlanName } from "@prisma/client";
 import { createAuthUser, findAuthUserId } from "@/lib/supabase/admin";
 import { uniqueClientSlug } from "@/lib/slug";
 import { writeAudit } from "@/lib/modules/audit";
+import { TRIAL_DAYS } from "@/lib/modules/billing/trial";
 import { isTestEmail, type RegisterInput } from "./schema";
 
 export class RegistrationError extends Error {
@@ -67,7 +68,9 @@ export async function registerClient(input: RegisterInput) {
       data: {
         clientId: newClient.id,
         planId: plan.id,
-        status: isTest ? "ACTIVE" : "SETUP_PENDING",
+        // Real signups start a live 14-day trial; test accounts are simply active.
+        status: isTest ? "ACTIVE" : "TRIAL",
+        trialEndsAt: isTest ? null : new Date(Date.now() + TRIAL_DAYS * 86_400_000),
         agreedSetupFee: plan.setupFee,
         agreedMonthlyFee: plan.monthlyFee,
         setupFeePaid: isTest,

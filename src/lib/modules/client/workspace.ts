@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/session";
+import { trialDaysLeft } from "@/lib/modules/billing/trial";
 
+export interface TrialInfo {
+  status: string;
+  daysLeft: number | null;
+  ended: boolean;
+  cardSkipped: boolean;
+}
 export interface Tab {
   key: string;
   label: string;
@@ -29,6 +36,7 @@ export interface ClientWorkspace {
   website: { exists: boolean; published: boolean; subdomain: string | null; latestVersionStatus: string | null };
   counts: { newInquiries: number; pendingAppointments: number };
   onboarding: { steps: OnboardingStep[]; complete: boolean };
+  trial: TrialInfo;
   tabs: Tab[];
   actions: ActionItem[];
 }
@@ -65,6 +73,14 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
   const flagMap = new Map(flags.map((f) => [f.key, f.enabled]));
   const choice = (k: string): boolean | null => (flagMap.has(k) ? Boolean(flagMap.get(k)) : null);
   const choices = { booking: choice("booking"), invoices: choice("invoices") };
+
+  const sub = client.subscription;
+  const trial: TrialInfo = {
+    status: sub?.status ?? "NONE",
+    daysLeft: trialDaysLeft(sub?.trialEndsAt),
+    ended: sub?.status === "SUSPENDED",
+    cardSkipped: choice("trial.cardSkipped") === true,
+  };
 
   const site = client.websites[0];
   const latestVersion = site?.versions[0];
@@ -105,6 +121,9 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
 
   // ── Surfaced action items ──
   const actions: ActionItem[] = [];
+  if (trial.ended) {
+    actions.push({ title: "Your trial has ended", desc: "Add a card to bring your site back online.", href: "/client/billing", cta: "Reactivate", primary: true });
+  }
   if (!website.exists) {
     actions.push({ title: "Create your website", desc: "Generate your site to get online.", href: "/client/website", cta: "Start", primary: true });
   } else if (website.latestVersionStatus === "PREVIEW" && !client.isTest) {
@@ -129,6 +148,7 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
     website,
     counts: { newInquiries, pendingAppointments },
     onboarding: { steps, complete },
+    trial,
     tabs,
     actions,
   };

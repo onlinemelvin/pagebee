@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { ClientNav } from "@/components/client/ClientNav";
+import { TrialBanner } from "@/components/client/TrialBanner";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -8,7 +9,9 @@ export default async function ClientLayout({ children }: { children: React.React
   if (!ws) redirect("/login");
 
   return (
-    <div className="grid min-h-screen grid-cols-1 bg-stone-50 sm:grid-cols-[240px_1fr]">
+    <div className="min-h-screen bg-stone-50">
+      <TrialBanner trial={ws.trial} />
+      <div className="grid grid-cols-1 sm:grid-cols-[240px_1fr]">
       <aside className="flex flex-col border-b border-stone-200 bg-white px-4 py-4 sm:border-b-0 sm:border-r sm:py-6">
         <div className="mb-2 flex items-center gap-2 px-2 sm:mb-6">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 text-lg">🐝</span>
@@ -28,6 +31,7 @@ export default async function ClientLayout({ children }: { children: React.React
           <SignOutButton />
         </header>
         <main className="mx-auto w-full max-w-4xl flex-1 p-6 sm:p-8">{children}</main>
+      </div>
       </div>
     </div>
   );
