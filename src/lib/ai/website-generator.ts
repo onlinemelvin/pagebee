@@ -144,15 +144,20 @@ No markdown, no code fences, no commentary before or after.
 - IMAGERY: use the provided STOCK IMAGES (real royalty-free URLs) for the hero and section visuals, each with descriptive alt text and loading="lazy". If none are provided, use tasteful CSS gradients/patterns — NEVER emit broken or placeholder image URLs.
 - ANIMATION — use Motion (the vanilla/standalone build of Framer Motion; works without React or a bundler). Load it once via a CDN ESM module and use its API for tasteful, production-grade motion:
     <script type="module">
-      import { animate, inView, stagger } from "https://cdn.jsdelivr.net/npm/motion@11/+esm";
-      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        document.documentElement.classList.add("motion");           // gate hidden-initial styles on this
-        inView("[data-reveal]", (el) => { animate(el, { opacity: [0, 1], transform: ["translateY(24px)", "translateY(0)"] }, { duration: 0.6, easing: "ease-out" }); }, { amount: 0.2 });
-        // staggered entrances for grids/lists; subtle hover/tap micro-interactions where they help.
+      try {
+        const { animate, inView, stagger } = await import("https://cdn.jsdelivr.net/npm/motion@11/+esm");
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          const els = document.querySelectorAll("[data-reveal]");
+          els.forEach((el) => { el.style.opacity = "0"; el.style.transform = "translateY(24px)"; }); // hidden state set by JS, never CSS
+          inView("[data-reveal]", (el) => animate(el, { opacity: 1, transform: "none" }, { duration: 0.6, easing: "ease-out" }));
+          // use stagger() for grids/lists; add subtle hover/press micro-interactions too.
+        }
+      } catch (e) {
+        document.querySelectorAll("[data-reveal]").forEach((el) => { el.style.opacity = "1"; el.style.transform = "none"; });
       }
     </script>
   Use it for scroll-reveal, staggered section/grid entrances (stagger()), and subtle hover/press feedback — transform/opacity only, elegant not flashy.
-  CRITICAL accessibility/SEO: content MUST be fully visible WITHOUT JS. Only apply the hidden initial state under the JS-added class, e.g. \`html.motion [data-reveal]{opacity:0}\` — never a bare \`opacity:0\`. Skip ALL motion when prefers-reduced-motion is set.
+  CRITICAL accessibility/SEO — content must NEVER be permanently hidden: set the hidden initial state ONLY via JS (the els.forEach above), NEVER via CSS opacity:0 or a JS-gated class. If the module fails to load, the catch block reveals everything. Skip all motion under prefers-reduced-motion.
 `.trim();
 
 /** Generate a complete code site (HTML) that calls PageBee shared APIs. Stub when no key. */

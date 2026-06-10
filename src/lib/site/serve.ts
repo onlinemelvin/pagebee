@@ -30,6 +30,16 @@ const PREVIEW_HEAD = `<meta name="robots" content="noindex"/><style>body{padding
 // A loud, unmistakable "this is a preview" bar pinned to the bottom.
 const PREVIEW_BANNER = `<div role="status" style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:linear-gradient(90deg,#f59e0b 0%,#fbbf24 100%);color:#1c1917;font:700 15px/1.45 ui-sans-serif,system-ui,-apple-system,sans-serif;padding:14px 18px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 14px;text-align:center;box-shadow:0 -6px 28px rgba(245,158,11,.5);border-top:3px solid #b45309"><span style="display:inline-flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 4px rgba(220,38,38,.25);animation:pbPulse 1.3s ease-in-out infinite"></span><strong style="background:#1c1917;color:#fbbf24;padding:3px 9px;border-radius:6px;font-size:12px;letter-spacing:.06em">🐝 FREE PREVIEW</strong></span><span>This site isn't live yet — approve it in your PageBee dashboard to launch.</span></div>`;
 
+// Belt-and-suspenders: generated sites animate sections in with Motion by hiding them
+// (opacity:0) until revealed. If the animation lib ever fails to load/run, content would
+// stay invisible. This serve-time script runs OUR OWN IntersectionObserver to reveal any
+// hidden [data-reveal] element on scroll, and hard-reveals anything still hidden after 4s.
+const MOTION_FAILSAFE = `<script>(function(){try{var els=document.querySelectorAll('[data-reveal]');if(!els.length)return;var show=function(el){el.style.setProperty('opacity','1','important');el.style.setProperty('transform','none','important');el.style.transition='opacity .6s ease, transform .6s ease';};if(!('IntersectionObserver'in window)){els.forEach(show);return;}var io=new IntersectionObserver(function(en){en.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target);}});},{threshold:0.1});els.forEach(function(el){io.observe(el);});setTimeout(function(){els.forEach(function(el){if(getComputedStyle(el).opacity==='0')show(el);});},4000);}catch(e){document.querySelectorAll('[data-reveal]').forEach(function(el){el.style.setProperty('opacity','1','important');});}})();</script>`;
+
+function withMotionFailsafe(doc: string): string {
+  return doc.includes("</body>") ? doc.replace("</body>", `${MOTION_FAILSAFE}</body>`) : doc + MOTION_FAILSAFE;
+}
+
 /** Inject noindex + a prominent preview banner into a generated document. */
 function applyPreviewMode(doc: string): string {
   let out = doc;
@@ -66,6 +76,7 @@ export function serveTenant(site: ServeSite | null, req: Request, path?: string[
   }
 
   let doc = site.html.replaceAll(SITE_TOKEN_PLACEHOLDER, site.siteToken).replaceAll(SITE_URL_PLACEHOLDER, origin);
+  doc = withMotionFailsafe(doc);
   if (site.kind === "preview") {
     doc = applyPreviewMode(doc);
     return htmlResponse(doc, 200, "private, no-store"); // previews change as the client revises
