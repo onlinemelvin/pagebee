@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { SetupWizard } from "@/components/client/SetupWizard";
+import { PreviewPanel } from "@/components/client/PreviewPanel";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ export default async function ClientHomePage() {
       </div>
 
       {!ws.onboarding.complete && <SetupWizard steps={ws.onboarding.steps} />}
+
+      <PreviewPanel preview={ws.preview} />
 
       {ws.actions.length > 0 && (
         <section>
@@ -56,7 +59,7 @@ export default async function ClientHomePage() {
           )}
           <Stat
             label="Website"
-            value={ws.website.published ? "Live" : ws.website.exists ? "In review" : "Not started"}
+            value={ws.preview.live ? "Live" : ws.preview.ready ? "Preview ready" : ws.website.exists ? "In progress" : "Not started"}
             href="/client/website"
           />
         </div>

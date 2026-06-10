@@ -18,6 +18,7 @@ export interface WebsiteIntake {
   tone?: string;
   phone?: string | null;
   email?: string | null;
+  revisionNote?: string;
 }
 
 export interface PlanLimits {
@@ -195,6 +196,12 @@ async function generateHtmlWithClaude(
       "",
       'STOCK IMAGES (real royalty-free URLs — use for hero/section visuals with descriptive alt + loading="lazy"):',
       ...images.map((im) => `${im.url}  (alt: ${im.alt})`),
+    );
+  }
+  if (intake.revisionNote) {
+    parts.push(
+      "",
+      `REVISION REQUESTED by the business owner — apply this change while keeping everything else strong: ${intake.revisionNote}`,
     );
   }
   const system = parts.join("\n");

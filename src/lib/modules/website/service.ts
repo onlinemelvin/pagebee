@@ -12,6 +12,9 @@ import {
 } from "@/lib/ai/website-generator";
 import type { WebsiteIntakeForm } from "./schema";
 
+/** Days a free preview stays reviewable before it expires (see docs/ONBOARDING.md). */
+export const PREVIEW_DAYS = Number(process.env.PREVIEW_DAYS ?? 14);
+
 function generateSiteToken(): string {
   return `site_${randomBytes(16).toString("base64url")}`;
 }
@@ -133,6 +136,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       serviceAreas: form.serviceAreas,
       hours: form.hours,
       tone: form.tone,
+      revisionNote: form.revisionNote,
     };
 
     const result = await generateWebsiteConfig(intake, limits);
@@ -196,22 +200,32 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     },
   });
 
-  // Test accounts and live trials skip admin review and go live immediately, so the
-  // client experiences the real site (and "sees things coming through") during the trial.
-  const autoPublish = client.isTest || client.subscription?.status === "TRIAL";
-
   await prisma.websiteGenerationJob.update({
     where: { id: job.id },
     data: {
-      status: autoPublish ? "PUBLISHED" : "NEEDS_REVIEW",
+      status: "NEEDS_REVIEW",
       output: result.config as unknown as Prisma.InputJsonValue,
       finishedAt: new Date(),
     },
   });
 
-  if (autoPublish) {
-    await approveAndPublish(version.id, null);
-  }
+  // Preview-before-you-pay: the generated site enters PREVIEW mode (not live) for the
+  // client to review/approve. It launches only after approval (+ setup-fee payment).
+  // See docs/ONBOARDING.md.
+  await prisma.website.update({ where: { id: website.id }, data: { status: "preview" } });
+  const planName = client.subscription?.plan.name ?? "LAUNCH";
+  await prisma.preview.upsert({
+    where: { websiteId: website.id },
+    update: { status: "PREVIEW_READY", generatedAt: new Date(), selectedPlan: planName, clientId },
+    create: {
+      websiteId: website.id,
+      clientId,
+      selectedPlan: planName,
+      status: "PREVIEW_READY",
+      generatedAt: new Date(),
+      expiresAt: new Date(Date.now() + PREVIEW_DAYS * 86_400_000),
+    },
+  });
 
   await writeAudit({
     action: "website.generated",
@@ -341,6 +355,39 @@ export async function getPublishedSiteByDomain(domain: string) {
 }
 
 export type PublishedSite = NonNullable<Awaited<ReturnType<typeof getPublishedSiteBySubdomain>>>;
+
+export interface ServeSite {
+  kind: "published" | "preview";
+  siteToken: string;
+  html: string;
+}
+
+/** Resolve a renderable site (published OR in-preview) by host part, for the renderer. */
+async function getServeSite(where: { subdomain?: string; domain?: string }): Promise<ServeSite | null> {
+  const site = await prisma.website.findFirst({
+    where: { ...where, status: { in: ["published", "preview"] } },
+    include: {
+      publishedVersion: true,
+      versions: { orderBy: { version: "desc" }, take: 1 },
+    },
+  });
+  if (!site) return null;
+  if (site.status === "published" && site.publishedVersion?.generatedHtml) {
+    return { kind: "published", siteToken: site.siteToken, html: site.publishedVersion.generatedHtml };
+  }
+  if (site.status === "preview") {
+    const html = site.versions[0]?.generatedHtml;
+    if (html) return { kind: "preview", siteToken: site.siteToken, html };
+  }
+  return null;
+}
+
+export function getServeSiteBySubdomain(subdomain: string) {
+  return getServeSite({ subdomain });
+}
+export function getServeSiteByDomain(domain: string) {
+  return getServeSite({ domain });
+}
 
 /** The client's website with its latest version + published state. */
 export async function getClientWebsite(clientId: string) {

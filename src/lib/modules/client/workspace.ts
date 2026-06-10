@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/session";
-import { trialDaysLeft } from "@/lib/modules/billing/trial";
 
-export interface TrialInfo {
-  status: string;
-  daysLeft: number | null;
-  ended: boolean;
-  cardSkipped: boolean;
+export interface PreviewInfo {
+  status: string; // PreviewStatus or "NONE"
+  daysLeft: number | null; // until expiry
+  ready: boolean; // reviewable
+  live: boolean; // launched
+  awaitingPayment: boolean; // approved, setup fee due
+  expired: boolean;
+  revisionsLeft: number;
+  url: string | null; // preview/live site URL
 }
 export interface Tab {
   key: string;
@@ -36,7 +39,7 @@ export interface ClientWorkspace {
   website: { exists: boolean; published: boolean; subdomain: string | null; latestVersionStatus: string | null };
   counts: { newInquiries: number; pendingAppointments: number };
   onboarding: { steps: OnboardingStep[]; complete: boolean };
-  trial: TrialInfo;
+  preview: PreviewInfo;
   tabs: Tab[];
   actions: ActionItem[];
 }
@@ -74,14 +77,6 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
   const choice = (k: string): boolean | null => (flagMap.has(k) ? Boolean(flagMap.get(k)) : null);
   const choices = { booking: choice("booking"), invoices: choice("invoices") };
 
-  const sub = client.subscription;
-  const trial: TrialInfo = {
-    status: sub?.status ?? "NONE",
-    daysLeft: trialDaysLeft(sub?.trialEndsAt),
-    ended: sub?.status === "SUSPENDED",
-    cardSkipped: choice("trial.cardSkipped") === true,
-  };
-
   const site = client.websites[0];
   const latestVersion = site?.versions[0];
   const website = {
@@ -89,6 +84,27 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
     published: site?.status === "published",
     subdomain: site?.subdomain ?? null,
     latestVersionStatus: latestVersion?.status ?? null,
+  };
+
+  // ── Preview lifecycle (preview-before-you-pay) ──
+  const previewRow = await prisma.preview.findFirst({
+    where: { clientId: client.id },
+    orderBy: { createdAt: "desc" },
+  });
+  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
+  const proto = rootDomain.includes("localhost") ? "http" : "https";
+  const previewDaysLeft = previewRow?.expiresAt
+    ? Math.max(0, Math.ceil((previewRow.expiresAt.getTime() - Date.now()) / 86_400_000))
+    : null;
+  const preview: PreviewInfo = {
+    status: previewRow?.status ?? "NONE",
+    daysLeft: previewDaysLeft,
+    ready: previewRow?.status === "PREVIEW_READY",
+    live: previewRow?.status === "LIVE",
+    awaitingPayment: previewRow?.status === "APPROVED" || previewRow?.status === "SETUP_FEE_PENDING",
+    expired: previewRow?.status === "EXPIRED",
+    revisionsLeft: previewRow ? Math.max(0, previewRow.maxFreeRevisions - previewRow.revisionCount) : 0,
+    url: site?.subdomain ? `${proto}://${site.subdomain}.${rootDomain}` : null,
   };
 
   const [newInquiries, pendingAppointments] = await Promise.all([
@@ -121,13 +137,14 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
 
   // ── Surfaced action items ──
   const actions: ActionItem[] = [];
-  if (trial.ended) {
-    actions.push({ title: "Your trial has ended", desc: "Add a card to bring your site back online.", href: "/client/billing", cta: "Reactivate", primary: true });
-  }
   if (!website.exists) {
-    actions.push({ title: "Create your website", desc: "Generate your site to get online.", href: "/client/website", cta: "Start", primary: true });
-  } else if (website.latestVersionStatus === "PREVIEW" && !client.isTest) {
-    actions.push({ title: "Website in review", desc: "We're reviewing your draft before it goes live.", href: "/client/website", cta: "View" });
+    actions.push({ title: "Create your free preview", desc: "Tell us about your business and we'll generate your site.", href: "/client/website", cta: "Start", primary: true });
+  } else if (preview.ready) {
+    actions.push({ title: "Your preview is ready", desc: "Review it, request a change, or approve & launch.", href: "/client", cta: "Review", primary: true });
+  } else if (preview.awaitingPayment) {
+    actions.push({ title: "Approve & launch", desc: "Pay the one-time setup fee to take your site live.", href: "/client/billing", cta: "Continue", primary: true });
+  } else if (preview.expired) {
+    actions.push({ title: "Your preview expired", desc: "Regenerate it whenever you're ready.", href: "/client/website", cta: "Regenerate" });
   }
   if (newInquiries > 0) {
     actions.push({ title: `${newInquiries} new inquir${newInquiries === 1 ? "y" : "ies"}`, desc: "Respond to messages from your website.", href: "/client/inquiries", cta: "Open" });
@@ -148,7 +165,7 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
     website,
     counts: { newInquiries, pendingAppointments },
     onboarding: { steps, complete },
-    trial,
+    preview,
     tabs,
     actions,
   };

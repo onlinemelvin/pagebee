@@ -11,7 +11,10 @@ export {
   getClientWebsite,
   getPublishedSiteBySubdomain,
   getPublishedSiteByDomain,
+  getServeSiteBySubdomain,
+  getServeSiteByDomain,
+  PREVIEW_DAYS,
 } from "./service";
-export type { PublishedSite } from "./service";
+export type { PublishedSite, ServeSite } from "./service";
 export { websiteIntakeSchema } from "./schema";
 export type { WebsiteIntakeForm } from "./schema";

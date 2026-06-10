@@ -32,6 +32,11 @@ export async function POST(req: Request) {
     return json({ error: "validation_error", issues: parsed.error.flatten() }, 400);
   }
 
+  // Preview mode (before launch): accept but don't deliver — demo only.
+  if (site.status === "preview") {
+    return json({ id: "demo", status: "DEMO", demo: true }, 200);
+  }
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   try {
     const booking = await createBooking({ clientId: site.clientId, input: parsed.data, ip });

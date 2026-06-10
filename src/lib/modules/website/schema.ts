@@ -7,6 +7,8 @@ export const websiteIntakeSchema = z.object({
   serviceAreas: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
   hours: z.string().trim().max(500).optional(),
   tone: z.string().trim().max(80).optional(),
+  // Set when regenerating for a requested preview revision — steers the new draft.
+  revisionNote: z.string().trim().max(2000).optional(),
 });
 
 export type WebsiteIntakeForm = z.infer<typeof websiteIntakeSchema>;
