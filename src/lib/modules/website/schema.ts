@@ -18,6 +18,7 @@ export const websiteIntakeSchema = z.object({
   businessHours: z.array(businessHourSchema).max(7).optional(),
   logoUrl: z.string().url().max(600).optional(),
   imageUrls: z.array(z.string().url().max(600)).max(20).optional(),
+  customInstructions: z.string().trim().max(2000).optional(),
   // Set when regenerating for a requested preview revision — steers the new draft.
   revisionNote: z.string().trim().max(2000).optional(),
 });

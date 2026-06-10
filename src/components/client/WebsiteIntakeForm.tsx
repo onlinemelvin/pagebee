@@ -174,6 +174,7 @@ export function WebsiteIntakeForm({
     const data = new FormData(e.currentTarget);
     const about = String(data.get("about") ?? "").trim();
     const tone = String(data.get("tone") ?? "").trim() || undefined;
+    const customInstructions = String(data.get("customInstructions") ?? "").trim() || undefined;
 
     const errs = { about: !about, services: services.length === 0 };
     if (errs.about || errs.services) {
@@ -202,6 +203,7 @@ export function WebsiteIntakeForm({
           businessHours: hours,
           logoUrl: logoUrl ?? undefined,
           imageUrls: imageUrls.length ? imageUrls : undefined,
+          customInstructions,
         }),
       });
       if (res.status !== 202 && !res.ok) {
@@ -438,6 +440,18 @@ export function WebsiteIntakeForm({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Custom instructions */}
+      <div className="grid gap-2">
+        <Label htmlFor="customInstructions">
+          Custom instructions <span className="font-normal text-stone-400">— anything else for our AI</span>
+        </Label>
+        <Textarea
+          id="customInstructions"
+          name="customInstructions"
+          placeholder="e.g. Emphasize that we're family-owned and eco-friendly. Add a section for seasonal promotions. Keep the hero short."
+        />
       </div>
 
       {uploading && <p className="text-sm text-stone-500">Uploading…</p>}

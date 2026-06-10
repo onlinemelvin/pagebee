@@ -22,6 +22,7 @@ export interface WebsiteIntake {
   pages?: string[];
   logoUrl?: string;
   imageUrls?: string[];
+  customInstructions?: string;
   revisionNote?: string;
 }
 
@@ -225,6 +226,12 @@ async function generateHtmlWithClaude(
       "",
       `IMAGES (use the client's own photos first, then these — real URLs, with descriptive alt + loading="lazy"):`,
       ...allImages.map((im) => `${im.url}  (alt: ${im.alt})`),
+    );
+  }
+  if (intake.customInstructions) {
+    parts.push(
+      "",
+      `CUSTOM INSTRUCTIONS from the business owner — follow these as long as they don't conflict with the rules above: ${intake.customInstructions}`,
     );
   }
   if (intake.revisionNote) {

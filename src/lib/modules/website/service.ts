@@ -151,6 +151,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       pages: form.pages,
       logoUrl: form.logoUrl,
       imageUrls: form.imageUrls,
+      customInstructions: form.customInstructions,
       revisionNote: form.revisionNote,
     };
 
