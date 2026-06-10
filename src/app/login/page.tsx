@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,9 @@ import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [email, setEmail] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
   const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -18,6 +21,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setNotice(null);
     const data = new FormData(e.currentTarget);
 
     const supabase = createSupabaseBrowserClient();
@@ -35,6 +39,24 @@ export default function LoginPage() {
     router.refresh();
   }
 
+  async function handleForgot() {
+    setError(null);
+    setNotice(null);
+    if (!email) {
+      setError("Enter your email above first, then click “Forgot password”.");
+      return;
+    }
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setNotice("If an account exists for that email, a password reset link is on its way.");
+  }
+
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--background)] px-6">
       <div className="w-full max-w-sm">
@@ -43,7 +65,7 @@ export default function LoginPage() {
           <span className="font-display text-2xl font-semibold text-stone-900">PageBee</span>
         </div>
         <h1 className="font-display text-2xl text-stone-900">Sign in</h1>
-        <p className="mt-1 text-sm text-stone-500">Admin &amp; team access.</p>
+        <p className="mt-1 text-sm text-stone-500">Sign in to your PageBee account.</p>
 
         {!configured && (
           <p className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
@@ -55,10 +77,28 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required autoComplete="email" />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <button
+                type="button"
+                onClick={handleForgot}
+                disabled={!configured}
+                className="text-xs font-medium text-amber-700 hover:underline disabled:opacity-50"
+              >
+                Forgot password?
+              </button>
+            </div>
             <Input id="password" name="password" type="password" required autoComplete="current-password" />
           </div>
           {error && (
@@ -66,10 +106,22 @@ export default function LoginPage() {
               {error}
             </p>
           )}
+          {notice && (
+            <p className="text-sm text-green-700" role="status">
+              {notice}
+            </p>
+          )}
           <Button type="submit" size="lg" disabled={loading || !configured}>
             {loading ? "Signing in…" : "Sign in"}
           </Button>
         </form>
+
+        <p className="mt-6 text-center text-sm text-stone-500">
+          Don&apos;t have an account?{" "}
+          <Link href="/register" className="font-medium text-amber-700 hover:underline">
+            Sign up
+          </Link>
+        </p>
       </div>
     </main>
   );
