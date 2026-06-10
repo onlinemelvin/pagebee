@@ -10,19 +10,13 @@ import { Label } from "@/components/ui/label";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isTestEmail } from "@/lib/modules/registration/schema";
 import { PLANS, type PlanName } from "@/lib/plans";
+import { PLAN_BADGES } from "@/lib/planBadges";
 import { cn, formatUsd } from "@/lib/utils";
 
 const ERROR_COPY: Record<string, string> = {
   email_taken: "An account with this email already exists. Try signing in.",
   invalid_plan: "That plan isn't available. Please pick another.",
   validation_error: "Please check the form and try again.",
-};
-
-// Presentation-only "excitement" tags for the choose-plan step (keyed by plan).
-const PLAN_BADGES: Record<PlanName, { label: string; className: string }> = {
-  LAUNCH: { label: "🌱 Great start", className: "bg-emerald-100 text-emerald-800" },
-  CONNECT: { label: "🔥 Most popular", className: "bg-amber-400 text-stone-950" },
-  AUTOMATE: { label: "⚡ Most powerful", className: "bg-violet-100 text-violet-800" },
 };
 
 export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) {
@@ -84,36 +78,33 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-6 py-12">
-      <div className="mx-auto max-w-xl">
-        <Link href="/" className="mb-8 flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-400 text-xl">🐝</span>
+      <div className={cn("mx-auto transition-all", step === "plan" ? "max-w-6xl" : "max-w-xl")}>
+        <Link href="/" className="group mb-8 flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-400 text-xl shadow-sm transition-transform group-hover:-rotate-6 group-hover:scale-105">🐝</span>
           <span className="font-display text-2xl font-semibold text-stone-900">PageBee</span>
         </Link>
 
         {/* Step 1 — choose your plan */}
         {step === "plan" && (
           <section>
-            {/* Free-preview hero — the core "preview before you pay" promise */}
-            <div className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-amber-400 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-stone-950">
+            {/* Free-preview banner — the core "preview before you pay" promise */}
+            <div className="mx-auto max-w-2xl text-center">
+              <span className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+                <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-stone-950">
                   Free preview
                 </span>
-                <span className="text-sm font-semibold text-amber-900">No credit card required</span>
-              </div>
-              <p className="mt-2 font-display text-xl text-stone-900">
-                See your website before you pay a cent. ✨
-              </p>
-              <p className="mt-1 text-sm text-stone-600">
-                Pick a plan and we&apos;ll build a free AI preview of your new site. You only pay the
-                setup fee once you love it and want to launch — cancel anytime before then.
+                No credit card required
+              </span>
+              <h1 className="mt-5 font-display text-4xl tracking-tight text-stone-900 sm:text-5xl">
+                Choose your plan
+              </h1>
+              <p className="mx-auto mt-4 max-w-xl text-lg text-stone-600">
+                We&apos;ll build a free AI preview of your new site. You only pay the setup fee once
+                you love it and want to launch — cancel anytime before then.
               </p>
             </div>
 
-            <h1 className="mt-8 font-display text-3xl text-stone-900">Choose your plan</h1>
-            <p className="mt-1 text-stone-500">Pick what fits today — you can upgrade anytime.</p>
-
-            <div className="mt-6 grid gap-4">
+            <div className="mt-12 grid gap-6 lg:grid-cols-3">
               {PLANS.map((p) => {
                 const badge = PLAN_BADGES[p.name];
                 const selected = plan === p.name;
@@ -122,35 +113,57 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
                     type="button"
                     key={p.name}
                     onClick={() => setPlan(p.name)}
+                    aria-pressed={selected}
                     className={cn(
-                      "relative rounded-2xl border bg-white p-5 text-left transition-all",
+                      "lift relative flex flex-col rounded-3xl border bg-white p-8 text-left transition-all",
                       selected
-                        ? "border-amber-400 ring-2 ring-amber-200"
+                        ? "border-amber-400 ring-2 ring-amber-300"
                         : p.recommended
-                          ? "border-amber-300 shadow-sm shadow-amber-100 hover:border-amber-400"
-                          : "border-stone-200 hover:border-stone-300 hover:shadow-sm",
+                          ? "border-amber-300 shadow-lg shadow-amber-100 hover:border-amber-400"
+                          : badge
+                            ? "border-emerald-300 shadow-lg shadow-emerald-100 hover:border-emerald-400"
+                            : "border-stone-200 hover:border-stone-300 hover:shadow-md",
                     )}
                   >
+                    {badge && (
+                      <span className={cn("absolute -top-3 left-8 rounded-full px-3 py-1 text-xs font-semibold", badge.className)}>
+                        {badge.label}
+                      </span>
+                    )}
+                    {/* Selection indicator */}
                     <span
                       className={cn(
-                        "absolute -top-2.5 left-5 rounded-full px-2.5 py-0.5 text-xs font-bold",
-                        badge.className,
+                        "absolute right-6 top-6 grid h-6 w-6 place-items-center rounded-full border transition-colors",
+                        selected ? "border-amber-400 bg-amber-400 text-stone-950" : "border-stone-300 text-transparent",
                       )}
                     >
-                      {badge.label}
+                      <Check size={14} />
                     </span>
-                    <div className="flex items-baseline justify-between pt-1">
-                      <span className="font-display text-xl text-stone-900">{p.label}</span>
-                      <span className="text-stone-900">
-                        <span className="text-lg font-semibold">{formatUsd(p.monthlyFee)}</span>
-                        <span className="text-sm text-stone-500">/mo + {formatUsd(p.setupFee)} setup</span>
-                      </span>
+
+                    <h2 className="font-display text-2xl text-stone-900">{p.label}</h2>
+                    <p className="mt-2 min-h-12 text-sm text-stone-600">{p.tagline}</p>
+
+                    <div className="mt-6">
+                      <span className="text-4xl font-semibold text-stone-900">{formatUsd(p.monthlyFee)}</span>
+                      <span className="text-stone-500">/month</span>
                     </div>
-                    <p className="mt-1 text-sm text-stone-500">{p.tagline}</p>
-                    <ul className="mt-3 grid gap-1.5">
-                      {p.highlights.slice(0, 3).map((h) => (
-                        <li key={h} className="flex items-start gap-2 text-sm text-stone-700">
-                          <Check size={16} className="mt-0.5 shrink-0 text-amber-500" />
+                    <p className="mt-1 text-sm text-stone-500">+ {formatUsd(p.setupFee)} one-time setup</p>
+
+                    <span
+                      className={cn(
+                        "mt-6 inline-flex h-11 w-full items-center justify-center rounded-full text-sm font-semibold transition-colors",
+                        selected
+                          ? "bg-amber-400 text-stone-950"
+                          : "border border-stone-300 text-stone-900",
+                      )}
+                    >
+                      {selected ? "Selected" : "Select plan"}
+                    </span>
+
+                    <ul className="mt-8 space-y-3 text-sm text-stone-700">
+                      {p.highlights.map((h) => (
+                        <li key={h} className="flex items-start gap-3">
+                          <Check size={18} className="mt-0.5 shrink-0 text-amber-500" />
                           <span>{h}</span>
                         </li>
                       ))}
@@ -160,20 +173,21 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
               })}
             </div>
 
-            <Button size="lg" className="mt-6 w-full" disabled={!plan} onClick={() => plan && setStep("details")}>
-              {plan ? `Get my free ${selectedPlan?.label} preview` : "Continue"}
-            </Button>
-            <p className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-xs text-stone-500">
-              <span className="inline-flex items-center gap-1"><Check size={13} className="text-emerald-500" /> No credit card required</span>
-              <span className="inline-flex items-center gap-1"><Check size={13} className="text-emerald-500" /> Free website preview</span>
-              <span className="inline-flex items-center gap-1"><Check size={13} className="text-emerald-500" /> Pay only when you launch</span>
-            </p>
-            <p className="mt-4 text-center text-sm text-stone-500">
-              Already have an account?{" "}
-              <Link href="/login" className="font-medium text-amber-700 hover:underline">
-                Sign in
-              </Link>
-            </p>
+            <div className="mx-auto mt-10 max-w-md">
+              <Button size="lg" className="w-full" disabled={!plan} onClick={() => plan && setStep("details")}>
+                {plan ? `Get my free ${selectedPlan?.label} preview` : "Select a plan to continue"}
+              </Button>
+              <p className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-xs text-stone-500">
+                <span className="inline-flex items-center gap-1"><Check size={13} className="text-emerald-500" /> No credit card required</span>
+                <span className="inline-flex items-center gap-1"><Check size={13} className="text-emerald-500" /> Pay only when you launch</span>
+              </p>
+              <p className="mt-4 text-center text-sm text-stone-500">
+                Already have an account?{" "}
+                <Link href="/login" className="font-medium text-amber-700 hover:underline">
+                  Sign in
+                </Link>
+              </p>
+            </div>
           </section>
         )}
 

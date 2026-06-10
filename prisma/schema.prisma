@@ -835,6 +835,7 @@ model Client {
   contracts      Contract[]
   commissionRecords CommissionRecord[]
   analyticsEvents AnalyticsEvent[]
+  previews        Preview[]        @relation("ClientPreviews")
 
   @@index([status])
   @@map("clients")
@@ -845,7 +846,7 @@ model ClientUser {
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      String   @default("owner") // owner, staff
   createdAt DateTime @default(now())
 
@@ -1068,6 +1069,7 @@ model Preview {
   // self-serve preview can exist before either record is created.
   prospectId   String?
   clientId     String?
+  client       Client?       @relation("ClientPreviews", fields: [clientId], references: [id], onDelete: Cascade)
   websiteId    String?       @unique // the Website generated for this preview
   selectedPlan PlanName
   status       PreviewStatus @default(INTAKE_STARTED)
@@ -1341,7 +1343,7 @@ model Invoice {
   id         String        @id @default(cuid())
   kind       InvoiceKind
   clientId   String // ledger owner: tenant whose books this belongs to
-  client     Client        @relation(fields: [clientId], references: [id])
+  client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   // Set only for CLIENT_CUSTOMER invoices (a client billing its customer).
   customerId String?
   customer   Customer?     @relation(fields: [customerId], references: [id])
@@ -1392,7 +1394,7 @@ model InvoiceLineItem {
 model Payment {
   id         String          @id @default(cuid())
   clientId   String
-  client     Client          @relation(fields: [clientId], references: [id])
+  client     Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?
   customer   Customer?       @relation(fields: [customerId], references: [id])
   invoiceId  String?
@@ -1473,7 +1475,7 @@ model PaymentEvent {
 model Refund {
   id         String       @id @default(cuid())
   paymentId  String
-  payment    Payment      @relation(fields: [paymentId], references: [id])
+  payment    Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   invoiceId  String?
   invoice    Invoice?     @relation(fields: [invoiceId], references: [id])
   amount     Int
@@ -1491,7 +1493,7 @@ model Refund {
 model Statement {
   id         String   @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id])
   periodStart DateTime
@@ -1509,7 +1511,7 @@ model Statement {
 model Due {
   id         String   @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?
   invoiceId  String?
   amount     Int
@@ -1525,7 +1527,7 @@ model Due {
 model AccountBalance {
   id         String   @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?  @unique
   customer   Customer? @relation(fields: [customerId], references: [id])
   balance    Int      @default(0) // cents owed; negative = credit

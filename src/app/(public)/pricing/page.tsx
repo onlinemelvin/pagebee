@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContactForm } from "@/components/marketing/ContactForm";
 import { PLANS, PRICING_NOTE } from "@/lib/plans";
+import { PLAN_BADGES } from "@/lib/planBadges";
 import { formatUsd, cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -25,17 +26,23 @@ export default function PricingPage() {
 
       <section className="mx-auto max-w-6xl px-6 pb-8">
         <div className="grid gap-6 lg:grid-cols-3">
-          {PLANS.map((plan) => (
+          {PLANS.map((plan) => {
+            const badge = PLAN_BADGES[plan.name];
+            return (
             <div
               key={plan.name}
               className={cn(
                 "relative flex flex-col rounded-3xl border bg-white p-8",
-                plan.recommended ? "border-amber-400 shadow-lg shadow-amber-100" : "border-stone-200",
+                plan.recommended
+                  ? "border-amber-400 shadow-lg shadow-amber-100"
+                  : badge
+                    ? "border-emerald-300 shadow-lg shadow-emerald-100"
+                    : "border-stone-200",
               )}
             >
-              {plan.recommended && (
-                <span className="absolute -top-3 left-8 rounded-full bg-amber-400 px-3 py-1 text-xs font-semibold text-stone-950">
-                  Most popular
+              {badge && (
+                <span className={cn("absolute -top-3 left-8 rounded-full px-3 py-1 text-xs font-semibold", badge.className)}>
+                  {badge.label}
                 </span>
               )}
               <h2 className="font-display text-2xl text-stone-900">{plan.label}</h2>
@@ -62,14 +69,14 @@ export default function PricingPage() {
                 ))}
               </ul>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <p className="mx-auto mt-10 max-w-3xl text-center text-xs text-stone-500">{PRICING_NOTE}</p>
 
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Link href="/#contact"><Button size="lg">Book a free consultation</Button></Link>
-          <Link href="/#contact"><Button variant="outline" size="lg">Request a custom quote</Button></Link>
         </div>
       </section>
 
