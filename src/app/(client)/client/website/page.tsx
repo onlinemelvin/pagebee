@@ -1,5 +1,5 @@
-import { getCurrentClient } from "@/lib/auth/session";
 import { getClientWebsite } from "@/lib/modules/website";
+import { getClientWorkspace } from "@/lib/modules/client";
 import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +12,9 @@ const VERSION_STATUS: Record<string, { label: string; tone: string; note: string
 };
 
 export default async function ClientWebsitePage() {
-  const result = await getCurrentClient();
-  if (!result) return null;
-  const website = await getClientWebsite(result.client.id);
+  const ws = await getClientWorkspace();
+  if (!ws) return null;
+  const website = await getClientWebsite(ws.client.id);
   const latest = website?.versions[0];
   const copy = (latest?.config?.copy ?? null) as unknown as { heroHeadline?: string; heroSubheadline?: string } | null;
   const status = latest ? VERSION_STATUS[latest.status] ?? null : null;
@@ -82,7 +82,11 @@ export default async function ClientWebsitePage() {
           {latest ? "Submit updated details to create a new draft for review." : "A few details is all we need to start."}
         </p>
         <div className="mt-6">
-          <WebsiteIntakeForm submitLabel={latest ? "Regenerate draft" : "Generate my website"} />
+          <WebsiteIntakeForm
+            submitLabel={latest ? "Regenerate draft" : "Generate my website"}
+            maxPages={ws.caps.maxPages}
+            canBook={ws.caps.booking && ws.choices.booking === true}
+          />
         </div>
       </div>
     </div>

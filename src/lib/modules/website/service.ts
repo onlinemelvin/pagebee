@@ -19,6 +19,17 @@ function generateSiteToken(): string {
   return `site_${randomBytes(16).toString("base64url")}`;
 }
 
+/** Turn the structured weekly hours into a readable line for the generator. */
+function formatBusinessHours(
+  hours?: { day: string; closed?: boolean; open?: string; close?: string }[],
+): string | undefined {
+  if (!hours?.length) return undefined;
+  const parts = hours.map((h) =>
+    h.closed || !h.open ? `${h.day}: closed` : `${h.day}: ${h.open}–${h.close ?? ""}`,
+  );
+  return parts.join(", ");
+}
+
 function planLimits(flags: Record<string, unknown>, fallbackMaxPages: number): PlanLimits {
   return {
     maxPages: Number(flags.maxPages ?? fallbackMaxPages),
@@ -134,8 +145,12 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       about: form.about,
       services: form.services,
       serviceAreas: form.serviceAreas,
-      hours: form.hours,
+      hours: formatBusinessHours(form.businessHours),
       tone: form.tone,
+      colorPalette: form.colorPalette,
+      pages: form.pages,
+      logoUrl: form.logoUrl,
+      imageUrls: form.imageUrls,
       revisionNote: form.revisionNote,
     };
 

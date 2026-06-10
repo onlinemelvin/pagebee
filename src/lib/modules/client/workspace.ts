@@ -34,7 +34,7 @@ export interface ClientWorkspace {
   email: string;
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
-  caps: { booking: boolean; invoices: boolean; ai: boolean };
+  caps: { booking: boolean; invoices: boolean; ai: boolean; maxPages: number };
   choices: { booking: boolean | null; invoices: boolean | null };
   website: { exists: boolean; published: boolean; subdomain: string | null; latestVersionStatus: string | null };
   counts: { newInquiries: number; pendingAppointments: number };
@@ -70,6 +70,7 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
     booking: Boolean(planFlags.booking),
     invoices: Boolean(planFlags.invoices ?? planFlags.payments),
     ai: Boolean(planFlags.aiAssistant),
+    maxPages: Number(planFlags.maxPages ?? 5),
   };
 
   const flags = await prisma.featureFlag.findMany({ where: { clientId: client.id } });

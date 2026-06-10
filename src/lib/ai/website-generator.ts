@@ -18,6 +18,10 @@ export interface WebsiteIntake {
   tone?: string;
   phone?: string | null;
   email?: string | null;
+  colorPalette?: string;
+  pages?: string[];
+  logoUrl?: string;
+  imageUrls?: string[];
   revisionNote?: string;
 }
 
@@ -201,11 +205,26 @@ async function generateHtmlWithClaude(
       ...refs.map((r) => `/* ${r.query} — ${r.componentName} */\n${r.code}`),
     );
   }
-  if (images.length) {
+  // Brand inputs the client supplied take priority over generated/stock defaults.
+  if (intake.logoUrl) {
+    parts.push("", `BRAND LOGO (use this exact image in the header, and the footer if fitting): ${intake.logoUrl}`);
+  }
+  if (intake.colorPalette) {
+    parts.push("", `BRAND PALETTE — base the entire color scheme on the client's chosen palette: ${intake.colorPalette}. Use it for backgrounds, accents, buttons, and links; ensure accessible contrast.`);
+  }
+  if (intake.pages?.length) {
     parts.push(
       "",
-      'STOCK IMAGES (real royalty-free URLs — use for hero/section visuals with descriptive alt + loading="lazy"):',
-      ...images.map((im) => `${im.url}  (alt: ${im.alt})`),
+      `PAGES / SECTIONS — build a single self-contained document containing exactly these sections, with a sticky in-page nav linking to each (anchor links): ${intake.pages.join(", ")}. "Home" is the hero/top.`,
+    );
+  }
+  const customImages = (intake.imageUrls ?? []).map((url) => ({ query: "client photo", url, alt: "business photo" }));
+  const allImages = [...customImages, ...images];
+  if (allImages.length) {
+    parts.push(
+      "",
+      `IMAGES (use the client's own photos first, then these — real URLs, with descriptive alt + loading="lazy"):`,
+      ...allImages.map((im) => `${im.url}  (alt: ${im.alt})`),
     );
   }
   if (intake.revisionNote) {
