@@ -1038,6 +1038,107 @@ model WebsiteGenerationJob {
 }
 
 // =============================================================================
+// PREVIEW / ONBOARDING — "Preview before you pay" acquisition model.
+// Free AI website preview -> approval -> setup fee -> launch -> subscription.
+// See docs/ONBOARDING.md. Previews reuse the SAME generation + renderer; preview
+// mode (banner, noindex, demo features) is controlled by flags until payment.
+// =============================================================================
+
+enum PreviewStatus {
+  INTAKE_STARTED
+  INTAKE_COMPLETED
+  PREVIEW_GENERATING
+  PREVIEW_READY
+  PREVIEW_SENT
+  PREVIEW_VIEWED
+  REVISION_REQUESTED
+  REVISION_COMPLETED
+  APPROVED
+  SETUP_FEE_PENDING
+  SETUP_FEE_PAID
+  LAUNCH_IN_PROGRESS
+  LIVE
+  EXPIRED
+  LOST
+}
+
+model Preview {
+  id           String        @id @default(cuid())
+  // Origin: a sales prospect and/or (once converted) a client. Both nullable so a
+  // self-serve preview can exist before either record is created.
+  prospectId   String?
+  clientId     String?
+  websiteId    String?       @unique // the Website generated for this preview
+  selectedPlan PlanName
+  status       PreviewStatus @default(INTAKE_STARTED)
+
+  previewUrl   String? // temporary host, e.g. {token}.preview.pagebee.com
+  expiresAt    DateTime? // default 14 days from generation; extendable by sales/admin
+  generatedAt  DateTime?
+  sentAt       DateTime?
+  viewedAt     DateTime?
+  approvedAt   DateTime?
+
+  revisionCount    Int @default(0)
+  maxFreeRevisions Int @default(1) // one minor revision before payment
+
+  createdById        String? // employee/user who created it (null = self-serve/system)
+  assignedSalesRepId String? // Employee.id when sales-led
+  notes              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  revisions  PreviewRevision[]
+  conversion Conversion?
+
+  @@index([status])
+  @@index([prospectId])
+  @@index([clientId])
+  @@index([assignedSalesRepId])
+  @@map("previews")
+}
+
+model PreviewRevision {
+  id          String    @id @default(cuid())
+  previewId   String
+  preview     Preview   @relation(fields: [previewId], references: [id], onDelete: Cascade)
+  requestedBy String? // "customer" or an Employee.id
+  requestText String
+  status      String    @default("requested") // requested, in_progress, completed
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([previewId])
+  @@map("preview_revisions")
+}
+
+model Conversion {
+  id           String   @id @default(cuid())
+  previewId    String   @unique
+  preview      Preview  @relation(fields: [previewId], references: [id])
+  prospectId   String?
+  clientId     String
+  selectedPlan PlanName
+
+  // Money in integer cents.
+  setupFeeAmount Int
+  monthlyAmount  Int
+  discountAmount Int @default(0)
+
+  setupFeePaidAt        DateTime?
+  subscriptionStartedAt DateTime?
+  convertedById         String? // Employee.id (sales) or null (self-serve)
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([prospectId])
+  @@map("conversions")
+}
+
+// =============================================================================
 // CUSTOMER MANAGEMENT — tenant-scoped (belongs to a client business)
 // =============================================================================
 

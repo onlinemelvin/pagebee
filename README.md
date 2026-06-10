@@ -17,6 +17,7 @@ commissions, contracts, finances).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, modular-monolith layout, ownership/multi-tenancy model, dual-purpose payment ledger, request/guard pipeline, RBAC, events, AI guardrails, website generation, security. |
 | [docs/API.md](docs/API.md) | Versioned API contracts — `public` / `client` / `admin` / `internal` surfaces, auth models, plan gating, pricing-rule engine. |
 | [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) | Plan definitions, canonical flag sets, plan→API allow-list, and the sales-rep discount guardrails. |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md) | Official acquisition model — Preview-before-you-pay, pricing, customer & sales flows, preview rules/expiry, monetization layers. |
 | [prisma/schema.prisma](prisma/schema.prisma) | Full PostgreSQL data model (~55 models) across all modules, multi-tenant by `clientId`. |
 
 ## Core principles
@@ -31,7 +32,13 @@ commissions, contracts, finances).
    payout bank account, PageBee does all the invoicing and may take a cut. PageBee
    never custodies funds.
 5. **AI constrained by data + human approval**, never by prompt alone.
-6. **Admin review before any generated website is published.**
+6. **Preview before you pay** — customers get a free AI website preview (banner +
+   `noindex` + demo features) and only pay the setup fee after they approve; the same
+   site then launches and the monthly subscription starts. See
+   [docs/ONBOARDING.md](docs/ONBOARDING.md). *(Free AI Website Preview → Approval →
+   Setup Fee → Launch → Monthly Subscription.)*
+7. **Quality gate before launch** — generated sites are admin-reviewable; nothing goes
+   live (custom domain, indexing, real feature delivery) until the setup fee is paid.
 
 ## Stack
 

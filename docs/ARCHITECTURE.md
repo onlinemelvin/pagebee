@@ -280,10 +280,18 @@ the master spec, persisted across `Website → WebsiteVersion → WebsiteConfig 
 WebsitePage`.
 
 Pipeline: intake → `WebsiteGenerationJob` (QUEUED → GENERATING) → structured
-config → **NEEDS_REVIEW** (admin review required before publish) → PUBLISHED.
-Versions support preview, published, rollback, and regeneration. Generation
-validates that no feature outside the client's plan is enabled and that no
-unsupported claim is made.
+config → **NEEDS_REVIEW** (admin review) → PUBLISHED. Versions support preview,
+published, rollback, and regeneration. Generation validates that no feature
+outside the client's plan is enabled and that no unsupported claim is made.
+
+**Preview-first onboarding (the acquisition model).** Self-serve signups don't wait
+in an admin queue — they get a **free AI website preview before paying** (banner +
+`noindex` + demo-mode features + expiry), reusing this *same* generator and renderer.
+Setup fee is charged only **after the customer approves**; the same `WebsiteVersion`
+then launches and the monthly subscription starts. Preview lifecycle/status lives in
+the `Preview` / `PreviewRevision` / `Conversion` models, kept separate from generation.
+Full spec: [ONBOARDING.md](ONBOARDING.md). (The model: *Free AI Website Preview →
+Approval → Setup Fee → Launch → Monthly Subscription*.)
 
 ---
 

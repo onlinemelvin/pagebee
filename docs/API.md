@@ -68,6 +68,43 @@ owner email/SMS alert (per plan/consent) → optional AI follow-up (Automate).
 
 ---
 
+## Preview / Onboarding
+
+The "Preview before you pay" acquisition flow (full spec:
+[ONBOARDING.md](ONBOARDING.md)). Previews reuse the shared generator + renderer in
+preview mode (banner, `noindex`, demo features) until the setup fee is paid.
+
+Public (self-serve — no card required for the preview):
+
+| Method | Path                                              | Purpose                          |
+| ------ | ------------------------------------------------- | -------------------------------- |
+| POST   | `/api/v1/public/previews/intake`                  | Submit business info → start preview |
+| POST   | `/api/v1/public/previews/{previewId}/viewed`      | Mark preview viewed              |
+| POST   | `/api/v1/public/previews/{previewId}/request-revision` | Request the one free revision |
+| POST   | `/api/v1/public/previews/{previewId}/approve`     | Approve → setup-fee payment      |
+
+Admin:
+
+| Method | Path                                          | Purpose                         |
+| ------ | --------------------------------------------- | ------------------------------- |
+| GET    | `/api/v1/admin/previews`                      | List/filter previews            |
+| GET    | `/api/v1/admin/previews/{previewId}`          | Preview detail                  |
+| POST   | `/api/v1/admin/previews/{previewId}/generate` | (Re)generate the preview        |
+| POST   | `/api/v1/admin/previews/{previewId}/send`     | Send the preview link           |
+| POST   | `/api/v1/admin/previews/{previewId}/extend`   | Extend expiry (admin)           |
+| POST   | `/api/v1/admin/previews/{previewId}/convert`  | Manual convert → client/launch  |
+
+Sales:
+
+| Method | Path                                              | Purpose                       |
+| ------ | ------------------------------------------------- | ----------------------------- |
+| GET    | `/api/v1/sales/previews`                          | Rep's previews                |
+| POST   | `/api/v1/sales/previews/{previewId}/send`         | Send preview link to prospect |
+| POST   | `/api/v1/sales/previews/{previewId}/follow-up`    | Log/schedule a follow-up      |
+| POST   | `/api/v1/sales/previews/{previewId}/create-quote` | Quote / payment link          |
+
+---
+
 ## Client API — called by the client business dashboard
 
 Auth: client-user session; `clientId` from session.

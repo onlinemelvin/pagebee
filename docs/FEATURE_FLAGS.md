@@ -130,7 +130,25 @@ Public surface, master spec §17).
 
 ---
 
+## Preview mode (before payment)
+
+In the "Preview before you pay" flow ([ONBOARDING.md](ONBOARDING.md)), a site is
+generated and rendered in **preview mode** until the setup fee is paid. Preview mode
+is a gate layered *on top of* plan flags: even if a plan enables a capability, it is
+shown in **demo/disabled** mode (no real delivery) until launch. Specifically, while
+`Preview.status` is pre-`SETUP_FEE_PAID`:
+
+- Banner shown + `noindex`; no custom domain; not in sitemaps; expires (`expiresAt`).
+- Booking / chat / AI / payments / invoices / SMS render as **demo** only.
+- Forms have limited functionality; up to 3 preview pages; one free revision.
+
+On setup-fee payment the same `WebsiteVersion` **launches** (preview mode off, plan
+features activated), and the monthly subscription starts (see ONBOARDING §6–§8).
+
 ## Discount guardrails (sales-rep pricing rules)
+
+Full acquisition/onboarding model: [ONBOARDING.md](ONBOARDING.md).
+
 
 Direct customers pay list price. Sales reps may discount within limits; anything
 beyond requires admin approval. The quote pricing engine
