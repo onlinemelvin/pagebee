@@ -362,24 +362,16 @@ export interface ServeSite {
   html: string;
 }
 
-/** Resolve a renderable site (published OR in-preview) by host part, for the renderer. */
+/** Resolve a PUBLISHED site by host part, for the public renderer. Previews are NOT
+ *  served on the public host — they're only viewable by the signed-in owner at /preview. */
 async function getServeSite(where: { subdomain?: string; domain?: string }): Promise<ServeSite | null> {
   const site = await prisma.website.findFirst({
-    where: { ...where, status: { in: ["published", "preview"] } },
-    include: {
-      publishedVersion: true,
-      versions: { orderBy: { version: "desc" }, take: 1 },
-    },
+    where: { ...where, status: "published", publishedVersionId: { not: null } },
+    include: { publishedVersion: true },
   });
-  if (!site) return null;
-  if (site.status === "published" && site.publishedVersion?.generatedHtml) {
-    return { kind: "published", siteToken: site.siteToken, html: site.publishedVersion.generatedHtml };
-  }
-  if (site.status === "preview") {
-    const html = site.versions[0]?.generatedHtml;
-    if (html) return { kind: "preview", siteToken: site.siteToken, html };
-  }
-  return null;
+  const html = site?.publishedVersion?.generatedHtml;
+  if (!site || !html) return null;
+  return { kind: "published", siteToken: site.siteToken, html };
 }
 
 export function getServeSiteBySubdomain(subdomain: string) {
@@ -387,6 +379,17 @@ export function getServeSiteBySubdomain(subdomain: string) {
 }
 export function getServeSiteByDomain(domain: string) {
   return getServeSite({ domain });
+}
+
+/** The in-preview site for a signed-in client — for the authenticated /preview route only. */
+export async function getPreviewSiteForClient(clientId: string): Promise<ServeSite | null> {
+  const site = await prisma.website.findFirst({
+    where: { clientId, status: "preview" },
+    include: { versions: { orderBy: { version: "desc" }, take: 1 } },
+  });
+  const html = site?.versions[0]?.generatedHtml;
+  if (!site || !html) return null;
+  return { kind: "preview", siteToken: site.siteToken, html };
 }
 
 /** The client's website with its latest version + published state. */

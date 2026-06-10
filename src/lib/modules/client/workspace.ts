@@ -104,7 +104,14 @@ export async function getClientWorkspace(): Promise<ClientWorkspace | null> {
     awaitingPayment: previewRow?.status === "APPROVED" || previewRow?.status === "SETUP_FEE_PENDING",
     expired: previewRow?.status === "EXPIRED",
     revisionsLeft: previewRow ? Math.max(0, previewRow.maxFreeRevisions - previewRow.revisionCount) : 0,
-    url: site?.subdomain ? `${proto}://${site.subdomain}.${rootDomain}` : null,
+    // Live sites are at their real host; in-preview sites are only viewable by the
+    // signed-in owner at the authenticated /preview route (never on the public host).
+    url:
+      previewRow?.status === "LIVE" && site?.subdomain
+        ? `${proto}://${site.subdomain}.${rootDomain}`
+        : previewRow
+          ? "/preview"
+          : null,
   };
 
   const [newInquiries, pendingAppointments] = await Promise.all([
