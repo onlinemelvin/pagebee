@@ -1,14 +1,15 @@
-import { getCurrentClient } from "@/lib/auth/session";
+import { getClientWorkspace } from "@/lib/modules/client";
 import { listBookings } from "@/lib/modules/booking";
 import { ClientAppointments, type AppointmentRow } from "@/components/client/ClientAppointments";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientAppointmentsPage() {
-  const result = await getCurrentClient();
-  if (!result) return null;
+  // Reuse the workspace the layout already resolved (React cache()) — no extra tenant lookup.
+  const ws = await getClientWorkspace();
+  if (!ws) return null;
 
-  const bookings = await listBookings(result.client.id);
+  const bookings = await listBookings(ws.client.id);
   const appointments: AppointmentRow[] = bookings.map((b) => ({
     id: b.id,
     serviceName: b.serviceName,

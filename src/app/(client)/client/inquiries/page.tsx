@@ -1,14 +1,15 @@
-import { getCurrentClient } from "@/lib/auth/session";
+import { getClientWorkspace } from "@/lib/modules/client";
 import { listLeads } from "@/lib/modules/lead";
 import { ClientInquiries, type InquiryRow } from "@/components/client/ClientInquiries";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientInquiriesPage() {
-  const result = await getCurrentClient();
-  if (!result) return null;
+  // Reuse the workspace the layout already resolved (React cache()) — no extra tenant lookup.
+  const ws = await getClientWorkspace();
+  if (!ws) return null;
 
-  const leads = await listLeads({ clientId: result.client.id });
+  const leads = await listLeads({ clientId: ws.client.id });
   const inquiries: InquiryRow[] = leads.map((l) => ({
     id: l.id,
     name: l.name,

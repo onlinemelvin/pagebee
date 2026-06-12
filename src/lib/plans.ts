@@ -9,7 +9,7 @@ export interface PlanDef {
   tagline: string;
   setupFee: number; // cents
   monthlyFee: number; // cents
-  maxPages: number;
+  maxPages: number; // max content units = pages OR on-page sections (the generator chooses the layout)
   monthlyUpdates: number;
   recommended?: boolean;
   highlights: string[];
@@ -26,9 +26,9 @@ export const PLANS: PlanDef[] = [
     maxPages: 3,
     monthlyUpdates: 1,
     highlights: [
-      "Up to 3 pages, mobile-friendly",
+      "Up to 3 pages or sections, mobile-friendly",
       "Hosting, SSL & uptime monitoring",
-      "Contact form + email notifications",
+      "Click-to-call & email contact details",
       "Basic SEO & analytics",
       "1 minor update / month",
     ],
@@ -38,7 +38,9 @@ export const PLANS: PlanDef[] = [
       monthlyFee: 39,
       maxPages: 3,
       monthlyUpdates: 1,
-      contactForm: true,
+      // Launch is a brochure site: NO lead-capture forms. The contact section shows
+      // click-to-call / email only. Lead forms (and the inbox) are a Connect+ value prop.
+      contactForm: false,
       basicAnalytics: true,
       hosting: true,
       ssl: true,
@@ -68,7 +70,7 @@ export const PLANS: PlanDef[] = [
       "Appointment booking & scheduling",
       "Website chat + lead inbox",
       "SMS lead alerts (50/mo included)",
-      "Custom domain · up to 6 pages",
+      "Custom domain · up to 6 pages or sections",
       "3 minor updates / month",
     ],
     featureFlags: {
@@ -145,3 +147,23 @@ export const PLANS: PlanDef[] = [
 
 export const PRICING_NOTE =
   "Payment processing fees are charged separately by Stripe. SMS and AI usage include monthly limits. Additional usage or custom work may be billed separately.";
+
+// PLANS is ordered ascending (Launch < Connect < Automate) — used for tier comparisons.
+const PLAN_ORDER: PlanName[] = ["LAUNCH", "CONNECT", "AUTOMATE"];
+
+/** Look up a plan definition by its canonical name. */
+export function planByName(name: string): PlanDef | undefined {
+  return PLANS.find((p) => p.name === name);
+}
+
+/** The next higher tier above `name`, or null if already on the top tier. */
+export function nextTier(name: string): PlanDef | null {
+  const i = PLAN_ORDER.indexOf(name as PlanName);
+  if (i < 0 || i >= PLAN_ORDER.length - 1) return null;
+  return planByName(PLAN_ORDER[i + 1]) ?? null;
+}
+
+/** The cheapest plan whose feature flags enable `flag` (e.g. "booking" → Connect). */
+export function planForFlag(flag: string): PlanDef | undefined {
+  return PLANS.find((p) => p.featureFlags[flag] === true);
+}

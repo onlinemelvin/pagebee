@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { SetupWizard } from "@/components/client/SetupWizard";
 import { PreviewPanel } from "@/components/client/PreviewPanel";
+import { UpsellCards } from "@/components/client/UpsellCards";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,8 @@ export default async function ClientHomePage() {
           </div>
         </section>
       )}
+
+      <UpsellCards upsells={ws.upsells} />
 
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">At a glance</h2>

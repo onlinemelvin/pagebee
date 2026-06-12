@@ -6,7 +6,8 @@ import { requestRevision, PreviewError } from "@/lib/modules/preview";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ note: z.string().trim().min(1).max(2000) });
+// Note is optional: the client may submit with only pinned change-requests (Mark up your preview).
+const schema = z.object({ note: z.string().trim().max(2000).optional() });
 
 /** POST /api/v1/client/preview/request-revision — use the one free revision. */
 export async function POST(req: Request) {

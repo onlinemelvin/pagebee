@@ -296,6 +296,25 @@ enum WebsiteVersionStatus {
   ARCHIVED
 }
 
+// Figma-style review annotations on a generated site version.
+enum ReviewActorType {
+  ADMIN    // platform admin
+  REVIEWER // platform reviewer/contractor (website:review permission)
+  CLIENT   // the tenant business owner, in preview mode
+  SYSTEM
+}
+
+enum ReviewCommentKind {
+  CHANGE_REQUEST // compiled into the next regeneration
+  NOTE           // informational only
+}
+
+enum ReviewCommentStatus {
+  OPEN
+  RESOLVED
+  WONT_FIX
+}
+
 // =============================================================================
 // PLATFORM OPERATIONS — owned by our company
 // =============================================================================
@@ -836,9 +855,63 @@ model Client {
   commissionRecords CommissionRecord[]
   analyticsEvents AnalyticsEvent[]
   previews        Preview[]        @relation("ClientPreviews")
+  media           ClientMedia[]
+  websiteUpdates  WebsiteUpdate[]
+  upgradeRequests UpgradeRequest[]
 
   @@index([status])
   @@map("clients")
+}
+
+// A client-initiated change to a LIVE (already published) site. Each one consumes a
+// monthly update from the plan's `monthlyUpdates` allowance — the count of these rows in
+// the current period is the quota usage. Distinct from pre-launch preview revisions.
+model WebsiteUpdate {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  websiteId String
+  versionId String? // the new WebsiteVersion this update produced (once generated)
+  note      String
+  status    String   @default("requested") // requested | in_review | published | rejected
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("website_updates")
+}
+
+// A real-account upgrade intent captured for admin/sales to apply (interim, pre-Stripe).
+// Test accounts upgrade instantly and never create one of these.
+model UpgradeRequest {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fromPlan    String
+  toPlan      String
+  reason      String? // "appointments" | "more_updates" | ...
+  status      String   @default("requested") // requested | applied | declined
+  appliedById String?
+  createdAt   DateTime @default(now())
+
+  @@index([status])
+  @@map("upgrade_requests")
+}
+
+// Account-level reusable media library. Images a client uploads here (or via the
+// website intake) persist independently of any single site/version, so they can be
+// reused or updated across regenerations. Stored in the same public bucket as uploads.
+model ClientMedia {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  url       String
+  name      String?
+  alt       String?
+  kind      String   @default("image") // image, logo, document
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@map("client_media")
 }
 
 model ClientUser {
@@ -968,10 +1041,49 @@ model WebsiteVersion {
   config WebsiteConfig?
   pages  WebsitePage[]
   publishedFor Website? @relation("PublishedVersion")
+  reviewComments WebsiteReviewComment[]
 
   @@unique([websiteId, version])
   @@index([websiteId])
   @@map("website_versions")
+}
+
+// A pin-style review comment anchored to an element of a rendered version. Used by
+// both platform reviewers (admin queue) and clients (preview markup). Anchors only
+// need to be stable within a version's lifetime — a revision creates a new version.
+model WebsiteReviewComment {
+  id        String         @id @default(cuid())
+  versionId String
+  version   WebsiteVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  parentId String?                @map("parent_id")
+  parent   WebsiteReviewComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  WebsiteReviewComment[] @relation("CommentThread")
+
+  authorType ReviewActorType
+  authorId   String? // User.id (platform) or Client/ClientUser id; null for SYSTEM
+  authorName String? // denormalized for display
+
+  kind   ReviewCommentKind   @default(CHANGE_REQUEST)
+  status ReviewCommentStatus @default(OPEN)
+
+  // Element anchor (see serve.ts annotate bridge).
+  pagePath   String  @default("/") // which routed sub-page the pin sits on
+  selector   String? // CSS selector path to the target element
+  anchorText String? // nearby text snippet, for human context + fallback matching
+  x          Float? // fractional 0..1 position within the element
+  y          Float?
+  body       String
+
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([versionId])
+  @@index([versionId, status])
+  @@index([parentId])
+  @@map("website_review_comments")
 }
 
 model WebsiteConfig {
@@ -1035,6 +1147,7 @@ model WebsiteGenerationJob {
 
   @@index([websiteId])
   @@index([status])
+  @@index([status, createdAt])
   @@map("website_generation_jobs")
 }
 
@@ -1049,6 +1162,7 @@ enum PreviewStatus {
   INTAKE_STARTED
   INTAKE_COMPLETED
   PREVIEW_GENERATING
+  IN_REVIEW // generated, awaiting platform (admin) review before the client may see it
   PREVIEW_READY
   PREVIEW_SENT
   PREVIEW_VIEWED
@@ -1097,6 +1211,7 @@ model Preview {
   @@index([status])
   @@index([prospectId])
   @@index([clientId])
+  @@index([clientId, createdAt])
   @@index([assignedSalesRepId])
   @@map("previews")
 }
@@ -1227,6 +1342,7 @@ model Lead {
 
   @@index([clientId])
   @@index([clientId, status])
+  @@index([clientId, createdAt])
   @@map("leads")
 }
 
@@ -1255,6 +1371,7 @@ model Booking {
 
   @@index([clientId])
   @@index([clientId, startAt])
+  @@index([clientId, status])
   @@map("bookings")
 }
 
@@ -1695,6 +1812,7 @@ model NotificationEvent {
 
   @@index([clientId])
   @@index([event])
+  @@index([clientId, event])
   @@index([recipientId])
   @@map("notification_events")
 }

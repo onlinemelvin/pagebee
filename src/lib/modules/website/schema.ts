@@ -13,11 +13,15 @@ export const websiteIntakeSchema = z.object({
   services: z.array(z.string().trim().min(1).max(120)).min(1, "Add at least one service").max(30),
   serviceAreas: z.array(z.string().trim().min(1).max(120)).max(30).optional(),
   tone: z.string().trim().max(80).optional(),
+  // Primary call to action (Connect+ only; ignored on form-less plans).
+  primaryGoal: z.string().trim().max(80).optional(),
   colorPalette: z.string().trim().max(160).optional(),
   pages: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
   businessHours: z.array(businessHourSchema).max(7).optional(),
   logoUrl: z.string().url().max(600).optional(),
   imageUrls: z.array(z.string().url().max(600)).max(20).optional(),
+  // Photos chosen specifically for the Gallery section/page (when selected).
+  galleryImageUrls: z.array(z.string().url().max(600)).max(30).optional(),
   customInstructions: z.string().trim().max(2000).optional(),
   // Set when regenerating for a requested preview revision — steers the new draft.
   revisionNote: z.string().trim().max(2000).optional(),

@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/modules/audit";
 import { sendEmail } from "@/lib/modules/email";
 import { startGeneration, claimAndRun, approveAndPublish } from "@/lib/modules/website";
-import type { WebsiteIntakeForm } from "@/lib/modules/website";
+import type { GenerationForm } from "@/lib/modules/website";
+import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 
 export class PreviewError extends Error {
   constructor(
@@ -22,12 +23,50 @@ export function getClientPreview(clientId: string) {
   return prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" } });
 }
 
-/** Request the one free revision — records it and regenerates with the note. */
-export async function requestRevision(clientId: string, note: string) {
+/** The latest version id of a client's preview website (the one being reviewed), or null.
+ *  Used to scope client-side review comments — never trust a versionId from the request body. */
+export async function getReviewableVersionId(clientId: string): Promise<string | null> {
+  const preview = await getClientPreview(clientId);
+  if (!preview?.websiteId) return null;
+  const version = await prisma.websiteVersion.findFirst({
+    where: { websiteId: preview.websiteId },
+    orderBy: { version: "desc" },
+    select: { id: true },
+  });
+  return version?.id ?? null;
+}
+
+/**
+ * Whether the signed-in client may mark up their preview right now: the preview must be in a
+ * reviewable state AND they must have a free revision left ("pending additional reviews"). Returns
+ * the version their pins attach to. Single source of truth for the client comment gate + dashboard.
+ */
+export async function getClientReviewContext(clientId: string) {
+  const preview = await getClientPreview(clientId);
+  if (!preview?.websiteId) return { canComment: false, versionId: null as string | null, revisionsLeft: 0 };
+  const revisionsLeft = Math.max(0, preview.maxFreeRevisions - preview.revisionCount);
+  const versionId = REVIEWABLE.includes(preview.status) ? await getReviewableVersionId(clientId) : null;
+  return { canComment: revisionsLeft > 0 && !!versionId, versionId, revisionsLeft };
+}
+
+/**
+ * Request the one free revision — records it and regenerates. Folds in the client's open
+ * pin comments (from "Mark up your preview") alongside any typed note, so a single revision
+ * carries everything. `note` may be empty when the client only left pins.
+ */
+export async function requestRevision(clientId: string, note?: string) {
   const preview = await getClientPreview(clientId);
   if (!preview || !preview.websiteId) throw new PreviewError(404, "no_preview");
   if (preview.status === "LIVE") throw new PreviewError(400, "already_live");
   if (preview.revisionCount >= preview.maxFreeRevisions) throw new PreviewError(403, "no_revisions_left");
+
+  // Bundle any pinned change-requests on the latest version into the instruction.
+  const versionId = await getReviewableVersionId(clientId);
+  const pins = versionId
+    ? await compileChangeRequest(versionId)
+    : { note: "", commentIds: [], edits: [] };
+  const combined = [note?.trim(), pins.note].filter(Boolean).join("\n\n");
+  if (!combined) throw new PreviewError(400, "no_content");
 
   const lastJob = await prisma.websiteGenerationJob.findFirst({
     where: { websiteId: preview.websiteId },
@@ -35,18 +74,24 @@ export async function requestRevision(clientId: string, note: string) {
     select: { inputIntake: true },
   });
   const base = (lastJob?.inputIntake ?? {}) as Record<string, unknown>;
-  const form = { ...base, revisionNote: note } as WebsiteIntakeForm;
+  // Surgical edit targets: the anchored pins, plus the typed "additional comments" (if any) as a
+  // single un-anchored request so it's applied minimally rather than triggering a full rebuild.
+  const revisionEdits = [...pins.edits];
+  const typed = note?.trim();
+  if (typed) revisionEdits.push({ pagePath: "", selector: null, anchorText: null, instruction: typed });
+  const form = { ...base, revisionNote: combined, revisionEdits } as GenerationForm;
 
   await prisma.preview.update({
     where: { id: preview.id },
     data: { status: "PREVIEW_GENERATING", revisionCount: { increment: 1 } },
   });
   await prisma.previewRevision.create({
-    data: { previewId: preview.id, requestedBy: "customer", requestText: note, status: "in_progress" },
+    data: { previewId: preview.id, requestedBy: "customer", requestText: combined, status: "in_progress" },
   });
 
   const { jobId } = await startGeneration(clientId, form);
   void claimAndRun(jobId).catch((e) => console.error("[preview] revision job failed", jobId, e));
+  if (pins.commentIds.length) await markResolved(pins.commentIds, null);
   await writeAudit({ action: "preview.revision_requested", entityType: "Preview", entityId: preview.id, clientId });
   return { ok: true };
 }

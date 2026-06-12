@@ -66,6 +66,49 @@ async function seedAdmin() {
   console.log(`✔ Seeded admin user ${email} (role ADMIN)`);
 }
 
+/**
+ * RBAC: permissions + roles. `website:review` gates the review queue/annotations and
+ * `website:publish` the go-live action. ADMIN gets both; a REVIEWER role gets review
+ * only — so a future contractor is onboarded by assigning REVIEWER, no code change.
+ */
+async function seedRbac() {
+  const perms = [
+    { key: "website:review", description: "Review generated websites and leave annotations" },
+    { key: "website:publish", description: "Approve and publish a generated website" },
+  ];
+  const permRows = await Promise.all(
+    perms.map((p) =>
+      prisma.permission.upsert({ where: { key: p.key }, update: { description: p.description }, create: p }),
+    ),
+  );
+  const byKey = Object.fromEntries(permRows.map((p) => [p.key, p.id]));
+
+  const admin = await prisma.role.upsert({
+    where: { name: "ADMIN" },
+    update: {},
+    create: { name: "ADMIN", description: "Platform administrator" },
+  });
+  const reviewer = await prisma.role.upsert({
+    where: { name: "REVIEWER" },
+    update: {},
+    create: { name: "REVIEWER", description: "Website reviewer / contractor" },
+  });
+
+  const grants: Array<{ roleId: string; permissionId: string }> = [
+    { roleId: admin.id, permissionId: byKey["website:review"] },
+    { roleId: admin.id, permissionId: byKey["website:publish"] },
+    { roleId: reviewer.id, permissionId: byKey["website:review"] },
+  ];
+  for (const g of grants) {
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: g.roleId, permissionId: g.permissionId } },
+      update: {},
+      create: g,
+    });
+  }
+  console.log("✔ Seeded RBAC (permissions: website:review, website:publish; roles: ADMIN, REVIEWER)");
+}
+
 async function main() {
   // 1. Plans (canonical pricing + feature flags).
   for (const plan of PLANS) {
@@ -128,7 +171,8 @@ async function main() {
 
   console.log(`✔ Seeded demo client "${client.businessName}" + website (token: ${DEMO_SITE_TOKEN})`);
 
-  // 5. Platform admin (Supabase Auth + RBAC).
+  // 5. RBAC (permissions + roles) then the platform admin (Supabase Auth).
+  await seedRbac();
   await seedAdmin();
 }
 

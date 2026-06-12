@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Inbox, LayoutDashboard, Globe } from "lucide-react";
-import { getAuthContext } from "@/lib/auth/session";
+import { Inbox, LayoutDashboard, Globe, ArrowUpCircle } from "lucide-react";
+import { getAuthContext, hasPermission } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAuthContext();
-  if (!ctx?.isAdmin) redirect("/login");
+  // Admins get everything; a reviewer/contractor (website:review) gets in but only sees Websites.
+  const canReview = ctx ? hasPermission(ctx, "website:review") : false;
+  if (!ctx || (!ctx.isAdmin && !canReview)) redirect("/login");
 
   return (
     <div className="grid min-h-screen grid-cols-[240px_1fr] bg-stone-50">
@@ -16,12 +18,19 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <span className="font-display text-lg font-semibold text-stone-900">PageBee</span>
         </div>
         <nav className="flex flex-col gap-1 text-sm">
-          <Link href="/admin" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-600 hover:bg-stone-100">
-            <LayoutDashboard size={18} /> Overview
-          </Link>
-          <Link href="/admin/leads" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
-            <Inbox size={18} /> Leads
-          </Link>
+          {ctx.isAdmin && (
+            <>
+              <Link href="/admin" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-600 hover:bg-stone-100">
+                <LayoutDashboard size={18} /> Overview
+              </Link>
+              <Link href="/admin/leads" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
+                <Inbox size={18} /> Leads
+              </Link>
+              <Link href="/admin/upgrade-requests" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
+                <ArrowUpCircle size={18} /> Upgrades
+              </Link>
+            </>
+          )}
           <Link href="/admin/websites" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
             <Globe size={18} /> Websites
           </Link>

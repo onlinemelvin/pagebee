@@ -29,23 +29,48 @@ const PALETTES: { key: string; name: string; colors: string[] }[] = [
   { key: "royal", name: "Royal", colors: ["#4f46e5", "#7c3aed", "#eef2ff"] },
 ];
 
+// Primary call-to-action options (form-enabled plans only). The label is sent verbatim
+// as `primaryGoal` and steers the generated form's heading, fields, and lead `type`.
+const GOALS = [
+  "Request a quote",
+  "Request a callback",
+  "Book a free consultation",
+  "Request a demo",
+  "Send a general message",
+];
+
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type Hour = { day: string; closed: boolean; open: string; close: string };
+
+// Draft persistence for the long "about" text — survives refreshes/navigation via localStorage.
+const ABOUT_DRAFT_KEY = "pagebee:intake:about";
 
 export function WebsiteIntakeForm({
   submitLabel = "Generate my website",
   maxPages = 5,
   canBook = false,
+  canUseForms = true,
 }: {
   submitLabel?: string;
   maxPages?: number;
   canBook?: boolean;
+  /** Whether the plan allows lead-capture forms. When false (Launch), the site shows
+   *  click-to-call / email only and we skip the "primary goal" picker. */
+  canUseForms?: boolean;
 }) {
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
   const [error, setError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<{ about?: boolean; services?: boolean }>({});
+  // The "about" field is controlled so we can persist its draft locally (restored on mount).
+  const [aboutDraft, setAboutDraft] = React.useState("");
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ABOUT_DRAFT_KEY);
+      if (saved) setAboutDraft(saved);
+    } catch {}
+  }, []);
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Field state
@@ -59,6 +84,12 @@ export function WebsiteIntakeForm({
   const [logoUrl, setLogoUrl] = React.useState<string | null>(null);
   const [imageUrls, setImageUrls] = React.useState<string[]>([]);
   const [uploading, setUploading] = React.useState(false);
+  // Gallery photos (when the Gallery page/section is selected). These persist to the
+  // client's reusable media library so they can be picked again later.
+  const [galleryImages, setGalleryImages] = React.useState<string[]>([]);
+  const [library, setLibrary] = React.useState<{ id: string; url: string; alt: string | null }[] | null>(null);
+  const [showLibrary, setShowLibrary] = React.useState(false);
+  const galleryOn = pages.has("gallery");
 
   const PAGE_CATALOG = [
     { key: "home", label: "Home", always: true },
@@ -154,6 +185,46 @@ export function WebsiteIntakeForm({
     e.target.value = "";
   }
 
+  // Gallery photos upload to the reusable media library (so they're saved for later too).
+  async function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setUploading(true);
+    for (const f of files) {
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        const res = await fetch("/api/v1/client/media", { method: "POST", body: fd });
+        if (!res.ok) throw new Error(String(res.status));
+        const { item } = (await res.json()) as { item: { id: string; url: string; alt: string | null } };
+        setGalleryImages((prev) => (prev.includes(item.url) ? prev : [...prev, item.url]));
+        setLibrary((prev) => (prev ? [item, ...prev] : prev));
+      } catch {
+        setError("A gallery image failed to upload — try a smaller file (max 5MB).");
+      }
+    }
+    setUploading(false);
+    e.target.value = "";
+  }
+
+  async function toggleLibrary() {
+    const next = !showLibrary;
+    setShowLibrary(next);
+    if (next && library === null) {
+      try {
+        const res = await fetch("/api/v1/client/media", { cache: "no-store" });
+        const { items } = (await res.json()) as { items: { id: string; url: string; alt: string | null }[] };
+        setLibrary(items ?? []);
+      } catch {
+        setLibrary([]);
+      }
+    }
+  }
+
+  function toggleGalleryUrl(url: string) {
+    setGalleryImages((prev) => (prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]));
+  }
+
   function togglePage(key: string) {
     setPages((prev) => {
       if (key === "home") return prev;
@@ -174,6 +245,7 @@ export function WebsiteIntakeForm({
     const data = new FormData(e.currentTarget);
     const about = String(data.get("about") ?? "").trim();
     const tone = String(data.get("tone") ?? "").trim() || undefined;
+    const primaryGoal = canUseForms ? String(data.get("primaryGoal") ?? "").trim() || undefined : undefined;
     const customInstructions = String(data.get("customInstructions") ?? "").trim() || undefined;
 
     const errs = { about: !about, services: services.length === 0 };
@@ -198,11 +270,13 @@ export function WebsiteIntakeForm({
           services,
           serviceAreas: serviceAreas.length ? serviceAreas : undefined,
           tone,
+          primaryGoal,
           colorPalette,
           pages: pagesArr,
           businessHours: hours,
           logoUrl: logoUrl ?? undefined,
           imageUrls: imageUrls.length ? imageUrls : undefined,
+          galleryImageUrls: galleryOn && galleryImages.length ? galleryImages : undefined,
           customInstructions,
         }),
       });
@@ -210,6 +284,10 @@ export function WebsiteIntakeForm({
         const b = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(b?.error ?? `Failed (${res.status})`);
       }
+      // Submitted successfully → clear the saved draft so it doesn't linger.
+      try {
+        localStorage.removeItem(ABOUT_DRAFT_KEY);
+      } catch {}
       startPolling();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -220,11 +298,12 @@ export function WebsiteIntakeForm({
   if (phase === "working") {
     return (
       <div className="rounded-2xl border border-amber-300 bg-amber-50 p-8 text-center">
-        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-amber-300 border-t-amber-600" />
-        <p className="font-medium text-stone-900">Generating your website…</p>
-        <p className="mt-1 text-sm text-stone-600">
-          This runs in the background and can take a minute. You can safely close this page — it&apos;ll
-          be here for review when it&apos;s ready.
+        <span className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-amber-100 text-xl">🐝</span>
+        <p className="font-display text-lg text-stone-900">We&apos;re setting up your website</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-stone-600">
+          Thanks! Our team is putting your site together. This can take up to 48 hours, though it&apos;s
+          usually ready within a few hours. You can safely close this page — please check back later and
+          we&apos;ll have your preview ready to review.
         </p>
       </div>
     );
@@ -244,6 +323,13 @@ export function WebsiteIntakeForm({
         <Textarea
           id="about"
           name="about"
+          value={aboutDraft}
+          onChange={(e) => {
+            setAboutDraft(e.target.value);
+            try {
+              localStorage.setItem(ABOUT_DRAFT_KEY, e.target.value);
+            } catch {}
+          }}
           className={cn(fieldErrors.about && "border-red-400")}
           placeholder="What you do, who you serve, what makes you different…"
         />
@@ -291,6 +377,33 @@ export function WebsiteIntakeForm({
         </select>
       </div>
 
+      {/* Primary goal / call to action — form-enabled plans only */}
+      {canUseForms ? (
+        <div className="grid gap-2">
+          <Label htmlFor="primaryGoal">
+            What should visitors mainly do?{" "}
+            <span className="font-normal text-stone-400">— shapes your main form</span>
+          </Label>
+          <select
+            id="primaryGoal"
+            name="primaryGoal"
+            defaultValue=""
+            className="h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900"
+          >
+            <option value="">Let AI choose</option>
+            {canBook && <option value="Book an appointment">Book an appointment</option>}
+            {GOALS.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-500">
+          Your plan shows a click-to-call &amp; email contact section (no forms). Upgrade to add
+          lead-capture forms like quote or callback requests.
+        </p>
+      )}
+
       {/* Color palette */}
       <div className="grid gap-2">
         <Label>Color palette</Label>
@@ -320,11 +433,15 @@ export function WebsiteIntakeForm({
         </div>
       </div>
 
-      {/* Pages — plan-gated */}
+      {/* Pages & sections — plan-gated */}
       <div className="grid gap-2">
         <Label>
-          Pages <span className="font-normal text-stone-400">— your plan includes up to {maxPages}</span>
+          Pages &amp; sections <span className="font-normal text-stone-400">— your plan includes up to {maxPages}</span>
         </Label>
+        <p className="text-xs text-stone-400">
+          Pick what your site should cover. We&apos;ll lay these out as their own pages or as sections on one
+          scrolling page — whichever looks best for your business.
+        </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {PAGE_CATALOG.map((p) => {
             const checked = pages.has(p.key);
@@ -352,8 +469,95 @@ export function WebsiteIntakeForm({
             );
           })}
         </div>
-        <p className="text-xs text-stone-400">{pages.size} of {maxPages} selected</p>
+        <p className="text-xs text-stone-400">{pages.size} of {maxPages} pages &amp; sections selected</p>
       </div>
+
+      {/* Gallery photos — only when Gallery is selected */}
+      {galleryOn && (
+        <div className="grid gap-2 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <Label>
+            Gallery photos{" "}
+            <span className="font-normal text-stone-400">— add 4–5 of your best images (you can skip)</span>
+          </Label>
+          <p className="text-xs text-stone-500">
+            These appear in your Gallery. They&apos;re also saved to your{" "}
+            <a href="/client/media" target="_blank" rel="noreferrer" className="font-medium text-amber-700 hover:underline">
+              media library
+            </a>{" "}
+            so you can reuse or update them later.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="w-fit cursor-pointer rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50">
+              Upload photos
+              <input type="file" accept="image/*" multiple onChange={onGalleryChange} className="hidden" />
+            </label>
+            <button
+              type="button"
+              onClick={toggleLibrary}
+              className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+            >
+              {showLibrary ? "Hide library" : "Choose from library"}
+            </button>
+            <span className="text-xs text-stone-500">{galleryImages.length} selected</span>
+          </div>
+
+          {/* Selected gallery images */}
+          {galleryImages.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-2">
+              {galleryImages.map((u) => (
+                <div key={u} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={u} alt="" className="h-16 w-16 rounded-lg border border-stone-200 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => toggleGalleryUrl(u)}
+                    className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-stone-900 text-xs text-white"
+                    aria-label="Remove from gallery"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Library picker */}
+          {showLibrary && (
+            <div className="mt-2 rounded-lg border border-stone-200 bg-white p-3">
+              {library === null ? (
+                <p className="text-sm text-stone-400">Loading your library…</p>
+              ) : library.length === 0 ? (
+                <p className="text-sm text-stone-400">Your library is empty — upload photos above to start.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  {library.map((m) => {
+                    const on = galleryImages.includes(m.url);
+                    return (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() => toggleGalleryUrl(m.url)}
+                        className={cn(
+                          "relative overflow-hidden rounded-lg border-2",
+                          on ? "border-amber-500 ring-2 ring-amber-200" : "border-transparent hover:border-stone-300",
+                        )}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={m.url} alt={m.alt ?? ""} loading="lazy" className="aspect-square w-full object-cover" />
+                        {on && (
+                          <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-amber-500 text-xs text-white">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Business hours — calendar-like */}
       <div className="grid gap-2">

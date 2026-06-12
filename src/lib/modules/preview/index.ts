@@ -1,5 +1,7 @@
 export {
   getClientPreview,
+  getReviewableVersionId,
+  getClientReviewContext,
   requestRevision,
   approve,
   launchPreview,
