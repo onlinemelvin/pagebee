@@ -3,8 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FilePlus2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmt } from "./money-format";
+import { EmptyState } from "@/components/client/ui/EmptyState";
 import type { DocumentDTO } from "@/lib/modules/finance";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -46,7 +48,14 @@ export function DocumentsTable({ documents }: { documents: DocumentDTO[] }) {
         ))}
       </div>
       {rows.length === 0 ? (
-        <p className="p-10 text-center text-sm text-stone-400">No documents yet.</p>
+        <div className="p-4">
+          <EmptyState
+            icon={tab === "ALL" ? FileText : FilePlus2}
+            title={tab === "ALL" ? "No documents yet" : `No ${TABS.find((t) => t.key === tab)?.label.toLowerCase()} yet`}
+            description="Create a polished invoice, quote, or estimate in under a minute — add line items from your services, then send a payment link."
+            cta={{ label: "New invoice", href: "/client/invoices/new?type=INVOICE", icon: FilePlus2 }}
+          />
+        </div>
       ) : (
         <table className="w-full text-sm">
           <thead>

@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { FileText, FilePlus2, ScrollText, SlidersHorizontal, FileBarChart } from "lucide-react";
+import { FileText, FilePlus2, ScrollText, SlidersHorizontal, FileBarChart, Wallet, ReceiptText, Clock3 } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { getFinanceDashboard, listDocuments } from "@/lib/modules/finance";
 import { DocumentsTable } from "@/components/client/finance/DocumentsTable";
+import { StatCard } from "@/components/client/ui/StatCard";
 import { fmt } from "@/components/client/finance/money-format";
 
 export const dynamic = "force-dynamic";
@@ -14,13 +15,6 @@ export default async function ClientInvoicesPage() {
   if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
 
   const [dash, documents] = await Promise.all([getFinanceDashboard(ws.client.id), listDocuments(ws.client.id)]);
-
-  const metrics = [
-    { label: "Revenue (paid)", value: fmt(dash.totalPaid), sub: `${fmt(dash.thisMonthRevenue)} this month`, accent: "text-green-700" },
-    { label: "Invoiced", value: fmt(dash.totalInvoiced), sub: `${dash.counts.paid} paid · ${dash.counts.drafts} drafts`, accent: "text-stone-900" },
-    { label: "Outstanding", value: fmt(dash.outstanding), sub: `${dash.counts.outstanding} open · ${dash.counts.overdue} overdue`, accent: "text-amber-700" },
-    { label: "Quotes / estimates", value: `${dash.counts.openQuotes + dash.counts.openEstimates}`, sub: `${dash.counts.openQuotes} quotes · ${dash.counts.openEstimates} estimates`, accent: "text-stone-900" },
-  ];
 
   return (
     <div>
@@ -39,14 +33,11 @@ export default async function ClientInvoicesPage() {
       </div>
 
       {/* Metrics */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {metrics.map((m) => (
-          <div key={m.label} className="rounded-2xl border border-stone-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{m.label}</p>
-            <p className={`mt-1 font-display text-2xl ${m.accent}`}>{m.value}</p>
-            <p className="mt-0.5 text-xs text-stone-400">{m.sub}</p>
-          </div>
-        ))}
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard index={0} icon={Wallet} accent="emerald" label={`Revenue · ${fmt(dash.thisMonthRevenue)} this month`} value={dash.totalPaid} cents prefix="$" />
+        <StatCard index={1} icon={ReceiptText} accent="amber" label={`Invoiced · ${dash.counts.paid} paid, ${dash.counts.drafts} drafts`} value={dash.totalInvoiced} cents prefix="$" />
+        <StatCard index={2} icon={Clock3} accent="orange" label={`Outstanding · ${dash.counts.outstanding} open, ${dash.counts.overdue} overdue`} value={dash.outstanding} cents prefix="$" />
+        <StatCard index={3} icon={ScrollText} accent="violet" label={`${dash.counts.openQuotes} quotes · ${dash.counts.openEstimates} estimates`} value={dash.counts.openQuotes + dash.counts.openEstimates} />
       </div>
 
       {/* Aging */}

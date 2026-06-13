@@ -131,7 +131,7 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
             <div
               key={s.id}
               className={cn(
-                "group relative flex flex-col rounded-2xl border p-4 transition-shadow hover:shadow-sm",
+                "group anim-rise relative flex flex-col rounded-2xl border p-4 transition-shadow hover:shadow-sm",
                 s.isDefault ? "border-dashed border-stone-300 bg-stone-50" : "border-stone-200 bg-white",
               )}
             >
@@ -205,6 +205,17 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
             </div>
           );
         })}
+
+        {/* Add tile */}
+        <button
+          onClick={openAdd}
+          className="group flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50/50 p-4 text-stone-400 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-600"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-amber-500 shadow-sm transition group-hover:scale-110">
+            <Plus size={20} />
+          </span>
+          <span className="text-sm font-semibold">Add a service</span>
+        </button>
       </div>
 
       {/* Add / edit modal */}

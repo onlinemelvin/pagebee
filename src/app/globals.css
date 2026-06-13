@@ -116,13 +116,78 @@ body {
   mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
 }
 
+/* ----------------------------------------------------------------------------
+   Dashboard motion — entrance, skeletons, tooltips, micro-interactions.
+---------------------------------------------------------------------------- */
+
+/* Staggered entrance for dashboard cards. Set --d (ms) inline for the stagger. */
+@keyframes pb-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.anim-rise {
+  opacity: 0;
+  animation: pb-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Pop-in for modals / chips */
+@keyframes pb-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.anim-pop { animation: pb-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Skeleton glimmer — warm paper sweep */
+@keyframes pb-skeleton {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f3f0e9 25%, #faf8f2 50%, #f3f0e9 75%);
+  background-size: 200% 100%;
+  animation: pb-skeleton 1.4s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+/* Soft pulse for live/attention dots */
+@keyframes pb-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+.pulse-dot { animation: pb-pulse-ring 2s ease-out infinite; }
+
+/* Chart draw-in (stroke + bar grow are driven by inline transition + mount flag) */
+.chart-draw { transition: stroke-dashoffset 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+.bar-grow { transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: bottom; }
+
+/* Tooltip bubble (paired with the Tooltip component) */
+.tip {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  opacity: 0;
+  transform: translateY(4px) scale(0.97);
+  pointer-events: none;
+}
+.tip-trigger:hover .tip,
+.tip-trigger:focus-visible .tip,
+.tip-trigger:focus-within .tip {
+  opacity: 1;
+  transform: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .text-gradient,
   .aurora-blob,
   .animate-float,
   .animate-spin-slow,
-  .marquee-track { animation: none !important; }
+  .marquee-track,
+  .skeleton,
+  .pulse-dot { animation: none !important; }
   .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .anim-rise { opacity: 1 !important; animation: none !important; }
+  .anim-pop { animation: none !important; }
   .lift:hover { transform: none; }
   .shimmer-sweep:hover::after { animation: none; }
+  .chart-draw, .bar-grow { transition: none !important; }
 }

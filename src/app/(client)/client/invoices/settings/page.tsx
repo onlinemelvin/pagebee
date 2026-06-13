@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { getFinanceSettings, listTaxRates } from "@/lib/modules/finance";
 import { getPaymentStatus, refreshAccountStatus, getTaxStatus } from "@/lib/modules/payments";
@@ -27,14 +28,18 @@ export default async function FinanceSettingsPage({ searchParams }: { searchPara
 
   return (
     <div>
-      <Link href="/client/invoices" className="text-sm text-stone-500 hover:underline">← Finance</Link>
+      <Link href="/client/invoices" className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700">
+        <ArrowLeft size={14} /> Finance
+      </Link>
       <h1 className="mt-2 font-display text-3xl text-stone-900">Finance settings</h1>
       <p className="mt-1 text-stone-500">Connect payments, set tax rates, numbering, defaults, and your business details.</p>
       <div className="mt-6 space-y-6">
-        <PaymentsConnect status={payStatus} notice={connect ?? null} />
-        <TaxSettings status={taxStatus} />
+        <div className="anim-rise"><PaymentsConnect status={payStatus} notice={connect ?? null} /></div>
+        <div className="anim-rise" style={{ "--d": "80ms" } as React.CSSProperties}><TaxSettings status={taxStatus} /></div>
+        <div className="anim-rise" style={{ "--d": "160ms" } as React.CSSProperties}>
+          <FinanceSettings initialSettings={settings} initialTaxRates={taxRates} taxMode={settings.taxMode} />
+        </div>
       </div>
-      <FinanceSettings initialSettings={settings} initialTaxRates={taxRates} taxMode={settings.taxMode} />
     </div>
   );
 }
