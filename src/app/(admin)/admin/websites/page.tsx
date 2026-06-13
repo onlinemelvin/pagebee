@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { Globe, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
 import { listReviewQueue, listGenerationActivity } from "@/lib/modules/website";
 import { openChangeRequestCounts } from "@/lib/modules/review";
 import { AutoRefresh } from "@/components/admin/AutoRefresh";
 import { RetryJobButton } from "@/components/admin/RetryJobButton";
+import { StatCard } from "@/components/client/ui/StatCard";
+import { EmptyState } from "@/components/client/ui/EmptyState";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -92,8 +95,8 @@ function Table({
   empty: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+      <table className="w-full min-w-[520px] text-sm">
         <thead className="border-b border-stone-200 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
           <tr>
             <th className="px-4 py-3 font-medium">Business</th>
@@ -134,10 +137,17 @@ export default async function AdminWebsitesPage() {
       {/* Live-refresh while anything is building, so progress updates without a manual reload. */}
       {inFlight.length > 0 && <AutoRefresh intervalMs={2500} />}
 
-      <h1 className="font-display text-2xl text-stone-900">Websites — review queue</h1>
+      <h1 className="font-display text-3xl text-stone-900">Websites — review queue</h1>
       <p className="mt-1 text-sm text-stone-500">
         Generated drafts awaiting review. Review one, then release it to the client (or request changes).
       </p>
+
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard index={0} icon={Globe} accent="amber" label="Needs review" value={needsReview.length} />
+        <StatCard index={1} icon={CheckCircle2} accent="sky" label="Awaiting approval" value={released.length} />
+        <StatCard index={2} icon={Loader2} accent="violet" label="Generating" value={inFlight.length} />
+        <StatCard index={3} icon={AlertTriangle} accent="rose" label="Failed" value={failed.length} />
+      </div>
 
       {(inFlight.length > 0 || failed.length > 0) && (
         <div className="mt-6">
@@ -159,11 +169,15 @@ export default async function AdminWebsitesPage() {
       )}
 
       <div className="mt-6">
-        <Table
-          items={needsReview}
-          counts={counts}
-          empty="Nothing to review. Drafts appear here after a client generates a website."
-        />
+        {needsReview.length === 0 ? (
+          <EmptyState
+            icon={CheckCircle2}
+            title="All caught up"
+            description="Nothing to review right now. Drafts appear here the moment a client generates a website."
+          />
+        ) : (
+          <Table items={needsReview} counts={counts} empty="" />
+        )}
       </div>
 
       {released.length > 0 && (

@@ -29,7 +29,7 @@ export default async function AdminLeadsPage({
 
   return (
     <div>
-      <h1 className="font-display text-2xl text-stone-900">Leads</h1>
+      <h1 className="font-display text-3xl text-stone-900">Leads</h1>
       <p className="mt-1 text-sm text-stone-500">Inquiries captured across all client websites.</p>
       <LeadInbox leads={rows} activeStatus={status ?? null} />
     </div>
