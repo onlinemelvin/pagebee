@@ -33,7 +33,9 @@ const PALETTES: { key: string; name: string; colors: string[] }[] = [
 // Primary call-to-action options (form-enabled plans only). The label is sent verbatim
 // as `primaryGoal` and steers the generated form's heading, fields, and lead `type`.
 const GOALS = [
+  "Book an appointment",
   "Request a quote",
+  "Request an estimate",
   "Request a callback",
   "Book a free consultation",
   "Request a demo",
@@ -47,11 +49,19 @@ type Hour = { day: string; closed: boolean; open: string; close: string };
 // Draft persistence for the long "about" text — survives refreshes/navigation via localStorage.
 const ABOUT_DRAFT_KEY = "pagebee:intake:about";
 
+interface PricingRow { name: string; price: string }
+interface FaqRow { q: string; a: string }
+interface TeamRow { name: string; role: string; photoUrl: string }
+
+const inputCls =
+  "rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100";
+
 export function WebsiteIntakeForm({
   submitLabel = "Generate my website",
   maxPages = 5,
   canBook = false,
   canUseForms = true,
+  contactDefaults,
 }: {
   submitLabel?: string;
   maxPages?: number;
@@ -59,6 +69,8 @@ export function WebsiteIntakeForm({
   /** Whether the plan allows lead-capture forms. When false (Launch), the site shows
    *  click-to-call / email only and we skip the "primary goal" picker. */
   canUseForms?: boolean;
+  /** Contact info prefilled into the Contact section (from registration). */
+  contactDefaults?: { email?: string; phone?: string };
 }) {
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
@@ -91,6 +103,30 @@ export function WebsiteIntakeForm({
   const [library, setLibrary] = React.useState<{ id: string; url: string; alt: string | null }[] | null>(null);
   const [showLibrary, setShowLibrary] = React.useState(false);
   const galleryOn = pages.has("gallery");
+  const contactOn = pages.has("contact");
+  const pricingOn = pages.has("pricing");
+  const faqOn = pages.has("faq");
+  const teamOn = pages.has("team");
+
+  // Per-section inputs (shown when the matching page/section is selected).
+  const [contact, setContact] = React.useState({
+    email: contactDefaults?.email ?? "",
+    phone: contactDefaults?.phone ?? "",
+    address: "",
+  });
+  const [pricing, setPricing] = React.useState<PricingRow[]>([]);
+  const [faqs, setFaqs] = React.useState<FaqRow[]>([]);
+  const [team, setTeam] = React.useState<TeamRow[]>([]);
+  const [faqLoading, setFaqLoading] = React.useState(false);
+
+  // Prefill pricing from the services list the first time Pricing is turned on.
+  const pricingSeeded = React.useRef(false);
+  React.useEffect(() => {
+    if (pricingOn && !pricingSeeded.current && services.length) {
+      setPricing(services.map((name) => ({ name, price: "" })));
+      pricingSeeded.current = true;
+    }
+  }, [pricingOn, services]);
 
   const PAGE_CATALOG = [
     { key: "home", label: "Home", always: true },
@@ -240,6 +276,55 @@ export function WebsiteIntakeForm({
     setHours((prev) => prev.map((h, j) => (j === i ? { ...h, ...patch } : h)));
   }
 
+  // Pricing rows
+  const addPricing = () => setPricing((p) => [...p, { name: "", price: "" }]);
+  const updatePricing = (i: number, patch: Partial<PricingRow>) =>
+    setPricing((p) => p.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const removePricing = (i: number) => setPricing((p) => p.filter((_, j) => j !== i));
+
+  // FAQ rows
+  const addFaq = () => setFaqs((f) => [...f, { q: "", a: "" }]);
+  const updateFaq = (i: number, patch: Partial<FaqRow>) =>
+    setFaqs((f) => f.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const removeFaq = (i: number) => setFaqs((f) => f.filter((_, j) => j !== i));
+
+  async function generateFaqs() {
+    setFaqLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/client/website/faq-suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ about: aboutDraft, services }),
+      });
+      if (res.ok) {
+        const { faqs: gen } = (await res.json()) as { faqs: FaqRow[] };
+        setFaqs((prev) => [...prev, ...gen.map((f) => ({ q: f.q, a: f.a }))]);
+      } else if (res.status === 503) {
+        setError("AI FAQ suggestions aren't available right now — you can add them manually.");
+      } else {
+        setError("Couldn't generate FAQs — try again, or add them manually.");
+      }
+    } catch {
+      setError("Couldn't generate FAQs — try again, or add them manually.");
+    } finally {
+      setFaqLoading(false);
+    }
+  }
+
+  // Team rows
+  const addTeam = () => setTeam((t) => [...t, { name: "", role: "", photoUrl: "" }]);
+  const updateTeam = (i: number, patch: Partial<TeamRow>) =>
+    setTeam((t) => t.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const removeTeam = (i: number) => setTeam((t) => t.filter((_, j) => j !== i));
+  async function uploadTeamPhoto(i: number, file: File) {
+    setUploading(true);
+    const url = await uploadFile(file);
+    if (url) updateTeam(i, { photoUrl: url });
+    else setError("Photo upload failed — try a smaller image.");
+    setUploading(false);
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -278,6 +363,28 @@ export function WebsiteIntakeForm({
           logoUrl: logoUrl ?? undefined,
           imageUrls: imageUrls.length ? imageUrls : undefined,
           galleryImageUrls: galleryOn && galleryImages.length ? galleryImages : undefined,
+          contact: contactOn
+            ? {
+                email: contact.email.trim() || undefined,
+                phone: contact.phone.trim() || undefined,
+                address: contact.address.trim() || undefined,
+              }
+            : undefined,
+          pricing: (() => {
+            if (!pricingOn) return undefined;
+            const rows = pricing.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), price: p.price.trim() || undefined }));
+            return rows.length ? rows : undefined;
+          })(),
+          faqs: (() => {
+            if (!faqOn) return undefined;
+            const rows = faqs.filter((f) => f.q.trim() && f.a.trim()).map((f) => ({ q: f.q.trim(), a: f.a.trim() }));
+            return rows.length ? rows : undefined;
+          })(),
+          team: (() => {
+            if (!teamOn) return undefined;
+            const rows = team.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), role: m.role.trim() || undefined, photoUrl: m.photoUrl || undefined }));
+            return rows.length ? rows : undefined;
+          })(),
           customInstructions,
         }),
       });
@@ -395,7 +502,6 @@ export function WebsiteIntakeForm({
             className="h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900"
           >
             <option value="">Let AI choose</option>
-            {canBook && <option value="Book an appointment">Book an appointment</option>}
             {GOALS.map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
@@ -560,6 +666,98 @@ export function WebsiteIntakeForm({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Contact details — when Contact Us is selected (prefilled from registration) */}
+      {contactOn && (
+        <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <Label>
+            Contact details <span className="font-normal text-stone-400">— prefilled from your account; edit if needed</span>
+          </Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="Email" type="email" className={inputCls} />
+            <input value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} placeholder="Phone" className={inputCls} />
+          </div>
+          <input value={contact.address} onChange={(e) => setContact({ ...contact, address: e.target.value })} placeholder="Address (optional) — shown in Contact & footer" className={inputCls} />
+        </div>
+      )}
+
+      {/* Pricing — when Pricing is selected (prefilled from services) */}
+      {pricingOn && (
+        <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <Label>
+            Pricing <span className="font-normal text-stone-400">— prefilled from your services; edit, add prices, or add items</span>
+          </Label>
+          <div className="grid gap-2">
+            {pricing.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={row.name} onChange={(e) => updatePricing(i, { name: e.target.value })} placeholder="Item or service" className={cn(inputCls, "flex-1")} />
+                <input value={row.price} onChange={(e) => updatePricing(i, { price: e.target.value })} placeholder="$50, from $99…" className={cn(inputCls, "w-32")} />
+                <button type="button" onClick={() => removePricing(i)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-red-600" aria-label="Remove item">×</button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addPricing} className="w-fit text-sm font-semibold text-amber-700 hover:text-amber-800">+ Add item</button>
+          <p className="text-xs text-stone-400">Leave a price blank to show “price on request”.</p>
+        </div>
+      )}
+
+      {/* FAQ — when FAQ is selected (manual or AI-generated) */}
+      {faqOn && (
+        <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label>FAQ <span className="font-normal text-stone-400">— questions &amp; answers</span></Label>
+            <button
+              type="button"
+              onClick={generateFaqs}
+              disabled={faqLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+            >
+              <Sparkles size={14} /> {faqLoading ? "Generating…" : "Generate with AI"}
+            </button>
+          </div>
+          {faqs.length === 0 && <p className="text-xs text-stone-500">Add your own, or let AI draft a few from your business details — then edit freely.</p>}
+          <div className="grid gap-2">
+            {faqs.map((f, i) => (
+              <div key={i} className="grid gap-1.5 rounded-lg border border-stone-200 bg-white p-3">
+                <div className="flex items-center gap-2">
+                  <input value={f.q} onChange={(e) => updateFaq(i, { q: e.target.value })} placeholder="Question" className={cn(inputCls, "flex-1 font-medium")} />
+                  <button type="button" onClick={() => removeFaq(i)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-red-600" aria-label="Remove question">×</button>
+                </div>
+                <Textarea rows={2} value={f.a} onChange={(e) => updateFaq(i, { a: e.target.value })} placeholder="Answer" />
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addFaq} className="w-fit text-sm font-semibold text-amber-700 hover:text-amber-800">+ Add question</button>
+        </div>
+      )}
+
+      {/* Team — when Team is selected */}
+      {teamOn && (
+        <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <Label>Team <span className="font-normal text-stone-400">— the people customers will meet</span></Label>
+          <div className="grid gap-2">
+            {team.map((m, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-lg border border-stone-200 bg-white p-2">
+                <label className="grid h-14 w-14 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-lg border border-dashed border-stone-300 bg-stone-50 text-center text-[10px] text-stone-400 hover:bg-stone-100">
+                  {m.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.photoUrl} alt={m.name} className="h-full w-full object-cover" />
+                  ) : (
+                    "Photo"
+                  )}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadTeamPhoto(i, e.target.files[0])} />
+                </label>
+                <div className="grid flex-1 gap-1.5 sm:grid-cols-2">
+                  <input value={m.name} onChange={(e) => updateTeam(i, { name: e.target.value })} placeholder="Name" className={inputCls} />
+                  <input value={m.role} onChange={(e) => updateTeam(i, { role: e.target.value })} placeholder="Role (e.g. Owner)" className={inputCls} />
+                </div>
+                <button type="button" onClick={() => removeTeam(i)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-red-600" aria-label="Remove member">×</button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addTeam} className="w-fit text-sm font-semibold text-amber-700 hover:text-amber-800">+ Add team member</button>
         </div>
       )}
 

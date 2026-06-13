@@ -191,8 +191,13 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     const intake: WebsiteIntake = {
       businessName: client.businessName,
       businessType: client.businessType,
-      phone: client.ownerPhone,
-      email: client.ownerEmail,
+      // Contact section: the owner's confirmed/edited values take precedence over registration.
+      phone: form.contact?.phone || client.ownerPhone,
+      email: form.contact?.email || client.ownerEmail,
+      address: form.contact?.address || undefined,
+      pricing: form.pricing,
+      faqs: form.faqs,
+      team: form.team,
       about: form.about,
       services,
       serviceAreas: form.serviceAreas,

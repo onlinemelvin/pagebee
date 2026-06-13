@@ -1,6 +1,7 @@
 import { Wand2, Eye, Rocket, MessageSquareHeart, ExternalLink, Globe } from "lucide-react";
 import { getClientWebsite, getLatestJobStatus } from "@/lib/modules/website";
 import { getClientWorkspace } from "@/lib/modules/client";
+import { prisma } from "@/lib/db";
 import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateSection } from "@/components/client/RegenerateSection";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
@@ -24,10 +25,12 @@ const STEPS = [
 export default async function ClientWebsitePage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  const [website, job] = await Promise.all([
+  const [website, job, contactRow] = await Promise.all([
     getClientWebsite(ws.client.id),
     getLatestJobStatus(ws.client.id),
+    prisma.client.findUnique({ where: { id: ws.client.id }, select: { ownerEmail: true, ownerPhone: true } }),
   ]);
+  const contactDefaults = { email: contactRow?.ownerEmail ?? ws.email, phone: contactRow?.ownerPhone ?? undefined };
   const latest = website?.versions[0];
   const copy = (latest?.config?.copy ?? null) as unknown as { heroHeadline?: string; heroSubheadline?: string } | null;
   const status = latest ? VERSION_STATUS[latest.status] ?? null : null;
@@ -149,6 +152,7 @@ export default async function ClientWebsitePage() {
                 maxPages={ws.caps.maxPages}
                 canBook={ws.caps.booking && ws.choices.booking === true}
                 canUseForms={ws.caps.forms}
+                contactDefaults={contactDefaults}
               />
             </div>
           </div>
