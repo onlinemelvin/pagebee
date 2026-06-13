@@ -106,6 +106,17 @@ export async function getCustomerHistory(clientId: string, customerId: string) {
   });
 }
 
+/** Format an instant in the business's timezone for customer-facing emails. */
+function whenInTz(d: Date, tz: string): string {
+  try {
+    return d.toLocaleString("en-US", {
+      timeZone: tz, weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+  } catch {
+    return d.toLocaleString();
+  }
+}
+
 /** Confirm/cancel/complete a booking and notify the customer on confirm/cancel. */
 export async function updateBookingStatus(clientId: string, bookingId: string, status: BookingDecision) {
   const booking = await prisma.booking.findFirst({
@@ -124,7 +135,8 @@ export async function updateBookingStatus(clientId: string, bookingId: string, s
       where: { id: clientId },
       select: { businessName: true, ownerEmail: true },
     });
-    const when = booking.startAt.toLocaleString();
+    const tz = (await getSchedulingSettings(clientId)).timezone;
+    const when = whenInTz(booking.startAt, tz);
     await sendEmail({
       to: booking.customer.email,
       subject:
@@ -155,6 +167,53 @@ export async function deleteBooking(clientId: string, bookingId: string) {
 export interface Slot {
   startAt: string;
   label: string;
+}
+
+/**
+ * Send reminder emails for confirmed appointments starting within `hoursAhead` (default 24h)
+ * that haven't been reminded yet. Idempotent: sets `reminderSentAt` on success, so a failed
+ * send is retried on the next sweep. Called periodically by the background worker.
+ */
+export async function sweepBookingReminders(opts?: { hoursAhead?: number }): Promise<{ sent: number }> {
+  const hoursAhead = opts?.hoursAhead ?? 24;
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + hoursAhead * 3_600_000);
+
+  const due = await prisma.booking.findMany({
+    where: {
+      status: { in: ["CONFIRMED", "RESCHEDULED"] },
+      reminderSentAt: null,
+      startAt: { gt: now, lte: windowEnd },
+      customer: { is: { email: { not: null } } },
+    },
+    include: { customer: true, client: { select: { businessName: true, ownerEmail: true } } },
+    take: 100,
+  });
+
+  const tzCache = new Map<string, string>();
+  let sent = 0;
+  for (const b of due) {
+    const email = b.customer?.email;
+    if (!email) continue;
+    let tz = tzCache.get(b.clientId);
+    if (!tz) {
+      tz = (await getSchedulingSettings(b.clientId)).timezone;
+      tzCache.set(b.clientId, tz);
+    }
+    try {
+      await sendEmail({
+        to: email,
+        subject: `Reminder: ${b.serviceName} — ${whenInTz(b.startAt, tz)}`,
+        html: `<p>Just a friendly reminder of your <strong>${b.serviceName}</strong> on ${whenInTz(b.startAt, tz)}.</p><p>See you then!</p><p>— ${b.client.businessName}</p>`,
+        replyTo: b.client.ownerEmail ?? undefined,
+      });
+      await prisma.booking.update({ where: { id: b.id }, data: { reminderSentAt: new Date() } });
+      sent++;
+    } catch {
+      // Leave reminderSentAt null so the next sweep retries this booking.
+    }
+  }
+  return { sent };
 }
 
 // ── Scheduling settings (stored in ClientSetting.calendarSettings) ──
@@ -288,7 +347,7 @@ export async function rescheduleBooking(
     await sendEmail({
       to: booking.customer.email,
       subject: `Your appointment was rescheduled — ${booking.serviceName}`,
-      html: `<p>Your ${booking.serviceName} has been moved to ${startAt.toLocaleString()}. Reply if that doesn't work for you.</p><p>— ${client?.businessName ?? ""}</p>`,
+      html: `<p>Your ${booking.serviceName} has been moved to ${whenInTz(startAt, settings.timezone)}. Reply if that doesn't work for you.</p><p>— ${client?.businessName ?? ""}</p>`,
       replyTo: client?.ownerEmail ?? undefined,
     });
   }

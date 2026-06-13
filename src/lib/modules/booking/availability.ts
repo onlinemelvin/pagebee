@@ -1,9 +1,11 @@
 import { WEEKDAYS, type DayHours, type SchedulingSettings, type Weekday } from "./schema";
 
-// NOTE: times use the server's local timezone for now. Per-client timezones are a follow-up.
+// Availability is computed in the business's IANA timezone (settings.timezone). Day boundaries,
+// open/close hours, and customer-facing labels are all resolved in that zone using Intl — so a
+// customer booking from another timezone still sees the business's local hours, and DST is handled.
 
 export interface DaySlots {
-  date: string; // yyyy-mm-dd
+  date: string; // yyyy-mm-dd (business-local calendar date)
   slots: { startAt: string; label: string }[];
 }
 export interface BusyInterval {
@@ -12,9 +14,51 @@ export interface BusyInterval {
 }
 
 const DOW: Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const FALLBACK_TZ = "America/New_York";
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** Wall-clock parts of a UTC instant as observed in `tz`. */
+function tzParts(utcMs: number, tz: string) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const p: Record<string, number> = {};
+  for (const part of dtf.formatToParts(new Date(utcMs))) {
+    if (part.type !== "literal") p[part.type] = Number(part.value);
+  }
+  return { y: p.year, mo: p.month, d: p.day, h: p.hour % 24, mi: p.minute, s: p.second };
+}
+
+/** Offset (ms) of `tz` from UTC at a given instant: localWallTime - utcTime. */
+function offsetMs(utcMs: number, tz: string): number {
+  const p = tzParts(utcMs, tz);
+  return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - utcMs;
+}
+
+/** UTC epoch ms for a wall-clock date/time in `tz`. Refines once to settle DST boundaries. */
+function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, tz: string): number {
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const off1 = offsetMs(guess, tz);
+  const off2 = offsetMs(guess - off1, tz);
+  return guess - off2;
+}
+
+/** Business-local calendar date (yyyy-mm-dd) of a UTC instant. */
+function zonedYmd(utcMs: number, tz: string): string {
+  const p = tzParts(utcMs, tz);
+  return `${p.y}-${String(p.mo).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+}
+
+function safeTz(tz: string | undefined): string {
+  if (!tz) return FALLBACK_TZ;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return FALLBACK_TZ;
+  }
 }
 
 /** Default hours for a weekday: open 9–5 Mon–Fri, closed on weekends. */
@@ -32,55 +76,61 @@ export function normalizeSettings(parsed: SchedulingSettings): SchedulingSetting
 
 /**
  * Compute bookable slots over a date range from the owner's settings and existing bookings.
- * Honors recurring off-days (closed weekdays), blocked dates, daily cap, min-notice / booking
- * window, slot length + buffer, and per-slot concurrency. Pure (no I/O) so it's easy to reuse
- * and test — the service loads settings + bookings and calls this.
+ * Honors the business timezone, recurring off-days (closed weekdays), blocked dates, daily cap,
+ * min-notice / booking window, slot length + buffer, and per-slot concurrency. Pure (no I/O).
  */
 export function computeSlots(
   settings: SchedulingSettings,
   busy: BusyInterval[],
   opts: { from: Date; to: Date; durationMinutes: number; now?: Date },
 ): DaySlots[] {
+  const tz = safeTz(settings.timezone);
   const now = opts.now ?? new Date();
-  const minBookable = new Date(now.getTime() + settings.minNoticeHours * 3_600_000);
-  const maxBookable = new Date(now.getTime() + settings.maxAdvanceDays * 86_400_000);
+  const minBookable = now.getTime() + settings.minNoticeHours * 3_600_000;
+  const maxBookable = now.getTime() + settings.maxAdvanceDays * 86_400_000;
   const blocked = new Set(settings.blockedDates);
   const stepMs = (settings.slotMinutes + settings.bufferMinutes) * 60_000;
   const durMs = opts.durationMinutes * 60_000;
 
-  const out: DaySlots[] = [];
-  const cursor = new Date(opts.from);
-  cursor.setHours(0, 0, 0, 0);
-  const end = new Date(opts.to);
-  end.setHours(23, 59, 59, 999);
+  // Precompute the business-local date each busy interval falls on (for the daily cap).
+  const busyDates = busy.map((b) => zonedYmd(b.startAt.getTime(), tz));
 
-  while (cursor <= end) {
-    const dateStr = ymd(cursor);
-    const day = settings.weekly[DOW[cursor.getDay()]] ?? defaultDay(DOW[cursor.getDay()]);
+  // Iterate calendar dates in the business tz using a noon-UTC anchor (DST-safe day stepping).
+  const fromYmd = tzParts(opts.from.getTime(), tz);
+  const toYmd = tzParts(opts.to.getTime(), tz);
+  let anchor = Date.UTC(fromYmd.y, fromYmd.mo - 1, fromYmd.d, 12);
+  const endAnchor = Date.UTC(toYmd.y, toYmd.mo - 1, toYmd.d, 12);
+
+  const out: DaySlots[] = [];
+  while (anchor <= endAnchor) {
+    const a = new Date(anchor);
+    const y = a.getUTCFullYear();
+    const mo = a.getUTCMonth() + 1;
+    const d = a.getUTCDate();
+    const dow = a.getUTCDay();
+    const dateStr = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const day = settings.weekly[DOW[dow]] ?? defaultDay(DOW[dow]);
     const daySlots: { startAt: string; label: string }[] = [];
 
-    const dayBusy = busy.filter((b) => ymd(b.startAt) === dateStr);
-    const capReached = settings.dailyCap > 0 && dayBusy.length >= settings.dailyCap;
+    const dayBusyCount = busyDates.filter((bd) => bd === dateStr).length;
+    const capReached = settings.dailyCap > 0 && dayBusyCount >= settings.dailyCap;
 
     if (!day.closed && !blocked.has(dateStr) && !capReached) {
       const [oh, om] = day.open.split(":").map(Number);
       const [ch, cm] = day.close.split(":").map(Number);
-      const dayStart = new Date(cursor).setHours(oh, om, 0, 0);
-      const dayClose = new Date(cursor).setHours(ch, cm, 0, 0);
+      const dayStart = zonedToUtc(y, mo, d, oh, om, tz);
+      const dayClose = zonedToUtc(y, mo, d, ch, cm, tz);
       for (let t = dayStart; t + durMs <= dayClose; t += stepMs) {
-        const slotStart = new Date(t);
-        const slotEnd = new Date(t + durMs);
-        if (slotStart < minBookable || slotStart > maxBookable) continue;
-        const overlapping = busy.filter((b) => b.startAt < slotEnd && b.endAt > slotStart).length;
+        const slotEnd = t + durMs;
+        if (t < minBookable || t > maxBookable) continue;
+        const overlapping = busy.filter((b) => b.startAt.getTime() < slotEnd && b.endAt.getTime() > t).length;
         if (overlapping < settings.concurrent) {
           daySlots.push({
-            startAt: slotStart.toISOString(),
-            label: slotStart.toLocaleString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
+            startAt: new Date(t).toISOString(),
+            label: new Date(t).toLocaleString("en-US", {
+              timeZone: tz,
+              weekday: "short", month: "short", day: "numeric",
+              hour: "numeric", minute: "2-digit",
             }),
           });
         }
@@ -88,7 +138,7 @@ export function computeSlots(
     }
 
     out.push({ date: dateStr, slots: daySlots });
-    cursor.setDate(cursor.getDate() + 1);
+    anchor += 86_400_000;
   }
   return out;
 }

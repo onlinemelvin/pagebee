@@ -27,13 +27,16 @@ async function main() {
     "@/lib/modules/website"
   );
   const { sweepPreviews } = await import("@/lib/modules/preview");
+  const { sweepBookingReminders } = await import("@/lib/modules/booking");
 
   console.log("[worker] PageBee generation worker started");
   const recovered = await requeueStaleJobs();
   if (recovered) console.log(`[worker] requeued ${recovered} stale job(s)`);
 
   let lastPreviewSweep = 0;
+  let lastReminderSweep = 0;
   const PREVIEW_SWEEP_MS = 5 * 60 * 1000;
+  const REMINDER_SWEEP_MS = 10 * 60 * 1000;
 
   for (;;) {
     try {
@@ -44,6 +47,13 @@ async function main() {
         if (r.reminded || r.expired) {
           console.log(`[worker] preview sweep: reminded=${r.reminded} expired=${r.expired}`);
         }
+      }
+
+      // Appointment reminders (~24h before) every ~10 minutes.
+      if (Date.now() - lastReminderSweep > REMINDER_SWEEP_MS) {
+        lastReminderSweep = Date.now();
+        const r = await sweepBookingReminders();
+        if (r.sent) console.log(`[worker] booking reminders sent: ${r.sent}`);
       }
 
       const id = await claimNextQueuedJob();

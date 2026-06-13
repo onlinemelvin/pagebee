@@ -41,6 +41,9 @@ const weeklySchema = z
   .default({});
 
 export const schedulingSettingsSchema = z.object({
+  // IANA timezone the business operates in. Availability hours, day boundaries, and the
+  // times shown to customers are all computed in this zone (independent of server/browser tz).
+  timezone: z.string().min(1).max(64).default("America/New_York"),
   weekly: weeklySchema,
   blockedDates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(366).default([]),
   concurrent: z.number().int().min(1).max(50).default(1),

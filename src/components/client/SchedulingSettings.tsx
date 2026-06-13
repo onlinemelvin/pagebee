@@ -3,10 +3,25 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { X, CalendarPlus, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SchedulingSettings, Weekday } from "@/lib/modules/booking";
+
+const TIMEZONES: { value: string; label: string }[] = [
+  { value: "America/New_York", label: "Eastern (New York)" },
+  { value: "America/Chicago", label: "Central (Chicago)" },
+  { value: "America/Denver", label: "Mountain (Denver)" },
+  { value: "America/Phoenix", label: "Arizona (no DST)" },
+  { value: "America/Los_Angeles", label: "Pacific (Los Angeles)" },
+  { value: "America/Anchorage", label: "Alaska (Anchorage)" },
+  { value: "Pacific/Honolulu", label: "Hawaii (Honolulu)" },
+  { value: "America/Toronto", label: "Eastern — Canada (Toronto)" },
+  { value: "America/Vancouver", label: "Pacific — Canada (Vancouver)" },
+  { value: "Europe/London", label: "UK (London)" },
+  { value: "Australia/Sydney", label: "Australia (Sydney)" },
+  { value: "UTC", label: "UTC" },
+];
 
 const DAYS: { key: Weekday; label: string }[] = [
   { key: "mon", label: "Monday" },
@@ -45,11 +60,20 @@ function NumberField({
   );
 }
 
-export function SchedulingSettings({ initial }: { initial: SchedulingSettings }) {
+export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSettings; icalUrl?: string }) {
   const router = useRouter();
   const [s, setS] = React.useState<SchedulingSettings>(initial);
   const [newDate, setNewDate] = React.useState("");
   const [phase, setPhase] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [copied, setCopied] = React.useState(false);
+
+  function copyIcal() {
+    if (!icalUrl) return;
+    navigator.clipboard?.writeText(icalUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   function updateDay(key: Weekday, patch: Partial<SchedulingSettings["weekly"][Weekday]>) {
     setS((prev) => ({
@@ -75,8 +99,31 @@ export function SchedulingSettings({ initial }: { initial: SchedulingSettings })
     }
   }
 
+  // Surface the owner's detected timezone if it isn't already in the curated list.
+  const detected = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "";
+  const tzOptions = TIMEZONES.some((t) => t.value === detected) || !detected
+    ? TIMEZONES
+    : [{ value: detected, label: `${detected} (detected)` }, ...TIMEZONES];
+
   return (
     <div className="mt-6 space-y-6">
+      {/* Timezone */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+        <h2 className="font-display text-lg text-stone-900">Timezone</h2>
+        <p className="mt-1 text-sm text-stone-500">
+          Your business timezone. Availability hours and the times customers see are all in this zone.
+        </p>
+        <select
+          value={s.timezone}
+          onChange={(e) => setS({ ...s, timezone: e.target.value })}
+          className="mt-3 w-full max-w-sm rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100"
+        >
+          {tzOptions.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      </section>
+
       {/* Weekly hours + recurring off-days */}
       <section className="rounded-2xl border border-stone-200 bg-white p-6">
         <h2 className="font-display text-lg text-stone-900">Weekly hours</h2>
@@ -184,6 +231,25 @@ export function SchedulingSettings({ initial }: { initial: SchedulingSettings })
           </Button>
         </div>
       </section>
+
+      {/* Calendar subscription (iCal feed) */}
+      {icalUrl && (
+        <section className="rounded-2xl border border-stone-200 bg-white p-6">
+          <h2 className="flex items-center gap-2 font-display text-lg text-stone-900">
+            <CalendarPlus size={18} className="text-amber-500" /> Sync to your calendar
+          </h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Add this private feed to Google Calendar, Apple Calendar, or Outlook to see your appointments
+            alongside everything else. It updates automatically — keep the link private.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">{icalUrl}</code>
+            <Button variant="outline" onClick={copyIcal} className="shrink-0">
+              {copied ? <><Check size={15} /> Copied</> : <><Copy size={15} /> Copy</>}
+            </Button>
+          </div>
+        </section>
+      )}
 
       <div className="flex items-center gap-3">
         <Button size="lg" disabled={phase === "saving"} onClick={save}>
