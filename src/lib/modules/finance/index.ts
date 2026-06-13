@@ -21,9 +21,10 @@ export {
   getFinanceDashboard,
   getTaxReport,
   getIncomeReport,
+  get1099Summary,
   FinanceError,
 } from "./service";
-export type { DocumentDTO, DocLineDTO, TaxRateDTO, FinanceDashboard, TaxReport, IncomeReport } from "./service";
+export type { DocumentDTO, DocLineDTO, TaxRateDTO, FinanceDashboard, TaxReport, IncomeReport, Form1099Summary } from "./service";
 export { computeTotals, applyDiscount, formatMoney } from "./money";
 export type { DiscountKind, LineInput, DocTotals } from "./money";
 export {

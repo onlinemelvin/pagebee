@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireClient, AuthError } from "@/lib/auth/session";
-import { getTaxReport, getIncomeReport } from "@/lib/modules/finance";
+import { getTaxReport, getIncomeReport, get1099Summary } from "@/lib/modules/finance";
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +54,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
       ["TOTAL", "", "", "", money(r.totalCollected)],
     ]);
     filename = `income_${label}.csv`;
+  } else if (type === "1099") {
+    const year = Number(url.searchParams.get("year")) || now.getFullYear();
+    const s = await get1099Summary(client.id, year);
+    csv = toCsv([
+      [`1099-K summary ${year}`, ""],
+      ["Month", "Gross card payments"],
+      ...s.monthly.map((m) => [MONTHS[m.month - 1], money(m.amount)]),
+      ["TOTAL (Box 1a)", money(s.gross)],
+      ["Transactions", s.count],
+    ]);
+    filename = `1099k-summary_${year}.csv`;
   } else {
     return NextResponse.json({ error: "unknown_report" }, { status: 400 });
   }

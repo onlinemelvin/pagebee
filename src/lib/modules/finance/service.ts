@@ -767,3 +767,33 @@ export async function getIncomeReport(clientId: string, from: Date, to: Date): P
     to: to.toISOString(),
   };
 }
+
+// ── 1099-K summary (gross card-payment volume Stripe reports) ────────────────
+
+export interface Form1099Summary {
+  year: number;
+  gross: number; // total successful card payments (cents)
+  count: number; // number of transactions
+  monthly: { month: number; amount: number }[]; // 12 entries
+}
+
+/**
+ * The figures that appear on the client's official 1099-K: gross card-payment volume + transaction
+ * count for the year, by month. Sourced from successful Stripe payments (PageBee Pay). The official
+ * IRS form itself is generated/delivered by Stripe's 1099 reporting once enabled.
+ */
+export async function get1099Summary(clientId: string, year: number): Promise<Form1099Summary> {
+  const start = new Date(year, 0, 1);
+  const end = new Date(year + 1, 0, 1);
+  const payments = await prisma.payment.findMany({
+    where: { clientId, provider: "STRIPE", status: "SUCCEEDED", paidAt: { gte: start, lt: end } },
+    select: { amount: true, paidAt: true },
+  });
+  const monthly = Array.from({ length: 12 }, (_, m) => ({ month: m + 1, amount: 0 }));
+  let gross = 0;
+  for (const p of payments) {
+    gross += p.amount;
+    if (p.paidAt) monthly[p.paidAt.getMonth()].amount += p.amount;
+  }
+  return { year, gross, count: payments.length, monthly };
+}
