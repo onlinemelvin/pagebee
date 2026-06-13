@@ -19,6 +19,13 @@ const COUNTRIES: [string, string][] = [
 ];
 
 const STEPS = ["type", "rep", "business", "bank", "review"] as const;
+const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
+  type: "Business type",
+  rep: "Your details",
+  business: "Business info",
+  bank: "Payout account",
+  review: "Review & activate",
+};
 type Step = (typeof STEPS)[number];
 type Phase = "form" | "submitting" | "document" | "pending";
 
@@ -297,9 +304,13 @@ export function PageBeePayOnboarding({ settings, state: initialState }: { settin
   return (
     <div className="mt-6 max-w-2xl">
       {/* Progress */}
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Step {stepIdx + 1} of {STEPS.length}</p>
+        <p className="text-xs font-medium capitalize text-stone-500">{STEP_LABELS[step]}</p>
+      </div>
       <div className="mb-4 flex items-center gap-1.5">
         {STEPS.map((s, i) => (
-          <div key={s} className={cn("h-1.5 flex-1 rounded-full", i <= stepIdx ? "bg-amber-400" : "bg-stone-200")} />
+          <div key={s} className={cn("h-1.5 flex-1 rounded-full transition-colors", i <= stepIdx ? "bg-amber-400" : "bg-stone-200")} />
         ))}
       </div>
 

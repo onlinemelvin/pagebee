@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -297,14 +298,17 @@ export function WebsiteIntakeForm({
 
   if (phase === "working") {
     return (
-      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-8 text-center">
-        <span className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-amber-100 text-xl">🐝</span>
-        <p className="font-display text-lg text-stone-900">We&apos;re setting up your website</p>
+      <div className="anim-rise rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center">
+        <span className="pulse-dot mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-white text-2xl shadow-sm">🐝</span>
+        <p className="font-display text-xl text-stone-900">We&apos;re setting up your website</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-stone-600">
           Thanks! Our team is putting your site together. This can take up to 48 hours, though it&apos;s
           usually ready within a few hours. You can safely close this page — please check back later and
           we&apos;ll have your preview ready to review.
         </p>
+        <div className="mx-auto mt-5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-amber-200/60">
+          <div className="skeleton h-full w-1/2 rounded-full" />
+        </div>
       </div>
     );
   }
@@ -658,12 +662,14 @@ export function WebsiteIntakeForm({
         />
       </div>
 
-      {uploading && <p className="text-sm text-stone-500">Uploading…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
-      <Button type="submit" size="lg" disabled={uploading}>
-        {submitLabel}
-      </Button>
+      <div className="sticky bottom-4 z-10 mt-2 rounded-2xl border border-stone-200 bg-white/90 p-3 shadow-sm backdrop-blur">
+        <Button type="submit" size="lg" disabled={uploading} className="w-full">
+          <Sparkles size={18} /> {uploading ? "Uploading images…" : submitLabel}
+        </Button>
+        <p className="mt-2 text-center text-xs text-stone-400">Free preview · no charge until you approve &amp; launch</p>
+      </div>
     </form>
   );
 }

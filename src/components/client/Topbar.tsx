@@ -44,27 +44,30 @@ export function Topbar({
   React.useEffect(() => { setDrawer(false); }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-stone-200 bg-white/85 px-4 backdrop-blur-md sm:px-6">
-      <button
-        onClick={() => setDrawer(true)}
-        className="grid h-9 w-9 place-items-center rounded-lg text-stone-600 hover:bg-stone-100 sm:hidden"
-        aria-label="Open menu"
-      >
-        <Menu size={20} />
-      </button>
+    <>
+      <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-stone-200 bg-white/85 px-4 backdrop-blur-md sm:px-6">
+        <button
+          onClick={() => setDrawer(true)}
+          className="grid h-9 w-9 place-items-center rounded-lg text-stone-600 hover:bg-stone-100 sm:hidden"
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
 
-      <QuickSearch tabs={tabs} />
+        <QuickSearch tabs={tabs} />
 
-      <div className="ml-auto flex items-center gap-1.5">
-        <Notifications actions={actions} />
-        <AvatarMenu email={email} businessName={businessName} planName={planName} />
-      </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Notifications actions={actions} />
+          <AvatarMenu email={email} businessName={businessName} planName={planName} />
+        </div>
+      </header>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — rendered outside the backdrop-blurred header so `fixed`
+          is positioned against the viewport, not the header's containing block. */}
       {drawer && (
         <div className="fixed inset-0 z-50 sm:hidden">
           <div className="absolute inset-0 bg-stone-900/40 anim-pop" onClick={() => setDrawer(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-72 flex-col bg-white p-4 shadow-xl">
+          <aside className="anim-rise absolute left-0 top-0 flex h-full w-72 flex-col bg-white p-4 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 text-lg">🐝</span>
@@ -83,7 +86,7 @@ export function Topbar({
           </aside>
         </div>
       )}
-    </header>
+    </>
   );
 }
 
