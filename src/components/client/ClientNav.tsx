@@ -35,7 +35,7 @@ export function ClientNav({ tabs }: { tabs: NavTab[] }) {
             key={t.key}
             href={t.href}
             className={cn(
-              "flex items-center justify-between rounded-lg px-3 py-2 transition-colors",
+              "flex items-center justify-between rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400",
               active ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100",
             )}
           >

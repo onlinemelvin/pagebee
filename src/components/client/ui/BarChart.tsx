@@ -30,9 +30,10 @@ export function BarChart({
   const max = Math.max(1, ...series.flatMap((s) => s.values));
   const fmt = (v: number) => (money ? `$${(v / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : String(v));
   const gridVals = [max, max * 0.5, 0];
+  const ariaLabel = `Bar chart of ${series.map((s) => s.name).join(" and ")} across ${categories.join(", ")}.`;
 
   return (
-    <div>
+    <div role="img" aria-label={ariaLabel}>
       <div className="flex gap-3" style={{ height }}>
         {/* Y axis */}
         <div className="flex w-10 shrink-0 flex-col justify-between py-1 text-right text-[10px] tabular-nums text-stone-400">

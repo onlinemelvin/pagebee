@@ -23,7 +23,9 @@ export function DonutChart({
   className?: string;
 }) {
   const [mounted, setMounted] = React.useState(false);
+  const [reduce, setReduce] = React.useState(false);
   React.useEffect(() => {
+    setReduce(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
@@ -33,9 +35,10 @@ export function DonutChart({
   const C = 2 * Math.PI * r;
   let cum = 0;
 
+  const label = total > 0 ? `Donut chart. ${segments.map((s) => `${s.label}: ${s.value}`).join(", ")}.` : "Donut chart, no data";
   return (
-    <div className={className} style={{ position: "relative", width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <div className={className} style={{ position: "relative", width: size, height: size }} role="img" aria-label={label}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f1efe9" strokeWidth={thickness} />
         {total > 0 &&
           segments.map((seg, i) => {
@@ -56,7 +59,7 @@ export function DonutChart({
                 strokeDasharray={mounted ? `${Math.max(len - 1.5, 0)} ${C}` : `0 ${C}`}
                 strokeDashoffset={offset}
                 transform={`rotate(-90 ${size / 2} ${size / 2})`}
-                style={{ transition: `stroke-dasharray 0.8s cubic-bezier(0.16,1,0.3,1) ${i * 0.08}s` }}
+                style={{ transition: reduce ? "none" : `stroke-dasharray 0.8s cubic-bezier(0.16,1,0.3,1) ${i * 0.08}s` }}
               />
             );
           })}

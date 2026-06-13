@@ -52,8 +52,8 @@ export function AreaChart({
   const fmt = (v: number) => (money ? `$${(v / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : String(v));
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H }}>
+    <div role="img" aria-label={`Trend chart, ${pts.length} points, peak ${fmt(max)}.`}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H }} aria-hidden="true">
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.25" />

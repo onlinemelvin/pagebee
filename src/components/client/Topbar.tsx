@@ -122,6 +122,7 @@ function QuickSearch({ tabs }: { tabs: NavTab[] }) {
           onChange={(e) => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Search or jump to…"
+          aria-label="Search or jump to a page"
           className="w-full bg-transparent text-stone-700 placeholder:text-stone-400 focus:outline-none"
         />
       </div>
@@ -158,8 +159,10 @@ function Notifications({ actions }: { actions: ActionItem[] }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative grid h-9 w-9 place-items-center rounded-lg text-stone-500 hover:bg-stone-100"
-        aria-label="Notifications"
+        className="relative grid h-9 w-9 place-items-center rounded-lg text-stone-500 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+        aria-label={count > 0 ? `Notifications, ${count} items` : "Notifications"}
+        aria-haspopup="true"
+        aria-expanded={open}
       >
         <Bell size={19} />
         {count > 0 && <span className="pulse-dot absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500" />}
@@ -214,7 +217,13 @@ function AvatarMenu({ email, businessName, planName }: { email: string; business
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-stone-100">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+        aria-label="Account menu"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
         <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-amber-400 to-orange-400 text-xs font-bold text-white">{initials}</span>
         <ChevronDown size={15} className="hidden text-stone-400 sm:block" />
       </button>
