@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="grid min-h-screen grid-cols-[240px_1fr] bg-stone-50">
-      <aside className="flex flex-col border-r border-stone-200 bg-white px-4 py-6">
+      <aside className="sticky top-0 flex h-screen flex-col overflow-y-auto border-r border-stone-200 bg-white px-4 py-6">
         <div className="mb-6 flex items-center gap-2 px-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-stone-900 text-lg shadow-sm">🐝</span>
           <div className="leading-tight">
