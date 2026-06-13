@@ -14,7 +14,8 @@ import {
   type HtmlEditRequest,
 } from "@/lib/ai/website-generator";
 import { recompileTailwind } from "@/lib/site/tailwind";
-import { getUpdateQuota } from "@/lib/modules/subscription";
+import { getUpdateQuota, type UpdateQuota } from "@/lib/modules/subscription";
+import { seedServicesFromNames, listWebsiteServices } from "@/lib/modules/service";
 import type { WebsiteIntakeForm } from "./schema";
 
 /** Stored generation input: the client intake plus revision context the client never sends
@@ -97,6 +98,10 @@ export async function startGeneration(clientId: string, form: GenerationForm) {
     });
   }
 
+  // Populate the central service catalog from the intake the first time (idempotent — skipped
+  // once the client has a real catalog), so the site and the scheduler share one source of truth.
+  await seedServicesFromNames(clientId, form.services ?? []);
+
   const job = await prisma.websiteGenerationJob.create({
     data: {
       websiteId: website.id,
@@ -159,12 +164,29 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
     const limits = planLimits(flags, client.subscription?.plan.maxPages ?? 5);
 
-    // Respect the client's opt-in choices: a feature appears on the site only if the
-    // plan allows it AND the client enabled it (so the site auto-customizes too).
-    const choices = await prisma.featureFlag.findMany({ where: { clientId } });
-    const want = (k: string) => choices.find((c) => c.key === k)?.enabled === true;
-    limits.booking = limits.booking && want("booking");
-    limits.payments = limits.payments && want("invoices");
+    // Per-client feature overrides (mirrors the dashboard cards): lead capture is on by default
+    // (tier 2+) unless turned off; booking / payments are explicit opt-ins (off until enabled).
+    const overrides = await prisma.featureFlag.findMany({ where: { clientId } });
+    const notDisabled = (k: string) => overrides.find((c) => c.key === k)?.enabled !== false;
+    const isEnabled = (k: string) => overrides.find((c) => c.key === k)?.enabled === true;
+    limits.forms = limits.forms && notDisabled("contactForm");
+    limits.booking = limits.booking && isEnabled("booking");
+    limits.payments = limits.payments && isEnabled("invoices");
+
+    // Photo gallery follows the owner's choice: shown when they supplied gallery photos and haven't
+    // turned it off. Persist the resulting state so the dashboard card reflects the creation choice.
+    const galleryDisabled = overrides.find((c) => c.key === "gallery")?.enabled === false;
+    const useGallery = !galleryDisabled && Boolean(form.galleryImageUrls?.length);
+    await prisma.featureFlag.upsert({
+      where: { clientId_key: { clientId, key: "gallery" } },
+      update: { enabled: useGallery },
+      create: { clientId, key: "gallery", enabled: useGallery },
+    });
+
+    // Services shown on the site come from the central catalog (visible ones, excluding "Other");
+    // fall back to the raw intake names if the catalog is somehow empty.
+    const websiteServices = await listWebsiteServices(clientId);
+    const services = websiteServices.length ? websiteServices.map((s) => s.title) : form.services;
 
     const intake: WebsiteIntake = {
       businessName: client.businessName,
@@ -172,7 +194,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       phone: client.ownerPhone,
       email: client.ownerEmail,
       about: form.about,
-      services: form.services,
+      services,
       serviceAreas: form.serviceAreas,
       hours: formatBusinessHours(form.businessHours),
       tone: form.tone,
@@ -180,7 +202,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       pages: form.pages,
       logoUrl: form.logoUrl,
       imageUrls: form.imageUrls,
-      galleryImageUrls: form.galleryImageUrls,
+      galleryImageUrls: useGallery ? form.galleryImageUrls : [],
       customInstructions: form.customInstructions,
       revisionNote: form.revisionNote,
       primaryGoal: form.primaryGoal,
@@ -536,6 +558,28 @@ export async function requestWebsiteUpdate(clientId: string, note?: string) {
     clientId,
   });
   return { ok: true as const, updateId: update.id };
+}
+
+/**
+ * Quota gate for a full "regenerate from scratch" of an ALREADY-LIVE site — a major change that,
+ * like a minor update, consumes one of the plan's monthly updates. First-time generation and
+ * pre-launch preview regenerations are free (no published site yet), so they pass through.
+ * Consumes the quota (records a WebsiteUpdate) when it returns ok.
+ */
+export async function gateRegenQuota(
+  clientId: string,
+): Promise<{ ok: true } | { ok: false; reason: "out_of_updates"; quota: UpdateQuota }> {
+  const published = await prisma.website.findFirst({
+    where: { clientId, status: "published" },
+    select: { id: true },
+  });
+  if (!published) return { ok: true }; // first build / pre-launch regen → free
+  const quota = await getUpdateQuota(clientId);
+  if (quota.remaining <= 0) return { ok: false, reason: "out_of_updates", quota };
+  await prisma.websiteUpdate.create({
+    data: { clientId, websiteId: published.id, note: "Full website regeneration", status: "in_review" },
+  });
+  return { ok: true };
 }
 
 /** Mark the client's most recent in-review live-site update as published (on republish). */

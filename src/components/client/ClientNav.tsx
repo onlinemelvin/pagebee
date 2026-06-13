@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Inbox, CalendarCheck, FileText, Globe, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Inbox, CalendarCheck, FileText, Globe, Tag, Image, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface NavTab {
@@ -17,7 +17,9 @@ const ICONS: Record<string, LucideIcon> = {
   inquiries: Inbox,
   appointments: CalendarCheck,
   invoices: FileText,
+  services: Tag,
   website: Globe,
+  media: Image,
 };
 
 export function ClientNav({ tabs }: { tabs: NavTab[] }) {

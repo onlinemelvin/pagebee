@@ -35,13 +35,88 @@ export interface ActionItem {
   cta: string;
   primary?: boolean;
 }
-export interface UpsellItem {
-  reason: "appointments" | "more_updates";
+export interface FeatureCardInfo {
+  key: string;
   title: string;
   desc: string;
-  toPlan: string; // target plan name (e.g. "CONNECT")
-  ctaLabel: string;
+  // enabled: on plan & active (can disable) · available: on plan but off (can enable) ·
+  // locked: not on this plan (upgrade to unlock).
+  state: "enabled" | "available" | "locked";
+  toggleKey?: string; // feature_flags key to enable/disable (enabled/available states)
+  disclaimer?: string; // shown in a confirm modal before enabling (responsibility warning)
+  toPlan?: string; // for locked — target plan name
+  toPlanLabel?: string; // for locked — target plan label
 }
+
+// Catalog of features surfaced as cards. `flag` is the plan feature-flag that unlocks it (null =
+// every plan). `defaultOn` is the default state when on-plan with no client override: Lead capture
+// is on by default (tier 2+); the gallery's default is set at generation from the owner's photo
+// choice; everything else is OFF until the owner explicitly turns it on (with a disclaimer).
+const FEATURE_CATALOG: {
+  key: string;
+  flag: string | null;
+  defaultOn: boolean;
+  title: string;
+  desc: string;
+  disclaimer?: string;
+}[] = [
+  { key: "gallery", flag: null, defaultOn: false, title: "Photo gallery", desc: "Showcase your work in a polished image gallery." },
+  { key: "forms", flag: "contactForm", defaultOn: true, title: "Lead capture form", desc: "Let visitors send inquiries straight from your site." },
+  {
+    key: "booking",
+    flag: "booking",
+    defaultOn: false,
+    title: "Appointments & scheduling",
+    desc: "Let customers book appointments online.",
+    disclaimer:
+      "Customers will be able to book time slots directly. Confirm or decline requests promptly — unanswered bookings frustrate customers and cost you the job.",
+  },
+  {
+    key: "chat",
+    flag: "chat",
+    defaultOn: false,
+    title: "Website chat",
+    desc: "Answer visitors with a live chat widget.",
+    disclaimer:
+      "Chat messages arrive in your inbox as text messages, and you should reply to them fast. Enabling chat and not replying in time will actually hurt your conversion.",
+  },
+  {
+    key: "sms",
+    flag: "smsAlerts",
+    defaultOn: false,
+    title: "SMS lead alerts",
+    desc: "Get a text the moment a new lead comes in.",
+    disclaimer:
+      "You'll get a text for every new lead. Standard SMS rates and monthly limits apply — reply quickly to win the lead while it's still warm.",
+  },
+  {
+    key: "payments",
+    flag: "invoices",
+    defaultOn: false,
+    title: "Invoices & payments",
+    desc: "Send invoices and take card payments online.",
+    disclaimer:
+      "You'll be collecting real payments. You must connect a payout account and handle refunds and disputes yourself — double-check your pricing and tax details before turning this on.",
+  },
+  {
+    key: "ai",
+    flag: "aiAssistant",
+    defaultOn: false,
+    title: "AI assistant",
+    desc: "AI chat that answers questions and follows up with leads.",
+    disclaimer:
+      "The AI answers visitors on your behalf from your knowledge base. Review it carefully — AI can make mistakes, and a wrong answer can mislead a customer.",
+  },
+  {
+    key: "domain",
+    flag: "customDomain",
+    defaultOn: false,
+    title: "Custom domain",
+    desc: "Connect your own domain name.",
+    disclaimer:
+      "Connecting a custom domain requires DNS changes that you control. A misconfiguration can take your site offline until it's corrected.",
+  },
+];
 export interface ClientWorkspace {
   email: string;
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
@@ -53,7 +128,7 @@ export interface ClientWorkspace {
   onboarding: { steps: OnboardingStep[]; complete: boolean };
   preview: PreviewInfo;
   quota: { allowance: number; used: number; remaining: number };
-  upsells: UpsellItem[];
+  features: FeatureCardInfo[];
   tabs: Tab[];
   actions: ActionItem[];
 }
@@ -129,9 +204,10 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     remaining: Math.max(0, updateAllowance - updatesUsed),
   };
 
-  const flagMap = new Map(flags.map((f) => [f.key, f.enabled]));
-  const choice = (k: string): boolean | null => (flagMap.has(k) ? Boolean(flagMap.get(k)) : null);
-  const choices = { booking: choice("booking"), invoices: choice("invoices") };
+  // Per-client feature overrides (feature_flags) layered over plan defaults. Booking & invoices are
+  // explicit opt-ins — off until the owner turns them on (via the feature cards + disclaimers).
+  const overrides = new Map(flags.map((f) => [f.key, f.enabled]));
+  const choices = { booking: overrides.get("booking") === true, invoices: overrides.get("invoices") === true };
 
   const latestVersion = site?.versions[0];
   const website = {
@@ -184,8 +260,8 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   const steps: OnboardingStep[] = [
     { key: "website", title: "Create your website", done: website.exists, optional: false },
   ];
-  if (caps.booking) steps.push({ key: "booking", title: "Take appointments", done: choices.booking !== null, optional: true });
-  if (caps.invoices) steps.push({ key: "invoices", title: "Send invoices", done: choices.invoices !== null, optional: true });
+  if (caps.booking) steps.push({ key: "booking", title: "Take appointments", done: choices.booking, optional: true });
+  if (caps.invoices) steps.push({ key: "invoices", title: "Send invoices", done: choices.invoices, optional: true });
   const complete = steps.every((s) => s.done);
 
   // ── Tabs (auto-customized) ──
@@ -197,8 +273,9 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     tabs.push({ key: "appointments", label: "Appointments", href: "/client/appointments", badge: pendingAppointments || undefined });
   }
   if (caps.invoices && choices.invoices) {
-    tabs.push({ key: "invoices", label: "Invoices", href: "/client/invoices" });
+    tabs.push({ key: "invoices", label: "Finance", href: "/client/invoices" });
   }
+  tabs.push({ key: "services", label: "Services", href: "/client/services" });
   tabs.push({ key: "website", label: "Website", href: "/client/website" });
   tabs.push({ key: "media", label: "Media", href: "/client/media" });
 
@@ -226,21 +303,25 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     actions.push({ title: "Finish setting up", desc: "A few quick steps to tailor your account.", href: "/client", cta: "Continue" });
   }
 
-  // ── Upsells ──
-  const upsells: UpsellItem[] = [];
-  // Launch (no booking) → upsell appointments by upgrading to the cheapest plan that includes it.
-  if (!caps.booking && website.exists) {
-    const target = planForFlag("booking"); // Connect
-    if (target) {
-      upsells.push({
-        reason: "appointments",
-        title: "Add online booking & scheduling",
-        desc: "Let customers book appointments right from your website.",
-        toPlan: target.name,
-        ctaLabel: `Upgrade to ${target.label}`,
-      });
+  // ── Feature cards: enabled (on), available (on plan but off → enable), or locked (upgrade). ──
+  const features: FeatureCardInfo[] = FEATURE_CATALOG.map((f) => {
+    const toggleKey = f.flag ?? "gallery";
+    if (f.flag && !planFlags[f.flag]) {
+      const target = planForFlag(f.flag);
+      return { key: f.key, title: f.title, desc: f.desc, state: "locked" as const, toPlan: target?.name, toPlanLabel: target?.label };
     }
-  }
+    // On plan (or gallery): the override wins; otherwise the feature's default-on policy applies.
+    const ov = overrides.get(toggleKey);
+    const on = ov !== undefined ? ov : f.defaultOn;
+    return {
+      key: f.key,
+      title: f.title,
+      desc: f.desc,
+      state: on ? ("enabled" as const) : ("available" as const),
+      toggleKey,
+      disclaimer: f.disclaimer,
+    };
+  });
 
   return {
     email: ctx.email,
@@ -253,7 +334,7 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     onboarding: { steps, complete },
     preview,
     quota,
-    upsells,
+    features,
     tabs,
     actions,
   };

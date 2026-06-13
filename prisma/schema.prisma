@@ -168,6 +168,22 @@ enum InvoiceStatus {
   OVERDUE
   VOID
   REFUNDED
+  ACCEPTED // estimate/quote accepted by the customer
+  DECLINED // estimate/quote declined
+  EXPIRED  // estimate/quote past its expiry
+}
+
+// A client→customer financial document. Estimates convert to Quotes, Quotes to Invoices;
+// all three share line items, discounts, and tax (see the Invoice model).
+enum FinanceDocType {
+  ESTIMATE
+  QUOTE
+  INVOICE
+}
+
+enum DiscountType {
+  PERCENT // value is basis points (850 = 8.50%)
+  FIXED   // value is cents
 }
 
 enum PaymentStatus {
@@ -858,6 +874,8 @@ model Client {
   media           ClientMedia[]
   websiteUpdates  WebsiteUpdate[]
   upgradeRequests UpgradeRequest[]
+  services        Service[]
+  taxRates        TaxRate[]
 
   @@index([status])
   @@map("clients")
@@ -987,6 +1005,7 @@ model ClientSetting {
   aiSettings      Json? // { mode, escalationRules, tone }
   paymentSettings Json? // { depositPct, applicationFeePct, absorbStripeFees }
   calendarSettings Json? // { provider, externalCalendarId, availabilityRules }
+  financeSettings Json? // { numberPrefixes, defaultTerms, defaultNotes, currency, reminders, lateFee, stripeMode }
   smsSettings     Json?
   emailSettings   Json?
 
@@ -1267,6 +1286,7 @@ model Customer {
   email     String?
   phone     String?
   address   String?
+  billingAddress Json? // structured { line1, city, state, postalCode, country } — used for Stripe Tax
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1375,6 +1395,34 @@ model Booking {
   @@map("bookings")
 }
 
+/// Central catalog of services a client offers — the single source of truth wired into the
+/// appointments scheduler (title + typical duration) and the website services section, and
+/// reusable by invoices. The system-created `isDefault` "Other" row is hidden from the website
+/// but selectable in appointments/invoices, and cannot be deleted.
+model Service {
+  id              String  @id @default(cuid())
+  clientId        String
+  client          Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String?
+  icon            String? // lucide icon key (backend identifier)
+  durationMinutes Int     @default(60) // typical time to complete
+  price           Int? // cents, optional — used by invoices later
+
+  showOnWebsite   Boolean @default(true)
+  isDefault       Boolean @default(false) // the "Other" catch-all — not on the website, not deletable
+  sortOrder       Int     @default(0)
+  active          Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([clientId, active])
+  @@map("services")
+}
+
 model Conversation {
   id         String              @id @default(cuid())
   clientId   String
@@ -1459,26 +1507,50 @@ model TicketComment {
 model Invoice {
   id         String        @id @default(cuid())
   kind       InvoiceKind
+  docType    FinanceDocType @default(INVOICE) // ESTIMATE | QUOTE | INVOICE (client→customer docs)
   clientId   String // ledger owner: tenant whose books this belongs to
   client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   // Set only for CLIENT_CUSTOMER invoices (a client billing its customer).
   customerId String?
   customer   Customer?     @relation(fields: [customerId], references: [id])
 
-  number     String        @unique
+  number     String // unique per client (see @@unique below)
   status     InvoiceStatus @default(DRAFT)
   currency   String        @default("usd")
-  subtotal   Int           @default(0) // cents
-  tax        Int           @default(0)
-  total      Int           @default(0)
-  amountPaid Int           @default(0)
 
+  // Money (all integer cents). subtotal = sum of line amounts (post line-discount, pre invoice
+  // discount); discountTotal = invoice-level discount; tax = sum of line tax; total = subtotal -
+  // discountTotal + tax. amountPaid accumulates payments.
+  subtotal      Int           @default(0)
+  discountType  DiscountType?
+  discountValue Int           @default(0) // PERCENT → basis points, FIXED → cents
+  discountTotal Int           @default(0)
+  tax           Int           @default(0)
+  total         Int           @default(0)
+  amountPaid    Int           @default(0)
+  depositAmount Int           @default(0) // requested up-front deposit, cents
+
+  notes String?
+  terms String?
+
+  issueDate  DateTime?
   dueDate    DateTime?
+  expiresAt  DateTime? // estimate/quote expiry
   sentAt     DateTime?
   viewedAt   DateTime?
+  acceptedAt DateTime?
+  declinedAt DateTime?
   paidAt     DateTime?
 
-  stripeInvoiceId String?
+  // Conversion chain: ESTIMATE → QUOTE → INVOICE.
+  convertedFromId String?  @unique
+  convertedFrom   Invoice? @relation("InvoiceConversion", fields: [convertedFromId], references: [id])
+  convertedTo     Invoice? @relation("InvoiceConversion")
+
+  publicToken String? @unique // customer-facing hosted view token
+
+  stripeInvoiceId    String?
+  taxCalculationId   String? // Stripe Tax calculation id (automatic tax) — used to file the transaction on payment
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1489,7 +1561,9 @@ model Invoice {
   paymentLinks PaymentLink[]
   bookingDeposit Booking? @relation("BookingDeposit")
 
+  @@unique([clientId, number])
   @@index([clientId])
+  @@index([clientId, docType, status])
   @@index([clientId, status])
   @@index([kind])
   @@map("invoices")
@@ -1499,13 +1573,40 @@ model InvoiceLineItem {
   id          String  @id @default(cuid())
   invoiceId   String
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceId   String? // soft reference to the Services catalog (provenance; not FK-enforced)
   description String
   quantity    Int     @default(1)
   unitAmount  Int     @default(0) // cents
-  amount      Int     @default(0)
+
+  // Per-line discount + tax (snapshots so deleting a rate/service can't corrupt totals).
+  discountType  DiscountType?
+  discountValue Int           @default(0) // PERCENT → basis points, FIXED → cents
+  taxRateId     String?
+  taxRateBps    Int           @default(0) // snapshot of the rate at line time
+  taxAmount     Int           @default(0) // computed cents
+  amount        Int           @default(0) // qty * unit − line discount (pre-tax)
+  position      Int           @default(0)
 
   @@index([invoiceId])
   @@map("invoice_line_items")
+}
+
+// Client-defined sales-tax rates (manual). Architected so Stripe Tax can replace the source later.
+model TaxRate {
+  id        String  @id @default(cuid())
+  clientId  String
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  rateBps   Int // basis points, e.g. 850 = 8.50%
+  inclusive Boolean @default(false)
+  isDefault Boolean @default(false)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("tax_rates")
 }
 
 model Payment {

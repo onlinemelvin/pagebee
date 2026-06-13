@@ -16,6 +16,7 @@ export {
   revertToVersion,
   requestReviewChanges,
   requestWebsiteUpdate,
+  gateRegenQuota,
   publishUpdate,
   releaseToClient,
   approveAndPublish,

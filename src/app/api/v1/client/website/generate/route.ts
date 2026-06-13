@@ -3,6 +3,7 @@ import { requireClient, AuthError } from "@/lib/auth/session";
 import {
   startGeneration,
   claimAndRun,
+  gateRegenQuota,
   getLatestJobStatus,
   websiteIntakeSchema,
 } from "@/lib/modules/website";
@@ -31,6 +32,10 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Regenerating a LIVE site consumes a monthly update (first build / pre-launch are free).
+    const gate = await gateRegenQuota(client.id);
+    if (!gate.ok) return NextResponse.json(gate, { status: 409 });
+
     const { jobId } = await startGeneration(client.id, parsed.data);
     // Dev / single-node: process in-process (atomic claim). In production set
     // GENERATION_WORKER=external (or on Vercel) so the durable worker handles it instead.

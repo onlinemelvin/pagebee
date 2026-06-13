@@ -6,9 +6,9 @@ import { getClientWorkspace, setClientFeature } from "@/lib/modules/client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ key: z.enum(["booking", "invoices"]), enabled: z.boolean() });
+const schema = z.object({ key: z.string().min(1).max(40), enabled: z.boolean() });
 
-/** POST /api/v1/client/features — opt in/out of an optional feature (plan-gated). */
+/** POST /api/v1/client/features — enable/disable a feature (plan-gated via the feature cards). */
 export async function POST(req: Request) {
   let client;
   try {
@@ -26,7 +26,10 @@ export async function POST(req: Request) {
 
   const ws = await getClientWorkspace();
   if (!ws) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (parsed.data.enabled && !ws.caps[parsed.data.key]) {
+  // The key must map to a real feature card; you can't enable something locked to a higher tier.
+  const feature = ws.features.find((f) => f.toggleKey === parsed.data.key);
+  if (!feature) return NextResponse.json({ error: "unknown_feature" }, { status: 400 });
+  if (parsed.data.enabled && feature.state === "locked") {
     return NextResponse.json({ error: "feature_not_in_plan" }, { status: 403 });
   }
 

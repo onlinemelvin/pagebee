@@ -2,7 +2,8 @@ import { getClientWebsite, getLatestJobStatus } from "@/lib/modules/website";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateSection } from "@/components/client/RegenerateSection";
-import { ClientUpdateRequest } from "@/components/client/ClientUpdateRequest";
+import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
+import { FeatureCards } from "@/components/client/FeatureCards";
 
 export const dynamic = "force-dynamic";
 
@@ -107,13 +108,18 @@ export default async function ClientWebsitePage() {
         </div>
       )}
 
-      {!awaitingSetup && isPublished && (
-        <ClientUpdateRequest quota={ws.quota} planName={ws.planName} />
-      )}
-
       {!awaitingSetup &&
-        (latest ? (
-          // Already have a website → collapsed behind a button (don't dump the big form on them).
+        (isPublished ? (
+          // LIVE site → one section, two quota-gated actions (request an update / regenerate).
+          <ClientWebsiteChanges
+            quota={ws.quota}
+            planName={ws.planName}
+            maxPages={ws.caps.maxPages}
+            canBook={ws.caps.booking && ws.choices.booking === true}
+            canUseForms={ws.caps.forms}
+          />
+        ) : latest ? (
+          // Pre-launch draft → regenerate the preview (free preview-revision phase).
           <RegenerateSection
             maxPages={ws.caps.maxPages}
             canBook={ws.caps.booking && ws.choices.booking === true}
@@ -134,6 +140,12 @@ export default async function ClientWebsitePage() {
             </div>
           </div>
         ))}
+
+      {!awaitingSetup && (
+        <div className="mt-10">
+          <FeatureCards features={ws.features} title="Add features" />
+        </div>
+      )}
     </div>
   );
 }
