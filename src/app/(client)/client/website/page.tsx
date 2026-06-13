@@ -154,7 +154,7 @@ export default async function ClientWebsitePage() {
           </div>
         ))}
 
-      {!awaitingSetup && (
+      {!awaitingSetup && latest && (
         <div className="mt-10">
           <FeatureCards features={ws.features} title="Add features" />
         </div>

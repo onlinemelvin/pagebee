@@ -260,7 +260,7 @@ export default async function ClientHomePage() {
         )}
       </div>
 
-      <FeatureCards features={ws.features} title="Add features" />
+      {ws.website.exists && <FeatureCards features={ws.features} title="Add features" />}
     </div>
   );
 }
