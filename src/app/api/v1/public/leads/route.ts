@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
+import { rateLimited } from "@/lib/ratelimit";
 import { createLead, leadInputSchema } from "@/lib/modules/lead";
 import "@/lib/events/subscribers"; // register lead.created handlers
 
@@ -28,6 +29,9 @@ export function OPTIONS() {
  * Body: { type?, name, email, phone?, message?, source? }
  */
 export async function POST(req: Request) {
+  const limited = await rateLimited(req, "leads", { limit: 8, windowMs: 60_000 }, CORS);
+  if (limited) return limited;
+
   const site = await resolveSite(getSiteToken(req));
   if (!site) {
     return json({ error: "unauthorized" }, 401);

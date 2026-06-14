@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
+import { rateLimited } from "@/lib/ratelimit";
 import { getAvailability, BookingError } from "@/lib/modules/booking";
 
 export const runtime = "nodejs";
@@ -19,6 +20,9 @@ export function OPTIONS() {
 
 /** GET /api/v1/public/booking/availability?service=<name> — open slots (site token, plan-gated). */
 export async function GET(req: Request) {
+  const limited = await rateLimited(req, "availability", { limit: 40, windowMs: 60_000 }, CORS);
+  if (limited) return limited;
+
   const site = await resolveSite(getSiteToken(req));
   if (!site) return json({ error: "unauthorized" }, 401);
 

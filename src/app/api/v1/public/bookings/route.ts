@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
+import { rateLimited } from "@/lib/ratelimit";
 import { createBooking, bookingInputSchema, BookingError } from "@/lib/modules/booking";
 import "@/lib/events/subscribers"; // register booking.created handlers
 
@@ -23,6 +24,9 @@ export function OPTIONS() {
  * Auth: site token. Plan-gated (Connect/Automate).
  */
 export async function POST(req: Request) {
+  const limited = await rateLimited(req, "bookings", { limit: 8, windowMs: 60_000 }, CORS);
+  if (limited) return limited;
+
   const site = await resolveSite(getSiteToken(req));
   if (!site) return json({ error: "unauthorized" }, 401);
 

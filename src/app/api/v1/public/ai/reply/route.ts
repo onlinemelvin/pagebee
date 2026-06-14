@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
+import { rateLimited } from "@/lib/ratelimit";
 import { sendAiReply, MessagingError } from "@/lib/modules/messaging";
 
 export const runtime = "nodejs";
@@ -30,6 +31,9 @@ const bodySchema = z.object({
  * monthly `aiReplies` allowance. Answers only from the client's approved facts.
  */
 export async function POST(req: Request) {
+  const limited = await rateLimited(req, "ai-reply", { limit: 12, windowMs: 60_000 }, CORS);
+  if (limited) return limited;
+
   const site = await resolveSite(getSiteToken(req));
   if (!site) return json({ error: "unauthorized" }, 401);
 

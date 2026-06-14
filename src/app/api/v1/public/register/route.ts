@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rateLimited } from "@/lib/ratelimit";
 import { registerClient, registerSchema, RegistrationError } from "@/lib/modules/registration";
 
 export const runtime = "nodejs";
@@ -6,6 +7,9 @@ export const dynamic = "force-dynamic";
 
 /** POST /api/v1/public/register — self-signup for a new client business. */
 export async function POST(req: Request) {
+  const limited = await rateLimited(req, "register", { limit: 6, windowMs: 600_000 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null);
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
