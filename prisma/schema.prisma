@@ -400,8 +400,8 @@ model UserRole {
 
 model Employee {
   id               String           @id @default(cuid())
-  userId           String           @unique
-  user             User             @relation(fields: [userId], references: [id])
+  userId           String?          @unique
+  user             User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   employeeType     EmployeeType
   compensationType CompensationType
   employmentStatus EmploymentStatus @default(ACTIVE)
