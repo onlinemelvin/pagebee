@@ -219,7 +219,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
 
             <div className="mx-auto mt-10 max-w-md">
               <Button size="lg" className="w-full" disabled={!plan} onClick={() => plan && setStep("details")}>
-                {plan ? `Get my free ${selectedPlan?.label} preview` : "Select a plan to continue"}
+                {plan ? "Start free — pay only if you love it" : "Select a plan to continue"}
               </Button>
               <p className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center text-xs text-stone-500">
                 <span className="inline-flex items-center gap-1"><Check size={13} className="text-emerald-500" /> No credit card required</span>
@@ -282,7 +282,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
             {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
             <Button type="submit" size="lg" className="mt-6 w-full" disabled={loading}>
-              {loading ? "Creating…" : "Create account & get my free preview"}
+              {loading ? "Creating…" : "Start free — build my preview"}
             </Button>
             <p className="mt-3 text-center text-xs text-stone-500">
               No credit card required. You only pay once you approve your preview and launch.
