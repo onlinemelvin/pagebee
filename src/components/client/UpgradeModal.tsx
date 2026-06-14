@@ -46,8 +46,12 @@ export function UpgradeModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toPlan, reason }),
       });
-      const data = (await res.json().catch(() => null)) as { applied?: boolean; error?: string } | null;
+      const data = (await res.json().catch(() => null)) as { applied?: boolean; checkoutUrl?: string; error?: string } | null;
       if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      if (data?.checkoutUrl) {
+        window.location.href = data.checkoutUrl; // real account → Stripe Checkout
+        return;
+      }
       setResult(data?.applied ? "applied" : "requested");
       if (data?.applied) router.refresh();
     } catch (e) {

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Crown, CreditCard, RefreshCw, Rocket, FileText, Users, Sparkles, Wand2, Bot, MessageSquare, Mail } from "lucide-react";
+import { Crown, CreditCard, Rocket, FileText, Users, Sparkles, Wand2, Bot, MessageSquare, Mail } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { getMonthlyUsage } from "@/lib/modules/usage";
 import { prisma } from "@/lib/db";
 import { planByName, planLimitRows, PLANS, PRICING_NOTE } from "@/lib/plans";
 import { SectionCard } from "@/components/client/ui/SectionCard";
 import { PlanComparison } from "@/components/client/PlanComparison";
+import { CheckoutButton } from "@/components/client/BillingActions";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +51,12 @@ function UsageTile({ icon: Icon, label, used, limit, unlimited, accent }: {
   );
 }
 
-export default async function ClientBillingPage() {
+export default async function ClientBillingPage({ searchParams }: { searchParams: Promise<{ checkout?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
   if (ws.role !== "owner") redirect("/client"); // billing & plan are owner-only
 
+  const { checkout } = await searchParams;
   const plan = planByName(ws.planName) ?? PLANS[0];
   const awaiting = ws.preview.awaitingPayment;
   const now = new Date();
@@ -78,6 +80,17 @@ export default async function ClientBillingPage() {
         <h1 className="font-display text-3xl text-stone-900">Billing &amp; plan</h1>
         <p className="mt-1 text-stone-500">Your plan, usage, and payment method.</p>
       </div>
+
+      {checkout === "success" && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Payment received — thank you! Your subscription is active. It can take a moment to reflect here.
+        </div>
+      )}
+      {checkout === "cancel" && (
+        <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+          Checkout canceled — no charge was made. You can pick up where you left off anytime.
+        </div>
+      )}
 
       {/* Current plan + usage */}
       <SectionCard className="anim-rise">
@@ -152,13 +165,13 @@ export default async function ClientBillingPage() {
           </p>
           <p className="mt-1 max-w-md text-sm text-stone-500">
             {awaiting
-              ? "You approved your preview. Setup-fee checkout is connecting soon — once paid, your site launches, your domain connects, and your features turn on."
-              : "We're connecting secure subscription billing. No charge until you approve your preview and choose to launch."}
+              ? `You approved your preview. Pay the one-time setup fee ($${Math.round(plan.setupFee / 100)}) and your first month ($${Math.round(plan.monthlyFee / 100)}/mo) to launch — your site goes live, your domain connects, and your features turn on.`
+              : "Secure card billing for your plan. No charge until you approve your preview and choose to launch."}
           </p>
           {awaiting && (
-            <Link href="/client" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-300">
-              <RefreshCw size={16} /> Continue from dashboard
-            </Link>
+            <div className="mt-5">
+              <CheckoutButton kind="setup" label="Pay setup fee &amp; launch" />
+            </div>
           )}
         </div>
       </div>
