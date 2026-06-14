@@ -11,6 +11,7 @@ export interface PlanQuotas {
   seats: number; // included team members
   sms?: number; // SMS alerts included / month (omitted = not included)
   aiReplies?: number; // AI assistant replies / month
+  email?: number; // transactional emails / month
   invoices?: number; // invoices / month (soft cap when unlimited)
   invoicesUnlimited?: boolean;
 }
@@ -40,7 +41,7 @@ export const PLANS: PlanDef[] = [
     maxPages: 3,
     monthlyUpdates: 2,
     teamSeats: 1,
-    quotas: { pages: 3, updates: 2, seats: 1 },
+    quotas: { pages: 3, updates: 2, seats: 1, email: 250 },
     highlights: [
       "Up to 3 pages or sections, mobile-friendly",
       "Hosting, SSL & uptime monitoring",
@@ -55,6 +56,7 @@ export const PLANS: PlanDef[] = [
       maxPages: 3,
       monthlyUpdates: 2,
       teamSeats: 1,
+      emailIncludedMonthly: 250,
       // Launch is a brochure site: NO lead-capture forms. The contact section shows
       // click-to-call / email only. Lead forms (and the inbox) are a Connect+ value prop.
       contactForm: false,
@@ -82,7 +84,7 @@ export const PLANS: PlanDef[] = [
     maxPages: 6,
     monthlyUpdates: 5,
     teamSeats: 2,
-    quotas: { pages: 6, updates: 5, seats: 2, sms: 100 },
+    quotas: { pages: 6, updates: 5, seats: 2, sms: 100, email: 1000 },
     recommended: true,
     highlights: [
       "Everything in Launch, plus:",
@@ -108,6 +110,7 @@ export const PLANS: PlanDef[] = [
       chat: true,
       smsAlerts: true,
       smsIncludedMonthly: 100,
+      emailIncludedMonthly: 1000,
       payments: false,
       invoices: false,
       statements: false,
@@ -132,6 +135,7 @@ export const PLANS: PlanDef[] = [
       seats: 5,
       sms: 500,
       aiReplies: 1000,
+      email: 5000,
       invoices: 1000,
       invoicesUnlimited: true,
     },
@@ -159,6 +163,7 @@ export const PLANS: PlanDef[] = [
       chat: true,
       smsAlerts: true,
       smsIncludedMonthly: 500,
+      emailIncludedMonthly: 5000,
       payments: true,
       invoices: true,
       statements: true,
@@ -217,6 +222,7 @@ export function planLimitRows(plan: PlanDef): { label: string; value: string }[]
   ];
   if (q.sms) rows.push({ label: "SMS lead alerts", value: `${q.sms.toLocaleString()} / mo` });
   if (q.aiReplies) rows.push({ label: "AI assistant replies", value: `${q.aiReplies.toLocaleString()} / mo` });
+  if (q.email) rows.push({ label: "Emails", value: `${q.email.toLocaleString()} / mo` });
   if (q.invoices !== undefined) rows.push({ label: "Invoices", value: q.invoicesUnlimited ? "Unlimited" : `${q.invoices} / mo` });
   return rows;
 }

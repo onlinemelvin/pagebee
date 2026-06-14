@@ -21,14 +21,31 @@ const FLAG_FOR: Record<string, string> = {
   invoices: "invoicesIncludedMonthly",
   aiReplies: "aiRepliesIncludedMonthly",
   sms: "smsIncludedMonthly",
+  email: "emailIncludedMonthly",
 };
+
+async function sumUsage(clientId: string, key: string, since: Date): Promise<number> {
+  const r = await prisma.usageRecord.aggregate({
+    where: { clientId, key, createdAt: { gte: since } },
+    _sum: { quantity: true },
+  });
+  return r._sum.quantity ?? 0;
+}
 
 /** key → a counter over the source-of-truth rows for the current period. */
 const COUNTERS: Record<string, (clientId: string, since: Date) => Promise<number>> = {
+  // Invoices have a natural source table; AI/SMS/email are tallied from usage_records.
   invoices: (clientId, since) =>
     prisma.invoice.count({ where: { clientId, docType: "INVOICE", createdAt: { gte: since } } }),
-  // aiReplies / sms: add when an AI-assistant reply / SMS-send path lands.
+  aiReplies: (clientId, since) => sumUsage(clientId, "aiReplies", since),
+  sms: (clientId, since) => sumUsage(clientId, "sms", since),
+  email: (clientId, since) => sumUsage(clientId, "email", since),
 };
+
+/** Record `quantity` units of metered usage for a key (AI replies, SMS, email). */
+export async function recordUsage(clientId: string, key: string, quantity = 1): Promise<void> {
+  await prisma.usageRecord.create({ data: { clientId, key, quantity } });
+}
 
 function monthStart(): Date {
   const n = new Date();

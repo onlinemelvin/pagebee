@@ -150,6 +150,11 @@ function integrationContract(limits: PlanLimits): string {
       "- Payments (ENABLED): POST /api/v1/public/payments/payment-link  body { amount, description } -> { url } ; point the pay button at the returned url",
     );
   }
+  if (limits.aiAssistant) {
+    lines.push(
+      "- AI assistant (ENABLED): POST /api/v1/public/ai/reply  body { message, history?: [{ role:'user'|'assistant', content }] } -> { reply }. Build a small floating chat widget (bottom-right) that posts here, keeps the running history, and shows a typing indicator. The assistant answers from the business's own facts only.",
+    );
+  }
   lines.push(`Use the literal placeholder ${SITE_TOKEN_PLACEHOLDER} for the token — substituted at serve time.`);
   return lines.join("\n");
 }

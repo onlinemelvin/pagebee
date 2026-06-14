@@ -42,6 +42,7 @@ Prices in dollars below; stored in **cents** in `plans` (`setupFee`,
 | Max pages               | 3      | 6       | 12       |
 | Minor updates / month   | 2      | 5       | Unlimited¹ |
 | Team members (seats)    | 1      | 2       | 5        |
+| Emails / month          | 250    | 1,000   | 5,000    |
 | Contact form            | ❌     | ✅      | ✅       |
 | Hosting + SSL           | ✅     | ✅      | ✅       |
 | Subdomain ({slug}.pagebee.com) | ✅ | ✅ | ✅       |

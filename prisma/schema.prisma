@@ -877,6 +877,7 @@ model Client {
   services        Service[]
   taxRates        TaxRate[]
   userInvites     ClientUserInvite[]
+  usageRecords    UsageRecord[]
 
   @@index([status])
   @@map("clients")
@@ -944,6 +945,20 @@ model ClientUser {
 
   @@index([clientId])
   @@map("client_users")
+}
+
+// Metered usage for resources without a natural source table (AI replies, SMS, email).
+// Invoices are counted from the Invoice table directly; these are recorded per send.
+model UsageRecord {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  key       String // aiReplies | sms | email
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, key, createdAt])
+  @@map("usage_records")
 }
 
 // A pending invitation for someone to join a client's team (Automate multi-user).

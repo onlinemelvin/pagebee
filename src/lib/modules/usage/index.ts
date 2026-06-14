@@ -1,5 +1,6 @@
 export {
   requireWithinLimit,
+  recordUsage,
   limitFor,
   getMonthlyUsage,
   getUsageSummary,

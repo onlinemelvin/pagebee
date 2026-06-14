@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Crown, CreditCard, RefreshCw, Rocket, FileText, Users, Sparkles, Wand2 } from "lucide-react";
+import { Crown, CreditCard, RefreshCw, Rocket, FileText, Users, Sparkles, Wand2, Bot, MessageSquare, Mail } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
+import { getMonthlyUsage } from "@/lib/modules/usage";
 import { prisma } from "@/lib/db";
 import { planByName, planLimitRows, PLANS, PRICING_NOTE } from "@/lib/plans";
 import { SectionCard } from "@/components/client/ui/SectionCard";
@@ -59,12 +60,15 @@ export default async function ClientBillingPage() {
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-  const [invoicesThisMonth, memberCount, inviteCount] = await Promise.all([
+  const [invoicesThisMonth, memberCount, inviteCount, aiUsed, smsUsed, emailUsed] = await Promise.all([
     plan.quotas.invoices !== undefined
       ? prisma.invoice.count({ where: { clientId: ws.client.id, docType: "INVOICE", createdAt: { gte: monthStart } } })
       : Promise.resolve(0),
     prisma.clientUser.count({ where: { clientId: ws.client.id } }),
     prisma.clientUserInvite.count({ where: { clientId: ws.client.id, status: "pending", expiresAt: { gt: now } } }),
+    plan.quotas.aiReplies ? getMonthlyUsage(ws.client.id, "aiReplies") : Promise.resolve(0),
+    plan.quotas.sms ? getMonthlyUsage(ws.client.id, "sms") : Promise.resolve(0),
+    plan.quotas.email ? getMonthlyUsage(ws.client.id, "email") : Promise.resolve(0),
   ]);
   const seatsUsed = memberCount + inviteCount;
 
@@ -95,6 +99,15 @@ export default async function ClientBillingPage() {
           <UsageTile icon={Users} label="Team seats" used={seatsUsed} limit={plan.quotas.seats} accent="bg-violet-100 text-violet-700" />
           {plan.quotas.invoices !== undefined && (
             <UsageTile icon={FileText} label="Invoices this month" used={invoicesThisMonth} limit={plan.quotas.invoices} unlimited={plan.quotas.invoicesUnlimited} accent="bg-emerald-100 text-emerald-700" />
+          )}
+          {plan.quotas.aiReplies !== undefined && (
+            <UsageTile icon={Bot} label="AI replies this month" used={aiUsed} limit={plan.quotas.aiReplies} accent="bg-sky-100 text-sky-700" />
+          )}
+          {plan.quotas.sms !== undefined && (
+            <UsageTile icon={MessageSquare} label="SMS this month" used={smsUsed} limit={plan.quotas.sms} accent="bg-rose-100 text-rose-700" />
+          )}
+          {plan.quotas.email !== undefined && (
+            <UsageTile icon={Mail} label="Emails this month" used={emailUsed} limit={plan.quotas.email} accent="bg-orange-100 text-orange-700" />
           )}
         </div>
 
