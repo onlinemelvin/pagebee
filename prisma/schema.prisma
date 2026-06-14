@@ -1289,7 +1289,7 @@ model PreviewRevision {
 model Conversion {
   id           String   @id @default(cuid())
   previewId    String   @unique
-  preview      Preview  @relation(fields: [previewId], references: [id])
+  preview      Preview  @relation(fields: [previewId], references: [id], onDelete: Cascade)
   prospectId   String?
   clientId     String
   selectedPlan PlanName
