@@ -1,9 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingHint } from "@/components/client/ui/LoadingHint";
 
 /** Route-level loading skeleton — mirrors the redesigned Overview layout. */
 export default function Loading() {
   return (
     <div className="space-y-6">
+      <LoadingHint text="Warming up the hive…" />
       <div>
         <Skeleton className="h-4 w-40" />
         <Skeleton className="mt-2 h-9 w-72" />

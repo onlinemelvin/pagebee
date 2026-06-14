@@ -1,9 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingHint } from "@/components/client/ui/LoadingHint";
 
 export default function Loading() {
   return (
     <div>
-      <Skeleton className="h-9 w-40" />
+      <LoadingHint text="Gathering your services…" />
+      <Skeleton className="mt-4 h-9 w-40" />
       <Skeleton className="mt-2 h-4 w-96" />
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (

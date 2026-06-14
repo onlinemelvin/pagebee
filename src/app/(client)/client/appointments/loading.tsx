@@ -1,9 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingHint } from "@/components/client/ui/LoadingHint";
 
 export default function Loading() {
   return (
     <div>
-      <Skeleton className="h-9 w-52" />
+      <LoadingHint text="Lining up your day…" />
+      <Skeleton className="mt-4 h-9 w-52" />
       <Skeleton className="mt-2 h-4 w-96" />
       <div className="mt-6 flex flex-wrap gap-2">
         <Skeleton className="h-10 w-40 rounded-xl" />

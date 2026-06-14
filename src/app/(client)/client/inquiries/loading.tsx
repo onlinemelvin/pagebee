@@ -1,9 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingHint } from "@/components/client/ui/LoadingHint";
 
 export default function Loading() {
   return (
     <div>
-      <Skeleton className="h-9 w-44" />
+      <LoadingHint text="Checking the hive for messages…" />
+      <Skeleton className="mt-4 h-9 w-44" />
       <Skeleton className="mt-2 h-4 w-80" />
       <div className="mt-6 flex flex-wrap gap-2">
         {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-20 rounded-full" />)}
