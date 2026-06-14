@@ -13,6 +13,16 @@ export interface SendEmailParams {
   replyTo?: string;
 }
 
+/** Escape user-controlled values before interpolating them into email HTML bodies. */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Centralized email send (docs/ARCHITECTURE.md §8.8). Falls back to console
  * logging when RESEND_API_KEY is unset, so dev works without a Resend account.

@@ -2,12 +2,8 @@ import { prisma } from "@/lib/db";
 import type { LeadStatus, Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
-import { sendEmail } from "@/lib/modules/email";
+import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import type { LeadInput, LeadUpdateInput } from "./schema";
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
-}
 
 export interface CreateLeadParams {
   clientId: string; // resolved from the site token — never trusted from the body

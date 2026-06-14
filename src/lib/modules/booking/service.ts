@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
-import { sendEmail } from "@/lib/modules/email";
+import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { getServiceDurations } from "@/lib/modules/service";
 import { schedulingSettingsSchema, type BookingInput, type ManualBookingInput, type SchedulingSettings } from "./schema";
 import { computeSlots, normalizeSettings, type BusyInterval, type DaySlots } from "./availability";
@@ -145,8 +145,8 @@ export async function updateBookingStatus(clientId: string, bookingId: string, s
           : `Your appointment was cancelled — ${booking.serviceName}`,
       html:
         status === "CONFIRMED"
-          ? `<p>Your ${booking.serviceName} on ${when} is confirmed. See you then!</p><p>— ${client?.businessName ?? ""}</p>`
-          : `<p>Unfortunately your ${booking.serviceName} on ${when} has been cancelled. Please reach out to reschedule.</p><p>— ${client?.businessName ?? ""}</p>`,
+          ? `<p>Your ${escapeHtml(booking.serviceName)} on ${when} is confirmed. See you then!</p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`
+          : `<p>Unfortunately your ${escapeHtml(booking.serviceName)} on ${when} has been cancelled. Please reach out to reschedule.</p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
       replyTo: client?.ownerEmail ?? undefined,
     });
   }
@@ -204,7 +204,7 @@ export async function sweepBookingReminders(opts?: { hoursAhead?: number }): Pro
       await sendEmail({
         to: email,
         subject: `Reminder: ${b.serviceName} — ${whenInTz(b.startAt, tz)}`,
-        html: `<p>Just a friendly reminder of your <strong>${b.serviceName}</strong> on ${whenInTz(b.startAt, tz)}.</p><p>See you then!</p><p>— ${b.client.businessName}</p>`,
+        html: `<p>Just a friendly reminder of your <strong>${escapeHtml(b.serviceName)}</strong> on ${whenInTz(b.startAt, tz)}.</p><p>See you then!</p><p>— ${escapeHtml(b.client.businessName)}</p>`,
         replyTo: b.client.ownerEmail ?? undefined,
       });
       await prisma.booking.update({ where: { id: b.id }, data: { reminderSentAt: new Date() } });
@@ -347,7 +347,7 @@ export async function rescheduleBooking(
     await sendEmail({
       to: booking.customer.email,
       subject: `Your appointment was rescheduled — ${booking.serviceName}`,
-      html: `<p>Your ${booking.serviceName} has been moved to ${whenInTz(startAt, settings.timezone)}. Reply if that doesn't work for you.</p><p>— ${client?.businessName ?? ""}</p>`,
+      html: `<p>Your ${escapeHtml(booking.serviceName)} has been moved to ${whenInTz(startAt, settings.timezone)}. Reply if that doesn't work for you.</p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
       replyTo: client?.ownerEmail ?? undefined,
     });
   }

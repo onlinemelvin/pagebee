@@ -2,6 +2,7 @@ export {
   getPaymentStatus,
   startConnect,
   completeOAuth,
+  verifyConnectState,
   refreshAccountStatus,
   createInvoiceCheckout,
   processStripeEvent,

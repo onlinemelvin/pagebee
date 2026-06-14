@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { createAuthUser, findAuthUserId } from "@/lib/supabase/admin";
-import { sendEmail } from "@/lib/modules/email";
+import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { writeAudit } from "@/lib/modules/audit";
 
 const INVITE_DAYS = 14;
@@ -137,7 +137,7 @@ export async function inviteMember(clientId: string, actorUserId: string, emailR
   await sendEmail({
     to: email,
     subject: `You're invited to join ${client?.businessName ?? "a team"} on PageBee`,
-    html: `<p>You've been invited to join <strong>${client?.businessName ?? "a business"}</strong> on PageBee.</p>
+    html: `<p>You've been invited to join <strong>${escapeHtml(client?.businessName ?? "a business")}</strong> on PageBee.</p>
 <p><a href="${url}" style="display:inline-block;background:#f59e0b;color:#1c1917;padding:10px 18px;border-radius:10px;font-weight:600;text-decoration:none">Accept invitation</a></p>
 <p style="color:#78716c;font-size:13px">Or paste this link: ${url}<br/>This invitation expires in ${INVITE_DAYS} days.</p>`,
   });

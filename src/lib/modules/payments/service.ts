@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -48,6 +49,31 @@ async function assertTier(clientId: string): Promise<void> {
   if (!(flags.invoices ?? flags.payments)) throw new PaymentError(403, "tier_required");
 }
 
+function connectStateSecret(): string {
+  return process.env.STRIPE_CONNECT_STATE_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "pagebee-dev-connect-secret";
+}
+
+/** Signed, single-use-ish OAuth `state` bound to a client (CSRF + tamper protection). */
+function signConnectState(clientId: string): string {
+  const nonce = crypto.randomBytes(9).toString("base64url");
+  const sig = crypto.createHmac("sha256", connectStateSecret()).update(`${clientId}.${nonce}`).digest("hex").slice(0, 32);
+  return `${clientId}.${nonce}.${sig}`;
+}
+
+/** True only if `state` is a valid signed state for `clientId` (the authenticated session client). */
+export function verifyConnectState(state: string, clientId: string): boolean {
+  const parts = state.split(".");
+  if (parts.length !== 3) return false;
+  const [cid, nonce, sig] = parts;
+  if (cid !== clientId) return false;
+  const expected = crypto.createHmac("sha256", connectStateSecret()).update(`${cid}.${nonce}`).digest("hex").slice(0, 32);
+  try {
+    return sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * BYO ("bring your own Stripe") — OAuth connect to the client's existing account. The white-label
  * "use ours" path is the Custom-account flow in onboarding.ts (submitOnboarding), not here.
@@ -63,21 +89,26 @@ export async function startConnect(clientId: string): Promise<string> {
     client_id: cid,
     scope: "read_write",
     redirect_uri: `${appBaseUrl()}/api/v1/client/payments/connect/oauth`,
-    state: clientId,
+    state: signConnectState(clientId),
   });
   return `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
 }
 
-/** BYO OAuth callback — exchange the code for the connected account id. */
-export async function completeOAuth(state: string, code: string): Promise<void> {
+/**
+ * BYO OAuth callback — exchange the code for the connected account id and attach it to `clientId`.
+ * `clientId` MUST be the authenticated session client (the callback verifies the signed `state`
+ * matches it), never a value taken straight from the request — otherwise an attacker could link
+ * their Stripe account to someone else's tenant and divert that tenant's payments.
+ */
+export async function completeOAuth(clientId: string, code: string): Promise<void> {
   if (!stripeConfigured()) throw new PaymentError(503, "stripe_not_configured");
   const stripe = getStripe();
   const token = await stripe.oauth.token({ grant_type: "authorization_code", code });
   const account = token.stripe_user_id;
   if (!account) throw new PaymentError(400, "oauth_failed");
-  await prisma.client.update({ where: { id: state }, data: { stripeConnectAccountId: account } });
-  await refreshAccountStatus(state);
-  await writeAudit({ action: "payments.byo_connected", entityType: "Client", entityId: state, clientId: state });
+  await prisma.client.update({ where: { id: clientId }, data: { stripeConnectAccountId: account } });
+  await refreshAccountStatus(clientId);
+  await writeAudit({ action: "payments.byo_connected", entityType: "Client", entityId: clientId, clientId });
 }
 
 /** Pull the latest account flags from Stripe and persist paymentsEnabled. */

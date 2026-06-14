@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma, Invoice, InvoiceLineItem, FinanceDocType, InvoiceStatus } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
-import { sendEmail } from "@/lib/modules/email";
+import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { requireWithinLimit, UsageError } from "@/lib/modules/usage";
 import { computeTotals, type LineInput } from "./money";
 import { calculateTax } from "@/lib/modules/payments/tax";
@@ -486,7 +486,7 @@ export async function sendDocument(clientId: string, id: string): Promise<Docume
     await sendEmail({
       to: inv.customer.email,
       subject: `${label} ${inv.number} from ${client?.businessName ?? "your provider"}`,
-      html: `<p>Hi ${inv.customer.name ?? "there"},</p><p>Your ${label.toLowerCase()} <strong>${inv.number}</strong> is ready to view.</p><p><a href="${APP_URL}/d/${token}">View ${label.toLowerCase()} →</a></p><p>— ${client?.businessName ?? ""}</p>`,
+      html: `<p>Hi ${escapeHtml(inv.customer.name ?? "there")},</p><p>Your ${label.toLowerCase()} <strong>${escapeHtml(inv.number)}</strong> is ready to view.</p><p><a href="${APP_URL}/d/${token}">View ${label.toLowerCase()} →</a></p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
       replyTo: client?.ownerEmail ?? undefined,
     });
   }
