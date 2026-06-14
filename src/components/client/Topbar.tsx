@@ -10,6 +10,7 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { ClientNav, type NavTab } from "./ClientNav";
+import { LogoMark } from "@/components/brand/Logo";
 
 interface ActionItem { title: string; desc: string; href: string; cta: string; primary?: boolean }
 
@@ -71,7 +72,7 @@ export function Topbar({
           <aside className="anim-rise absolute left-0 top-0 flex h-full w-72 flex-col bg-white p-4 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <span className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 text-lg">🐝</span>
+                <LogoMark size={32} />
                 <span className="max-w-[150px] truncate font-display text-sm font-semibold text-stone-900">{businessName}</span>
               </span>
               <button onClick={() => setDrawer(false)} className="grid h-8 w-8 place-items-center rounded-lg text-stone-500 hover:bg-stone-100" aria-label="Close menu">

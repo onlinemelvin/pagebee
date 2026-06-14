@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand/Logo";
 
-function Logo({ className }: { className?: string }) {
-  return (
-    <Link href="/" className={className ?? "group flex items-center gap-2"}>
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 text-lg shadow-sm transition-transform group-hover:-rotate-6 group-hover:scale-105">
-        🐝
-      </span>
-      <span className="font-display text-xl font-semibold tracking-tight text-stone-900">PageBee</span>
-    </Link>
-  );
+function Logo() {
+  return <BrandLogo href="/" size={32} textClassName="text-xl" priority />;
 }
 
 const NAV = [

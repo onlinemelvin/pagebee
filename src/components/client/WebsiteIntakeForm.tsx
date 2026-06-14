@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { LogoMark } from "@/components/brand/Logo";
 
 type Phase = "idle" | "working" | "error";
 
@@ -406,7 +407,7 @@ export function WebsiteIntakeForm({
   if (phase === "working") {
     return (
       <div className="anim-rise rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center">
-        <span className="pulse-dot mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-white text-2xl shadow-sm">🐝</span>
+        <span className="pulse-dot mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm"><LogoMark size={32} /></span>
         <p className="font-display text-xl text-stone-900">We&apos;re setting up your website</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-stone-600">
           Thanks! Our team is putting your site together. This can take up to 48 hours, though it&apos;s

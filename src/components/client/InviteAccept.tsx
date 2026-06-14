@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { LogoMark } from "@/components/brand/Logo";
 
 const ERR: Record<string, string> = {
   invite_invalid: "This invitation is no longer valid or has expired.",
@@ -62,7 +63,7 @@ export function InviteAccept({
 
   return (
     <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-7 shadow-sm">
-      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-400 text-2xl shadow-sm">🐝</span>
+      <LogoMark size={48} />
       <h1 className="mt-4 font-display text-2xl text-stone-900">Join {businessName}</h1>
       <p className="mt-1 text-sm text-stone-500">
         You&apos;ve been invited to join <strong>{businessName}</strong> on PageBee as a team member.

@@ -4,13 +4,17 @@
   /* Warm "paper" background with near-black ink — the PageBee honey palette. */
   --background: #fdfbf5;
   --foreground: #1c1917;
+  /* Brand amber — matches the yellow in the PageBee bee mark. */
+  --brand-amber: #f5a623;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand-amber: var(--brand-amber);
   --font-sans: var(--font-geist-sans);
   --font-display: var(--font-fraunces);
+  --font-brand: var(--font-brand);
 }
 
 body {
@@ -21,6 +25,11 @@ body {
 
 .font-display {
   font-family: var(--font-display), ui-serif, Georgia, serif;
+}
+
+/* Brand wordmark — rounded, friendly to pair with the bee mark. */
+.font-brand {
+  font-family: var(--font-brand), ui-rounded, "Segoe UI", system-ui, sans-serif;
 }
 
 /* ----------------------------------------------------------------------------

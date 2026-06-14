@@ -5,6 +5,7 @@ import { getClientWorkspace } from "@/lib/modules/client";
 import { planByName } from "@/lib/plans";
 import { ClientNav } from "@/components/client/ClientNav";
 import { Topbar } from "@/components/client/Topbar";
+import { LogoMark } from "@/components/brand/Logo";
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const ws = await getClientWorkspace();
@@ -37,8 +38,8 @@ export default async function ClientLayout({ children }: { children: React.React
   return (
     <div className="grid min-h-screen grid-cols-1 bg-stone-50 sm:grid-cols-[248px_1fr]">
       <aside className="sticky top-0 hidden h-screen flex-col overflow-y-auto border-r border-stone-200 bg-white px-4 py-6 sm:flex">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-400 text-lg shadow-sm">🐝</span>
+        <div className="mb-6 flex items-center gap-2.5 px-2">
+          <LogoMark size={36} />
           <div className="leading-tight">
             <p className="max-w-[150px] truncate font-display text-sm font-semibold text-stone-900">{ws.client.businessName}</p>
             <p className="text-xs text-stone-400">{ws.planName} plan</p>

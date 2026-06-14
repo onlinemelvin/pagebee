@@ -6,6 +6,7 @@ import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateSection } from "@/components/client/RegenerateSection";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
+import { LogoMark } from "@/components/brand/Logo";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function ClientWebsitePage() {
       {awaitingSetup && (
         <div className="anim-rise mt-6 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-6">
           <div className="flex items-start gap-4">
-            <span className="pulse-dot mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm">🐝</span>
+            <span className="pulse-dot mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white shadow-sm"><LogoMark size={32} /></span>
             <div className="min-w-0 flex-1">
               <p className="font-display text-xl text-stone-900">We&apos;re building your website</p>
               <p className="mt-1 text-sm text-stone-600">

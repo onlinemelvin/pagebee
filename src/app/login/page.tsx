@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandLogo } from "@/components/brand/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -60,10 +61,8 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--background)] px-6">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-400 text-xl">🐝</span>
-          <span className="font-display text-2xl font-semibold text-stone-900">PageBee</span>
-        </div>
+        <BrandLogo href="/" size={40} textClassName="text-2xl" className="mb-8" priority />
+
         <h1 className="font-display text-2xl text-stone-900">Sign in</h1>
         <p className="mt-1 text-sm text-stone-500">Sign in to your PageBee account.</p>
 

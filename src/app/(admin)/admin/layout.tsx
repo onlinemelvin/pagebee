@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { getAuthContext, hasPermission } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 import { AdminNav, type AdminTab } from "@/components/admin/AdminNav";
+import { LogoMark, Wordmark } from "@/components/brand/Logo";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAuthContext();
@@ -23,10 +24,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="grid min-h-screen grid-cols-[240px_1fr] bg-stone-50">
       <aside className="sticky top-0 flex h-screen flex-col overflow-y-auto border-r border-stone-200 bg-white px-4 py-6">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-stone-900 text-lg shadow-sm">🐝</span>
+        <div className="mb-6 flex items-center gap-2.5 px-2">
+          <LogoMark size={36} />
           <div className="leading-tight">
-            <p className="font-display text-lg font-semibold text-stone-900">PageBee</p>
+            <Wordmark className="text-lg" />
             <p className="text-xs text-stone-400">{ctx.isAdmin ? "Admin console" : "Reviewer"}</p>
           </div>
         </div>

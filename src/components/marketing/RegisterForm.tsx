@@ -12,6 +12,7 @@ import { isTestEmail } from "@/lib/modules/registration/schema";
 import { PLANS, type PlanName } from "@/lib/plans";
 import { PLAN_BADGES } from "@/lib/planBadges";
 import { cn, formatUsd } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand/Logo";
 
 const ERROR_COPY: Record<string, string> = {
   email_taken: "An account with this email already exists. Try signing in.",
@@ -116,10 +117,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
   return (
     <main className="min-h-screen bg-[var(--background)] px-6 py-12">
       <div className={cn("mx-auto transition-all", step === "plan" ? "max-w-6xl" : "max-w-xl")}>
-        <Link href="/" className="group mb-8 flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-400 text-xl shadow-sm transition-transform group-hover:-rotate-6 group-hover:scale-105">🐝</span>
-          <span className="font-display text-2xl font-semibold text-stone-900">PageBee</span>
-        </Link>
+        <BrandLogo href="/" size={40} textClassName="text-2xl" className="mb-8" />
 
         {/* TODO(dev): temporary — remove before launch. */}
         <button
