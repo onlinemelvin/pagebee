@@ -39,23 +39,27 @@ Prices in dollars below; stored in **cents** in `plans` (`setupFee`,
 | ----------------------- | :----: | :-----: | :------: |
 | Setup fee               | $399   | $699    | $999     |
 | Monthly fee             | $39    | $89     | $179     |
-| Max pages               | 5      | 8       | 12       |
-| Minor updates / month   | 1      | 3       | 5        |
-| Contact form            | ✅     | ✅      | ✅       |
+| Max pages               | 3      | 6       | 12       |
+| Minor updates / month   | 2      | 5       | Unlimited¹ |
+| Team members (seats)    | 1      | 2       | 5        |
+| Contact form            | ❌     | ✅      | ✅       |
 | Hosting + SSL           | ✅     | ✅      | ✅       |
 | Subdomain ({slug}.pagebee.com) | ✅ | ✅ | ✅       |
 | Custom domain           | ❌     | ✅      | ✅       |
 | Basic analytics         | ✅     | ✅      | ✅       |
 | Booking                 | ❌     | ✅      | ✅       |
 | Website chat            | ❌     | ✅      | ✅       |
-| SMS alerts              | ❌     | ✅ (50/mo) | ✅ (100/mo) |
-| AI assistant            | ❌     | ❌      | ✅ (100 replies/mo) |
+| SMS alerts              | ❌     | ✅ (100/mo) | ✅ (500/mo) |
+| AI assistant            | ❌     | ❌      | ✅ (1,000 replies/mo) |
 | AI follow-ups / scoring / summaries | ❌ | ❌ | ✅       |
 | Payments / payment links| ❌     | ❌      | ✅       |
-| Invoices                | ❌     | ❌      | ✅ (25/mo) |
+| Invoices                | ❌     | ❌      | ✅ (Unlimited¹) |
 | Statements / payment portal | ❌ | ❌      | ✅       |
 | Paid bookings / deposits| ❌     | ❌      | ✅       |
 | AI invoice follow-ups   | ❌     | ❌      | ✅       |
+
+¹ "Unlimited" = fair-use: a high internal soft cap (updates 30/mo, invoices 1,000/mo) that
+normal usage never reaches; `unlimitedUpdates` / `unlimitedInvoices` flags drive the UI label.
 
 ### Canonical flag sets
 
@@ -66,8 +70,8 @@ generator and API gating read.
 // LAUNCH
 {
   "planName": "Launch",
-  "setupFee": 399, "monthlyFee": 39, "maxPages": 5, "monthlyUpdates": 1,
-  "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
+  "setupFee": 399, "monthlyFee": 39, "maxPages": 3, "monthlyUpdates": 2, "teamSeats": 1,
+  "contactForm": false, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": false,
   "booking": false, "chat": false, "smsAlerts": false,
   "payments": false, "invoices": false, "statements": false,
@@ -79,10 +83,10 @@ generator and API gating read.
 // CONNECT
 {
   "planName": "Connect",
-  "setupFee": 699, "monthlyFee": 89, "maxPages": 8, "monthlyUpdates": 3,
+  "setupFee": 699, "monthlyFee": 89, "maxPages": 6, "monthlyUpdates": 5, "teamSeats": 2,
   "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": true,
-  "booking": true, "chat": true, "smsAlerts": true, "smsIncludedMonthly": 50,
+  "booking": true, "chat": true, "smsAlerts": true, "smsIncludedMonthly": 100,
   "payments": false, "invoices": false, "statements": false,
   "paymentReminders": false, "aiAssistant": false, "aiFollowUps": false
 }
@@ -92,15 +96,16 @@ generator and API gating read.
 // AUTOMATE
 {
   "planName": "Automate",
-  "setupFee": 999, "monthlyFee": 179, "maxPages": 12, "monthlyUpdates": 5,
+  "setupFee": 999, "monthlyFee": 179, "maxPages": 12, "monthlyUpdates": 30, "teamSeats": 5,
   "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": true,
-  "booking": true, "chat": true, "smsAlerts": true, "smsIncludedMonthly": 100,
+  "booking": true, "chat": true, "smsAlerts": true, "smsIncludedMonthly": 500,
   "payments": true, "invoices": true, "statements": true, "paymentLinks": true,
   "paidBookings": true, "paymentReminders": true, "customerPaymentPortal": true,
   "aiAssistant": true, "aiFollowUps": true, "aiLeadScoring": true,
   "aiSummaries": true, "aiInvoiceFollowUps": true,
-  "aiRepliesIncludedMonthly": 100, "invoicesIncludedMonthly": 25
+  "aiRepliesIncludedMonthly": 1000, "invoicesIncludedMonthly": 1000,
+  "unlimitedUpdates": true, "unlimitedInvoices": true
 }
 ```
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowUpRight, ExternalLink, Eye, Wand2 } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
+import { planByName } from "@/lib/plans";
 import { ClientNav } from "@/components/client/ClientNav";
 import { Topbar } from "@/components/client/Topbar";
 
@@ -20,6 +21,7 @@ export default async function ClientLayout({ children }: { children: React.React
   const ctaExternal = cta.href.startsWith("http");
 
   const pct = ws.quota.allowance > 0 ? Math.min(100, Math.round((ws.quota.used / ws.quota.allowance) * 100)) : 0;
+  const unlimitedUpdates = planByName(ws.planName)?.quotas.updatesUnlimited === true;
 
   return (
     <div className="grid min-h-screen grid-cols-1 bg-stone-50 sm:grid-cols-[248px_1fr]">
@@ -44,7 +46,10 @@ export default async function ClientLayout({ children }: { children: React.React
 
         <div className="mt-3 border-t border-stone-100 pt-3">
           <ClientNav
-            tabs={[{ key: "billing", label: "Billing", href: "/client/billing" }]}
+            tabs={[
+              ...(ws.caps.teamSeats > 1 ? [{ key: "team", label: "Team", href: "/client/team" }] : []),
+              { key: "billing", label: "Billing", href: "/client/billing" },
+            ]}
           />
         </div>
 
@@ -54,14 +59,18 @@ export default async function ClientLayout({ children }: { children: React.React
             <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-stone-700">Monthly updates</span>
-                <span className="text-stone-500">{ws.quota.remaining} left</span>
+                <span className="text-stone-500">{unlimitedUpdates ? "Unlimited" : `${ws.quota.remaining} left`}</span>
               </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
-                <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${pct}%` }} />
-              </div>
-              <Link href="/client/billing" className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800">
-                <ArrowUpRight size={13} /> Need more? Upgrade
-              </Link>
+              {!unlimitedUpdates && (
+                <>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+                    <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <Link href="/client/billing" className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800">
+                    <ArrowUpRight size={13} /> Need more? Upgrade
+                  </Link>
+                </>
+              )}
             </div>
           )}
         </div>

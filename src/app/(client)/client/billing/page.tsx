@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { Crown, CreditCard, RefreshCw, Rocket, CheckCircle2 } from "lucide-react";
+import { Crown, CreditCard, RefreshCw, Rocket, FileText, Users, Sparkles, Wand2 } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
+import { prisma } from "@/lib/db";
+import { planByName, planLimitRows, PLANS, PRICING_NOTE } from "@/lib/plans";
 import { SectionCard } from "@/components/client/ui/SectionCard";
+import { PlanComparison } from "@/components/client/PlanComparison";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +16,6 @@ const STATUS_LABEL: Record<string, string> = {
   EXPIRED: "Preview expired",
   NONE: "No website yet",
 };
-
 const STATUS_TONE: Record<string, string> = {
   LIVE: "bg-green-100 text-green-800",
   SETUP_FEE_PENDING: "bg-amber-100 text-amber-800",
@@ -23,64 +25,109 @@ const STATUS_TONE: Record<string, string> = {
   NONE: "bg-stone-100 text-stone-600",
 };
 
+function UsageTile({ icon: Icon, label, used, limit, unlimited, accent }: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string; used: number; limit: number; unlimited?: boolean; accent: string;
+}) {
+  const pct = unlimited ? Math.min(100, Math.round((used / Math.max(limit, 1)) * 100)) : limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white p-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+        <span className={`grid h-7 w-7 place-items-center rounded-lg ${accent}`}><Icon size={15} /></span>
+        {label}
+      </div>
+      <p className="mt-2 font-display text-2xl text-stone-900">
+        {used}
+        <span className="text-sm font-normal text-stone-400"> / {unlimited ? "∞" : limit}</span>
+      </p>
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
+        <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      {unlimited && <p className="mt-1 text-[11px] text-stone-400">Unlimited (fair use)</p>}
+    </div>
+  );
+}
+
 export default async function ClientBillingPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
 
+  const plan = planByName(ws.planName) ?? PLANS[0];
   const awaiting = ws.preview.awaitingPayment;
-  const pct = ws.quota.allowance > 0 ? Math.min(100, Math.round((ws.quota.used / ws.quota.allowance) * 100)) : 0;
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const [invoicesThisMonth, memberCount, inviteCount] = await Promise.all([
+    plan.quotas.invoices !== undefined
+      ? prisma.invoice.count({ where: { clientId: ws.client.id, docType: "INVOICE", createdAt: { gte: monthStart } } })
+      : Promise.resolve(0),
+    prisma.clientUser.count({ where: { clientId: ws.client.id } }),
+    prisma.clientUserInvite.count({ where: { clientId: ws.client.id, status: "pending", expiresAt: { gt: now } } }),
+  ]);
+  const seatsUsed = memberCount + inviteCount;
 
   return (
-    <div>
-      <h1 className="font-display text-3xl text-stone-900">Billing &amp; plan</h1>
-      <p className="mt-1 text-stone-500">Your plan, usage, and payment method.</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-3xl text-stone-900">Billing &amp; plan</h1>
+        <p className="mt-1 text-stone-500">Your plan, usage, and payment method.</p>
+      </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
-        {/* Plan card */}
-        <SectionCard className="anim-rise lg:col-span-2">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-sm">
-                <Crown size={24} />
-              </span>
-              <div>
-                <p className="font-display text-2xl text-stone-900">{ws.planName} plan</p>
-                <p className="text-sm text-stone-500">{STATUS_LABEL[ws.preview.status] ?? ws.preview.status}</p>
-              </div>
+      {/* Current plan + usage */}
+      <SectionCard className="anim-rise">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-sm"><Crown size={24} /></span>
+            <div>
+              <p className="font-display text-2xl text-stone-900">{plan.label} plan</p>
+              <p className="text-sm text-stone-500">{STATUS_LABEL[ws.preview.status] ?? ws.preview.status} · ${Math.round(plan.monthlyFee / 100)}/mo</p>
             </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_TONE[ws.preview.status] ?? "bg-stone-100 text-stone-600"}`}>
-              {ws.preview.status.replace(/_/g, " ")}
-            </span>
           </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_TONE[ws.preview.status] ?? "bg-stone-100 text-stone-600"}`}>
+            {ws.preview.status.replace(/_/g, " ")}
+          </span>
+        </div>
 
-          {ws.quota.allowance > 0 && (
-            <div className="mt-6 rounded-xl bg-stone-50 p-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-stone-700">Monthly website updates</span>
-                <span className="text-stone-500">{ws.quota.used} of {ws.quota.allowance} used</span>
-              </div>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-stone-200">
-                <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${pct}%` }} />
-              </div>
-              <p className="mt-2 text-xs text-stone-400">{ws.quota.remaining} remaining this month · resets on the 1st.</p>
-            </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <UsageTile icon={Wand2} label="Website updates" used={ws.quota.used} limit={ws.quota.allowance} unlimited={plan.quotas.updatesUnlimited} accent="bg-amber-100 text-amber-700" />
+          <UsageTile icon={Users} label="Team seats" used={seatsUsed} limit={plan.quotas.seats} accent="bg-violet-100 text-violet-700" />
+          {plan.quotas.invoices !== undefined && (
+            <UsageTile icon={FileText} label="Invoices this month" used={invoicesThisMonth} limit={plan.quotas.invoices} unlimited={plan.quotas.invoicesUnlimited} accent="bg-emerald-100 text-emerald-700" />
           )}
-        </SectionCard>
+        </div>
 
-        {/* Upgrade nudge */}
-        <SectionCard className="anim-rise" style={{ "--d": "80ms" } as React.CSSProperties}>
-          <p className="font-display text-lg text-stone-900">Need more room?</p>
-          <p className="mt-1 text-sm text-stone-500">Higher tiers unlock more pages, more monthly updates, and advanced features.</p>
-          <ul className="mt-4 space-y-2 text-sm text-stone-600">
-            {["More pages", "More monthly updates", "Bookings, invoices & AI"].map((f) => (
-              <li key={f} className="flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-500" /> {f}</li>
+        {/* Included limits sneak-peek */}
+        <div className="mt-5 rounded-xl bg-stone-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">What&apos;s included</p>
+          <div className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+            {planLimitRows(plan).map((r) => (
+              <div key={r.label} className="flex items-center justify-between">
+                <span className="text-stone-500">{r.label}</span>
+                <span className="font-semibold text-stone-800">{r.value}</span>
+              </div>
             ))}
-          </ul>
-        </SectionCard>
+          </div>
+        </div>
+
+        {ws.caps.teamSeats > 1 && (
+          <Link href="/client/team" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-amber-700 hover:text-amber-800">
+            <Users size={15} /> Manage your team →
+          </Link>
+        )}
+      </SectionCard>
+
+      {/* Plan comparison / upgrade */}
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles size={16} className="text-amber-500" />
+          <h2 className="font-display text-lg text-stone-900">Compare plans</h2>
+        </div>
+        <PlanComparison currentPlan={plan.name} />
+        <p className="mt-3 text-xs text-stone-400">{PRICING_NOTE}</p>
       </div>
 
       {/* Payment / launch CTA */}
-      <div className="anim-rise mt-4 overflow-hidden rounded-2xl border border-stone-200 bg-white" style={{ "--d": "160ms" } as React.CSSProperties}>
+      <div className="anim-rise overflow-hidden rounded-2xl border border-stone-200 bg-white">
         <div className="flex flex-col items-center px-6 py-10 text-center">
           <span className={`grid h-14 w-14 place-items-center rounded-2xl ${awaiting ? "bg-amber-100 text-amber-600" : "bg-stone-100 text-stone-400"}`}>
             {awaiting ? <Rocket size={26} /> : <CreditCard size={26} />}
@@ -91,7 +138,7 @@ export default async function ClientBillingPage() {
           <p className="mt-1 max-w-md text-sm text-stone-500">
             {awaiting
               ? "You approved your preview. Setup-fee checkout is connecting soon — once paid, your site launches, your domain connects, and your features turn on."
-              : "We're connecting secure payments. No charge until you approve your preview and choose to launch."}
+              : "We're connecting secure subscription billing. No charge until you approve your preview and choose to launch."}
           </p>
           {awaiting && (
             <Link href="/client" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-300">

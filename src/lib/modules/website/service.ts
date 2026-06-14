@@ -250,7 +250,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
 
     if (surgical && prev) {
       await setJobStage(job.id, 45, "Applying your requested changes");
-      const edited = await editSiteHtml(prev.generatedHtml as string, edits);
+      const edited = await editSiteHtml(prev.generatedHtml as string, edits, limits);
       generatedHtml = edited.html;
       htmlEngine = edited.engine;
       configEngine = "carried-forward";

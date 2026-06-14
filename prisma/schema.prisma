@@ -876,6 +876,7 @@ model Client {
   upgradeRequests UpgradeRequest[]
   services        Service[]
   taxRates        TaxRate[]
+  userInvites     ClientUserInvite[]
 
   @@index([status])
   @@map("clients")
@@ -943,6 +944,26 @@ model ClientUser {
 
   @@index([clientId])
   @@map("client_users")
+}
+
+// A pending invitation for someone to join a client's team (Automate multi-user).
+// Accepting links the invitee's user to the client via a ClientUser row.
+model ClientUserInvite {
+  id         String    @id @default(cuid())
+  clientId   String
+  client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  email      String
+  role       String    @default("staff") // owner, staff
+  token      String    @unique
+  status     String    @default("pending") // pending, accepted, revoked
+  invitedBy  String? // userId of the inviter
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([email])
+  @@map("client_user_invites")
 }
 
 model Subscription {
