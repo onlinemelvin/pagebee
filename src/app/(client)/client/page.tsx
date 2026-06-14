@@ -108,7 +108,7 @@ export default async function ClientHomePage() {
         )}
       </div>
 
-      {!ws.onboarding.complete && <SetupWizard steps={ws.onboarding.steps} />}
+      {!ws.onboarding.complete && ws.role === "owner" && <SetupWizard steps={ws.onboarding.steps} />}
 
       <PreviewPanel preview={ws.preview} />
 

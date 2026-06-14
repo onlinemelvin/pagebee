@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireOwner, AuthError } from "@/lib/auth/session";
 import { startConnect, PaymentError } from "@/lib/modules/payments";
 import { appBaseUrl } from "@/lib/stripe/client";
 
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireOwner());
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.redirect(`${appBaseUrl()}/login`);
     throw err;

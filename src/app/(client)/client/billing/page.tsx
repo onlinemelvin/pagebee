@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Crown, CreditCard, RefreshCw, Rocket, FileText, Users, Sparkles, Wand2 } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { prisma } from "@/lib/db";
@@ -51,6 +52,7 @@ function UsageTile({ icon: Icon, label, used, limit, unlimited, accent }: {
 export default async function ClientBillingPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
+  if (ws.role !== "owner") redirect("/client"); // billing & plan are owner-only
 
   const plan = planByName(ws.planName) ?? PLANS[0];
   const awaiting = ws.preview.awaitingPayment;

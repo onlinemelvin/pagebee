@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireOwner, AuthError } from "@/lib/auth/session";
 import { uploadIdentityDocument, PaymentError } from "@/lib/modules/payments";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ const ALLOWED = ["image/jpeg", "image/png", "application/pdf"];
 export async function POST(req: Request) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireOwner());
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

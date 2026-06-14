@@ -86,7 +86,14 @@ export function requireReview(): Promise<AuthContext> {
 export async function requireClient() {
   const result = await getCurrentClient();
   if (!result) throw new AuthError(401);
-  return result; // { ctx, client }
+  return result; // { ctx, client, role }
+}
+
+/** For owner-only client actions: throws 401 (no tenant) or 403 (staff member). */
+export async function requireOwner() {
+  const result = await requireClient();
+  if (result.role !== "owner") throw new AuthError(403);
+  return result;
 }
 
 /** The client business (tenant) owned by the current user, with subscription + plan. */
@@ -97,7 +104,7 @@ async function getCurrentClientRaw() {
     where: { userId: ctx.userId },
     include: { client: { include: { subscription: { include: { plan: true } } } } },
   });
-  return membership ? { ctx, client: membership.client } : null;
+  return membership ? { ctx, client: membership.client, role: membership.role } : null;
 }
 
 // Per-request memoization: layout + page + API guards in the same request resolve identity and

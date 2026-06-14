@@ -119,6 +119,7 @@ const FEATURE_CATALOG: {
 ];
 export interface ClientWorkspace {
   email: string;
+  role: string; // "owner" | "staff"
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
   caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; maxPages: number; teamSeats: number };
@@ -326,6 +327,7 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
 
   return {
     email: ctx.email,
+    role: membership.role,
     client: { id: client.id, businessName: client.businessName, ownerName: client.ownerName, isTest: client.isTest },
     planName: client.subscription?.plan.name ?? "—",
     caps,

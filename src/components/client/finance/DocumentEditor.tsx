@@ -216,7 +216,11 @@ export function DocumentEditor({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? `Failed (${res.status})`);
+        const msg: Record<string, string> = {
+          invoice_limit_reached: "You've reached this month's invoice limit. It resets on the 1st — or upgrade for more.",
+          tier_required: "Invoices are available on the Automate plan.",
+        };
+        throw new Error(msg[data?.error ?? ""] ?? data?.error ?? `Failed (${res.status})`);
       }
       const { document } = (await res.json()) as { document: DocumentDTO };
       if (sendAfter) {

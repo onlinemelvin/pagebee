@@ -14,6 +14,7 @@ export default async function FinanceSettingsPage({ searchParams }: { searchPara
   const ws = await getClientWorkspace();
   if (!ws) return null;
   if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (ws.role !== "owner") redirect("/client/invoices"); // payment/tax config is owner-only
 
   const { connect } = await searchParams;
   // Returning from Stripe onboarding — pull the latest account flags before rendering.

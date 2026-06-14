@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma, Invoice, InvoiceLineItem, FinanceDocType, InvoiceStatus } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
 import { sendEmail } from "@/lib/modules/email";
+import { requireWithinLimit, UsageError } from "@/lib/modules/usage";
 import { computeTotals, type LineInput } from "./money";
 import { calculateTax } from "@/lib/modules/payments/tax";
 import {
@@ -348,6 +349,17 @@ export async function createDocument(clientId: string, input: unknown): Promise<
   await assertFinanceEnabled(clientId);
   const settings = await getFinanceSettings(clientId);
   const { data, customerId, totals, lineRows, taxCalculationId } = await buildDocData(clientId, input, settings);
+
+  // Monthly invoice allowance (plans meter invoices; estimates/quotes don't count).
+  if (data.docType === "INVOICE") {
+    try {
+      await requireWithinLimit(clientId, "invoices");
+    } catch (err) {
+      if (err instanceof UsageError) throw new FinanceError(429, "invoice_limit_reached");
+      throw err;
+    }
+  }
+
   const number = await nextNumber(clientId, data.docType, settings);
 
   // Default dates by type.

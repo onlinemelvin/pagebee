@@ -45,6 +45,7 @@ export default async function ClientWebsitePage() {
   const jobActive = job?.status === "QUEUED" || job?.status === "GENERATING";
   const awaitingSetup = !isPublished && !viewable && (Boolean(latest) || jobActive);
   const firstTime = !awaitingSetup && !latest && !isPublished;
+  const isOwner = ws.role === "owner";
 
   return (
     <div>
@@ -112,7 +113,7 @@ export default async function ClientWebsitePage() {
       )}
 
       {/* How it works — first-time only */}
-      {firstTime && (
+      {firstTime && isOwner && (
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           {STEPS.map((s, i) => (
             <div key={s.title} className="anim-rise rounded-2xl border border-stone-200 bg-white p-5" style={{ "--d": `${i * 70}ms` } as React.CSSProperties}>
@@ -127,7 +128,7 @@ export default async function ClientWebsitePage() {
         </div>
       )}
 
-      {!awaitingSetup &&
+      {!awaitingSetup && isOwner &&
         (isPublished ? (
           <ClientWebsiteChanges
             quota={ws.quota}
@@ -158,7 +159,16 @@ export default async function ClientWebsitePage() {
           </div>
         ))}
 
-      {!awaitingSetup && latest && (
+      {/* Staff see status only — website creation & changes are owner-only. */}
+      {!awaitingSetup && !isOwner && (
+        <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-5 text-sm text-stone-600">
+          {firstTime
+            ? "Your website hasn't been set up yet. Your account owner can create it from here."
+            : "Only the account owner can request website changes or regenerate the site."}
+        </div>
+      )}
+
+      {!awaitingSetup && latest && isOwner && (
         <div className="mt-10">
           <FeatureCards features={ws.features} title="Add features" />
         </div>

@@ -31,13 +31,14 @@ function useClickOutside<T extends HTMLElement>(onClose: () => void) {
 }
 
 export function Topbar({
-  email, businessName, planName, tabs, actions,
+  email, businessName, planName, tabs, actions, isOwner = true,
 }: {
   email: string;
   businessName: string;
   planName: string;
   tabs: NavTab[];
   actions: ActionItem[];
+  isOwner?: boolean;
 }) {
   const [drawer, setDrawer] = React.useState(false);
   const pathname = usePathname();
@@ -58,7 +59,7 @@ export function Topbar({
 
         <div className="ml-auto flex items-center gap-1.5">
           <Notifications actions={actions} />
-          <AvatarMenu email={email} businessName={businessName} planName={planName} />
+          <AvatarMenu email={email} businessName={businessName} planName={planName} isOwner={isOwner} />
         </div>
       </header>
 
@@ -78,11 +79,13 @@ export function Topbar({
               </button>
             </div>
             <ClientNav tabs={tabs} />
-            <div className="mt-auto border-t border-stone-100 pt-3">
-              <Link href="/client/billing" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-600 hover:bg-stone-100">
-                <CreditCard size={18} /> Billing
-              </Link>
-            </div>
+            {isOwner && (
+              <div className="mt-auto border-t border-stone-100 pt-3">
+                <Link href="/client/billing" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-600 hover:bg-stone-100">
+                  <CreditCard size={18} /> Billing
+                </Link>
+              </div>
+            )}
           </aside>
         </div>
       )}
@@ -202,7 +205,7 @@ function Notifications({ actions }: { actions: ActionItem[] }) {
 }
 
 /* ── Avatar menu ──────────────────────────────────────────────────────── */
-function AvatarMenu({ email, businessName, planName }: { email: string; businessName: string; planName: string }) {
+function AvatarMenu({ email, businessName, planName, isOwner }: { email: string; businessName: string; planName: string; isOwner: boolean }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
@@ -235,9 +238,11 @@ function AvatarMenu({ email, businessName, planName }: { email: string; business
             <span className="mt-1.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">{planName} plan</span>
           </div>
           <div className="p-1.5">
-            <Link href="/client/billing" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
-              <CreditCard size={16} className="text-stone-400" /> Billing & plan
-            </Link>
+            {isOwner && (
+              <Link href="/client/billing" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
+                <CreditCard size={16} className="text-stone-400" /> Billing & plan
+              </Link>
+            )}
             <button onClick={signOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-stone-700 hover:bg-stone-100">
               <LogOut size={16} className="text-stone-400" /> Sign out
             </button>

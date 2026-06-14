@@ -10,15 +10,26 @@ export default async function ClientLayout({ children }: { children: React.React
   const ws = await getClientWorkspace();
   if (!ws) redirect("/login");
 
-  // Contextual primary CTA in the sidebar.
-  const cta = !ws.website.exists
-    ? { label: "Create your site", href: "/client/website", icon: Wand2 }
+  const isOwner = ws.role === "owner";
+
+  // Contextual primary CTA in the sidebar. Staff see view-only (no create/manage).
+  const cta = isOwner
+    ? !ws.website.exists
+      ? { label: "Create your site", href: "/client/website", icon: Wand2 }
+      : ws.preview.live && ws.preview.url
+        ? { label: "View live site", href: ws.preview.url, icon: ExternalLink }
+        : ws.preview.viewable || ws.preview.ready
+          ? { label: "View preview", href: ws.preview.url ?? "/preview", icon: Eye }
+          : { label: "Your website", href: "/client/website", icon: Wand2 }
     : ws.preview.live && ws.preview.url
       ? { label: "View live site", href: ws.preview.url, icon: ExternalLink }
-      : ws.preview.viewable || ws.preview.ready
-        ? { label: "View preview", href: ws.preview.url ?? "/preview", icon: Eye }
-        : { label: "Your website", href: "/client/website", icon: Wand2 };
-  const ctaExternal = cta.href.startsWith("http");
+      : null;
+  const ctaExternal = cta?.href.startsWith("http") ?? false;
+
+  const secondaryTabs = [
+    ...(ws.caps.teamSeats > 1 ? [{ key: "team", label: "Team", href: "/client/team" }] : []),
+    ...(isOwner ? [{ key: "billing", label: "Billing", href: "/client/billing" }] : []),
+  ];
 
   const pct = ws.quota.allowance > 0 ? Math.min(100, Math.round((ws.quota.used / ws.quota.allowance) * 100)) : 0;
   const unlimitedUpdates = planByName(ws.planName)?.quotas.updatesUnlimited === true;
@@ -34,28 +45,27 @@ export default async function ClientLayout({ children }: { children: React.React
           </div>
         </div>
 
-        <Link
-          href={cta.href}
-          {...(ctaExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-          className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800"
-        >
-          <cta.icon size={16} /> {cta.label}
-        </Link>
+        {cta && (
+          <Link
+            href={cta.href}
+            {...(ctaExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800"
+          >
+            <cta.icon size={16} /> {cta.label}
+          </Link>
+        )}
 
         <ClientNav tabs={ws.tabs} />
 
-        <div className="mt-3 border-t border-stone-100 pt-3">
-          <ClientNav
-            tabs={[
-              ...(ws.caps.teamSeats > 1 ? [{ key: "team", label: "Team", href: "/client/team" }] : []),
-              { key: "billing", label: "Billing", href: "/client/billing" },
-            ]}
-          />
-        </div>
+        {secondaryTabs.length > 0 && (
+          <div className="mt-3 border-t border-stone-100 pt-3">
+            <ClientNav tabs={secondaryTabs} />
+          </div>
+        )}
 
-        {/* Quota / upgrade nudge */}
+        {/* Quota / upgrade nudge (owner only) */}
         <div className="mt-auto">
-          {ws.quota.allowance > 0 && (
+          {isOwner && ws.quota.allowance > 0 && (
             <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-stone-700">Monthly updates</span>
@@ -83,6 +93,7 @@ export default async function ClientLayout({ children }: { children: React.React
           planName={ws.planName}
           tabs={ws.tabs}
           actions={ws.actions}
+          isOwner={isOwner}
         />
         <main className="mx-auto w-full max-w-[1400px] flex-1 p-5 sm:p-8">{children}</main>
       </div>

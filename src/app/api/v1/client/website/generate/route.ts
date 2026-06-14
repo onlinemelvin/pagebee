@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireClient, requireOwner, AuthError } from "@/lib/auth/session";
 import {
   startGeneration,
   claimAndRun,
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireOwner());
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
