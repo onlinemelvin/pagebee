@@ -46,11 +46,6 @@ export function PreviewPanel({ preview }: { preview: PreviewInfo }) {
         <h2 className="font-display text-xl text-stone-900">
           {preview.reviewing ? "Your changes are being reviewed" : "Your free preview is ready"}
         </h2>
-        {preview.daysLeft != null && !preview.reviewing && (
-          <span className="text-xs font-semibold text-amber-800">
-            Expires in {preview.daysLeft} day{preview.daysLeft === 1 ? "" : "s"}
-          </span>
-        )}
       </div>
       <p className="mt-1 text-stone-600">
         {preview.reviewing ? (
@@ -60,8 +55,8 @@ export function PreviewPanel({ preview }: { preview: PreviewInfo }) {
           </>
         ) : (
           <>
-            Open your preview to take a look, mark up changes, and approve it to launch. You have{" "}
-            <strong>{preview.revisionsLeft}</strong> free revision
+            Review your website preview and approve it to make it <strong className="font-bold text-amber-600">live</strong>. Want to change something?
+            You have <strong>{preview.revisionsLeft}</strong> free revision
             {preview.revisionsLeft === 1 ? "" : "s"} left.
           </>
         )}

@@ -91,7 +91,11 @@ export function WebsiteIntakeForm({
   const [services, setServices] = React.useState<string[]>([]);
   const [serviceAreas, setServiceAreas] = React.useState<string[]>([]);
   const [palette, setPalette] = React.useState("auto");
-  const [pages, setPages] = React.useState<Set<string>>(new Set(["home", "about", "services", "contact"]));
+  // Default selection, capped to the plan's page allowance. Priority order ensures a 3-page plan
+  // (Launch) still gets a complete minimal site — Home / Services / Contact — rather than overflowing.
+  const [pages, setPages] = React.useState<Set<string>>(
+    () => new Set(["home", "services", "contact", "about"].slice(0, maxPages)),
+  );
   const [hours, setHours] = React.useState<Hour[]>(() =>
     DAYS.map((d) => ({ day: d, closed: d === "Sat" || d === "Sun", open: "09:00", close: "17:00" })),
   );
@@ -453,6 +457,7 @@ export function WebsiteIntakeForm({
           Services <span className="text-red-500">*</span>{" "}
           <span className="font-normal text-stone-400">— type and press comma or Enter</span>
         </Label>
+        <p className="text-xs text-amber-500">Just a starting point — you can add, edit, or remove services anytime after your site is created.</p>
         <PillInput
           id="services"
           value={services}
@@ -464,12 +469,15 @@ export function WebsiteIntakeForm({
 
       {/* Service areas — pills */}
       <div className="grid gap-2">
-        <Label htmlFor="serviceAreas">Service areas</Label>
+        <Label htmlFor="serviceAreas">
+          Service areas <span className="font-normal text-stone-400">— press Enter after each</span>
+        </Label>
         <PillInput
           id="serviceAreas"
           value={serviceAreas}
           onChange={setServiceAreas}
-          placeholder="Austin, Round Rock, Cedar Park"
+          splitOnComma={false}
+          placeholder="Tampa, FL · Round Rock · Georgia"
         />
       </div>
 
@@ -674,7 +682,7 @@ export function WebsiteIntakeForm({
       {contactOn && (
         <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
           <Label>
-            Contact details <span className="font-normal text-stone-400">— prefilled from your account; edit if needed</span>
+            Contact details
           </Label>
           <div className="grid gap-2 sm:grid-cols-2">
             <input value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="Email" type="email" className={inputCls} />
@@ -874,18 +882,23 @@ export function WebsiteIntakeForm({
 }
 
 function PillInput({
-  id, value, onChange, placeholder, invalid,
+  id, value, onChange, placeholder, invalid, splitOnComma = true,
 }: {
   id?: string;
   value: string[];
   onChange: (v: string[]) => void;
   placeholder?: string;
   invalid?: boolean;
+  // When false, commas are kept inside the value (e.g. "Tampa, FL") and pills are only committed
+  // on Enter/blur. Defaults to true for simple comma-separated lists like services.
+  splitOnComma?: boolean;
 }) {
   const [draft, setDraft] = React.useState("");
 
   function commit(raw: string) {
-    const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    const parts = splitOnComma
+      ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+      : [raw.trim()].filter(Boolean);
     const merged = [...value];
     for (const p of parts) if (!merged.includes(p)) merged.push(p);
     if (merged.length !== value.length) onChange(merged);
@@ -916,7 +929,7 @@ function PillInput({
         value={draft}
         onChange={(e) => {
           const val = e.target.value;
-          if (val.includes(",")) {
+          if (splitOnComma && val.includes(",")) {
             commit(val);
             setDraft("");
           } else {

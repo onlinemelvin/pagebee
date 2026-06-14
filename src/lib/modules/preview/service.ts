@@ -1,7 +1,6 @@
 import type { PreviewStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/modules/audit";
-import { sendEmail } from "@/lib/modules/email";
 import { startGeneration, claimAndRun, approveAndPublish } from "@/lib/modules/website";
 import type { GenerationForm } from "@/lib/modules/website";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
@@ -15,7 +14,6 @@ export class PreviewError extends Error {
   }
 }
 
-const REMIND_BEFORE = Number(process.env.PREVIEW_REMIND_DAYS ?? 2);
 const REVIEWABLE: PreviewStatus[] = ["PREVIEW_READY", "PREVIEW_SENT", "PREVIEW_VIEWED", "REVISION_COMPLETED"];
 
 /** Latest preview for a client (raw row). */
@@ -160,50 +158,3 @@ export async function launchPreview(previewId: string) {
   return { ok: true };
 }
 
-async function alreadyNotified(clientId: string, event: string): Promise<boolean> {
-  return (await prisma.notificationEvent.count({ where: { clientId, event } })) > 0;
-}
-
-/** Preview lifecycle sweep: remind before expiry, expire stale previews. Idempotent. */
-export async function sweepPreviews(): Promise<{ reminded: number; expired: number }> {
-  const now = Date.now();
-  const previews = await prisma.preview.findMany({
-    where: { status: { in: REVIEWABLE }, expiresAt: { not: null } },
-  });
-
-  let reminded = 0;
-  let expired = 0;
-  for (const p of previews) {
-    if (!p.expiresAt || !p.clientId) continue;
-    const client = await prisma.client.findUnique({ where: { id: p.clientId }, select: { ownerEmail: true } });
-    const email = client?.ownerEmail;
-    const msLeft = p.expiresAt.getTime() - now;
-
-    if (msLeft <= 0) {
-      await prisma.preview.update({ where: { id: p.id }, data: { status: "EXPIRED" } });
-      if (p.websiteId) {
-        await prisma.website.updateMany({ where: { id: p.websiteId, status: "preview" }, data: { status: "draft" } });
-      }
-      if (email) {
-        await sendEmail({
-          to: email,
-          subject: "Your website preview has expired",
-          html: `<p>Your free website preview has expired. Sign in to regenerate it whenever you're ready.</p>`,
-        });
-      }
-      expired++;
-    } else {
-      const daysLeft = Math.ceil(msLeft / 86_400_000);
-      if (email && daysLeft <= REMIND_BEFORE && !(await alreadyNotified(p.clientId, "preview.reminder"))) {
-        await sendEmail({
-          to: email,
-          subject: `Your website preview expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
-          html: `<p>Your free website preview expires soon. Approve it to launch, or request a change from your dashboard.</p>`,
-        });
-        await prisma.notificationEvent.create({ data: { clientId: p.clientId, event: "preview.reminder", channel: "EMAIL" } });
-        reminded++;
-      }
-    }
-  }
-  return { reminded, expired };
-}

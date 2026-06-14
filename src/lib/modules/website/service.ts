@@ -22,8 +22,6 @@ import type { WebsiteIntakeForm } from "./schema";
  *  directly — the revision note and the structured pins that drive surgical HTML editing. */
 export type GenerationForm = WebsiteIntakeForm & { revisionEdits?: HtmlEditRequest[] };
 
-/** Days a free preview stays reviewable before it expires (see docs/ONBOARDING.md). */
-export const PREVIEW_DAYS = Number(process.env.PREVIEW_DAYS ?? 14);
 
 function generateSiteToken(): string {
   return `site_${randomBytes(16).toString("base64url")}`;
@@ -346,7 +344,6 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       selectedPlan: planName,
       status: "IN_REVIEW",
       generatedAt: new Date(),
-      expiresAt: new Date(Date.now() + PREVIEW_DAYS * 86_400_000),
     },
   });
 
@@ -824,7 +821,6 @@ export async function releaseToClient(versionId: string, reviewerId: string | nu
         selectedPlan: planName,
         status: "PREVIEW_READY",
         generatedAt: new Date(),
-        expiresAt: new Date(Date.now() + PREVIEW_DAYS * 86_400_000),
       },
     }),
   ]);

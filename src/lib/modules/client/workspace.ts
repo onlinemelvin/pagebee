@@ -5,13 +5,11 @@ import { planForFlag } from "@/lib/plans";
 
 export interface PreviewInfo {
   status: string; // PreviewStatus or "NONE"
-  daysLeft: number | null; // until expiry
   ready: boolean; // a fresh preview is ready to review (PREVIEW_READY)
   viewable: boolean; // a released version exists → the client can always open /preview
   reviewing: boolean; // a newer revision is pending review while a released preview is still shown
   live: boolean; // launched
   awaitingPayment: boolean; // approved, setup fee due
-  expired: boolean;
   revisionsLeft: number;
   canComment: boolean; // may mark up the preview (reviewable + revisions left)
   url: string | null; // preview/live site URL
@@ -222,26 +220,21 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   // ── Preview lifecycle (preview-before-you-pay) ──
   const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
   const proto = rootDomain.includes("localhost") ? "http" : "https";
-  const previewDaysLeft = previewRow?.expiresAt
-    ? Math.max(0, Math.ceil((previewRow.expiresAt.getTime() - Date.now()) / 86_400_000))
-    : null;
 
-  // A released version means the client can always open /preview; if the latest is newer and
-  // still unreleased, a revision is in our review queue ("reviewing").
+  // Previews are evergreen — they never expire. A released version means the client can always open
+  // /preview; if the latest is newer and still unreleased, a revision is in our review queue.
   const releasedExists = releasedCount > 0;
   const latestReviewed = latestVersion?.config?.adminReviewed === true;
   const previewStatus = previewRow?.status ?? "NONE";
-  const isLiveOrGone = previewStatus === "LIVE" || previewStatus === "EXPIRED";
+  const isLive = previewStatus === "LIVE";
 
   const preview: PreviewInfo = {
     status: previewStatus,
-    daysLeft: previewDaysLeft,
     ready: previewRow?.status === "PREVIEW_READY",
-    viewable: releasedExists && !isLiveOrGone,
-    reviewing: releasedExists && !latestReviewed && !isLiveOrGone,
+    viewable: releasedExists && !isLive,
+    reviewing: releasedExists && !latestReviewed && !isLive,
     live: previewRow?.status === "LIVE",
     awaitingPayment: previewRow?.status === "APPROVED" || previewRow?.status === "SETUP_FEE_PENDING",
-    expired: previewRow?.status === "EXPIRED",
     revisionsLeft: previewRow ? Math.max(0, previewRow.maxFreeRevisions - previewRow.revisionCount) : 0,
     canComment:
       previewRow?.status === "PREVIEW_READY" &&
@@ -267,19 +260,25 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   const complete = steps.every((s) => s.done);
 
   // ── Tabs (auto-customized) ──
-  const tabs: Tab[] = [
-    { key: "overview", label: "Overview", href: "/client" },
-    { key: "inquiries", label: "Inquiries", href: "/client/inquiries", badge: newInquiries || undefined },
-  ];
+  const tabs: Tab[] = [{ key: "overview", label: "Overview", href: "/client" }];
+  // Inquiries/Services/Media only make sense once a site exists (first preview generated),
+  // so they stay hidden until then to keep the initial workspace focused on creating the site.
+  if (website.exists) {
+    tabs.push({ key: "inquiries", label: "Inquiries", href: "/client/inquiries", badge: newInquiries || undefined });
+  }
   if (caps.booking && choices.booking) {
     tabs.push({ key: "appointments", label: "Appointments", href: "/client/appointments", badge: pendingAppointments || undefined });
   }
   if (caps.invoices && choices.invoices) {
     tabs.push({ key: "invoices", label: "Finance", href: "/client/invoices" });
   }
-  tabs.push({ key: "services", label: "Services", href: "/client/services" });
+  if (website.exists) {
+    tabs.push({ key: "services", label: "Services", href: "/client/services" });
+  }
   tabs.push({ key: "website", label: "Website", href: "/client/website" });
-  tabs.push({ key: "media", label: "Media", href: "/client/media" });
+  if (website.exists) {
+    tabs.push({ key: "media", label: "Media", href: "/client/media" });
+  }
 
   // ── Surfaced action items ──
   const actions: ActionItem[] = [];
@@ -292,8 +291,6 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     actions.push({ title: "Your preview is ready", desc: "Review it, request a change, or approve & launch.", href: "/client", cta: "Review", primary: true });
   } else if (preview.awaitingPayment) {
     actions.push({ title: "Approve & launch", desc: "Pay the one-time setup fee to take your site live.", href: "/client/billing", cta: "Continue", primary: true });
-  } else if (preview.expired) {
-    actions.push({ title: "Your preview expired", desc: "Regenerate it whenever you're ready.", href: "/client/website", cta: "Regenerate" });
   }
   if (newInquiries > 0) {
     actions.push({ title: `${newInquiries} new inquir${newInquiries === 1 ? "y" : "ies"}`, desc: "Respond to messages from your website.", href: "/client/inquiries", cta: "Open" });

@@ -8,6 +8,7 @@ import { listLeads } from "@/lib/modules/lead";
 import { listBookings } from "@/lib/modules/booking";
 import { getFinanceDashboard, get1099Summary } from "@/lib/modules/finance";
 import { SetupWizard } from "@/components/client/SetupWizard";
+import { CreateSiteWelcome } from "@/components/client/CreateSiteWelcome";
 import { PreviewPanel } from "@/components/client/PreviewPanel";
 import { FeatureCards } from "@/components/client/FeatureCards";
 import { StatCard } from "@/components/client/ui/StatCard";
@@ -41,6 +42,22 @@ function timeAgo(d: Date): string {
 export default async function ClientHomePage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
+
+  // Before the first preview exists there's no data to show — replace the whole dashboard with a
+  // focused welcome screen that explains the product and drives them to create their site.
+  if (!ws.website.exists) {
+    const settingUp = ws.preview.status === "IN_REVIEW" || ws.preview.status === "PREVIEW_GENERATING";
+    return (
+      <CreateSiteWelcome
+        ownerName={ws.client.ownerName ?? ws.client.businessName}
+        businessName={ws.client.businessName}
+        planName={ws.planName}
+        isOwner={ws.role === "owner"}
+        settingUp={settingUp}
+        caps={ws.caps}
+      />
+    );
+  }
 
   const hasFinance = ws.caps.invoices && ws.choices.invoices;
   const hasBooking = ws.caps.booking && ws.choices.booking;

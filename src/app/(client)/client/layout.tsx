@@ -50,7 +50,7 @@ export default async function ClientLayout({ children }: { children: React.React
           <Link
             href={cta.href}
             {...(ctaExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-            className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-800"
+            className="mb-5 flex items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-semibold text-stone-900 shadow-sm transition hover:bg-amber-300"
           >
             <cta.icon size={16} /> {cta.label}
           </Link>
