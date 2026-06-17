@@ -168,6 +168,22 @@ enum InvoiceStatus {
   OVERDUE
   VOID
   REFUNDED
+  ACCEPTED // estimate/quote accepted by the customer
+  DECLINED // estimate/quote declined
+  EXPIRED  // estimate/quote past its expiry
+}
+
+// A client→customer financial document. Estimates convert to Quotes, Quotes to Invoices;
+// all three share line items, discounts, and tax (see the Invoice model).
+enum FinanceDocType {
+  ESTIMATE
+  QUOTE
+  INVOICE
+}
+
+enum DiscountType {
+  PERCENT // value is basis points (850 = 8.50%)
+  FIXED   // value is cents
 }
 
 enum PaymentStatus {
@@ -296,6 +312,25 @@ enum WebsiteVersionStatus {
   ARCHIVED
 }
 
+// Figma-style review annotations on a generated site version.
+enum ReviewActorType {
+  ADMIN    // platform admin
+  REVIEWER // platform reviewer/contractor (website:review permission)
+  CLIENT   // the tenant business owner, in preview mode
+  SYSTEM
+}
+
+enum ReviewCommentKind {
+  CHANGE_REQUEST // compiled into the next regeneration
+  NOTE           // informational only
+}
+
+enum ReviewCommentStatus {
+  OPEN
+  RESOLVED
+  WONT_FIX
+}
+
 // =============================================================================
 // PLATFORM OPERATIONS — owned by our company
 // =============================================================================
@@ -365,8 +400,8 @@ model UserRole {
 
 model Employee {
   id               String           @id @default(cuid())
-  userId           String           @unique
-  user             User             @relation(fields: [userId], references: [id])
+  userId           String?          @unique
+  user             User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   employeeType     EmployeeType
   compensationType CompensationType
   employmentStatus EmploymentStatus @default(ACTIVE)
@@ -826,6 +861,7 @@ model Client {
   bookings      Booking[]
   conversations Conversation[]
   invoices      Invoice[]
+  recurringPlans RecurringPlan[]
   payments      Payment[]
   statements    Statement[]
   dues          Due[]
@@ -835,9 +871,69 @@ model Client {
   contracts      Contract[]
   commissionRecords CommissionRecord[]
   analyticsEvents AnalyticsEvent[]
+  previews        Preview[]        @relation("ClientPreviews")
+  media           ClientMedia[]
+  websiteUpdates  WebsiteUpdate[]
+  upgradeRequests UpgradeRequest[]
+  services        Service[]
+  taxRates        TaxRate[]
+  userInvites     ClientUserInvite[]
+  usageRecords    UsageRecord[]
 
   @@index([status])
   @@map("clients")
+}
+
+// A client-initiated change to a LIVE (already published) site. Each one consumes a
+// monthly update from the plan's `monthlyUpdates` allowance — the count of these rows in
+// the current period is the quota usage. Distinct from pre-launch preview revisions.
+model WebsiteUpdate {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  websiteId String
+  versionId String? // the new WebsiteVersion this update produced (once generated)
+  note      String
+  status    String   @default("requested") // requested | in_review | published | rejected
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("website_updates")
+}
+
+// A real-account upgrade intent captured for admin/sales to apply (interim, pre-Stripe).
+// Test accounts upgrade instantly and never create one of these.
+model UpgradeRequest {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fromPlan    String
+  toPlan      String
+  reason      String? // "appointments" | "more_updates" | ...
+  status      String   @default("requested") // requested | applied | declined
+  appliedById String?
+  createdAt   DateTime @default(now())
+
+  @@index([status])
+  @@map("upgrade_requests")
+}
+
+// Account-level reusable media library. Images a client uploads here (or via the
+// website intake) persist independently of any single site/version, so they can be
+// reused or updated across regenerations. Stored in the same public bucket as uploads.
+model ClientMedia {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  url       String
+  name      String?
+  alt       String?
+  kind      String   @default("image") // image, logo, document
+  inGallery Boolean  @default(true) // whether this image appears in the public photo gallery
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@map("client_media")
 }
 
 model ClientUser {
@@ -845,12 +941,46 @@ model ClientUser {
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      String   @default("owner") // owner, staff
   createdAt DateTime @default(now())
 
   @@index([clientId])
   @@map("client_users")
+}
+
+// Metered usage for resources without a natural source table (AI replies, SMS, email).
+// Invoices are counted from the Invoice table directly; these are recorded per send.
+model UsageRecord {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  key       String // aiReplies | sms | email
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, key, createdAt])
+  @@map("usage_records")
+}
+
+// A pending invitation for someone to join a client's team (Automate multi-user).
+// Accepting links the invitee's user to the client via a ClientUser row.
+model ClientUserInvite {
+  id         String    @id @default(cuid())
+  clientId   String
+  client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  email      String
+  role       String    @default("staff") // owner, staff
+  token      String    @unique
+  status     String    @default("pending") // pending, accepted, revoked
+  invitedBy  String? // userId of the inviter
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([email])
+  @@map("client_user_invites")
 }
 
 model Subscription {
@@ -871,6 +1001,7 @@ model Subscription {
   stripeCustomerId     String?
   stripeSubscriptionId String?
 
+  trialEndsAt        DateTime?
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   cancelAt           DateTime?
@@ -912,6 +1043,7 @@ model ClientSetting {
   aiSettings      Json? // { mode, escalationRules, tone }
   paymentSettings Json? // { depositPct, applicationFeePct, absorbStripeFees }
   calendarSettings Json? // { provider, externalCalendarId, availabilityRules }
+  financeSettings Json? // { numberPrefixes, defaultTerms, defaultNotes, currency, reminders, lateFee, stripeMode }
   smsSettings     Json?
   emailSettings   Json?
 
@@ -931,10 +1063,17 @@ model Website {
   // Every site is reachable at {subdomain}.pagebee.com; Connect/Automate may add a
   // custom domain provisioned through the Vercel Domains API (see ARCHITECTURE §11).
   subdomain    String?  @unique // tenant slug host, e.g. acme.pagebee.com
-  domain       String?  @unique // custom domain, e.g. acmecleaning.com
-  domainStatus String?  // null | pending | verifying | verified | active
+  // Custom domains (Connect/Automate) live in the WebsiteDomain table below — a connection
+  // provisions a host PAIR (apex + www) so both resolve here, one redirecting to the other.
   siteToken    String   @unique // public API key for this site's calls
   status       String   @default("draft") // draft, preview, published
+
+  // The owner's chosen primary call-to-action (e.g. "Request a quote"). Set from the intake at
+  // generation and editable any time from the Inquiries page with NO rebuild — it drives the live
+  // site's CTA button label, the form's submit label, and the lead `type` at serve time (see
+  // src/lib/site/lead-goals.ts + the /api/v1/public/lead-form endpoint). Null → use whatever the
+  // form was generated with.
+  leadFormGoal String?
 
   publishedVersionId String?  @unique
   publishedVersion   WebsiteVersion? @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
@@ -946,9 +1085,39 @@ model Website {
   generationJobs WebsiteGenerationJob[]
   assets         WebsiteAsset[]
   visits         WebsiteVisit[]
+  domains        WebsiteDomain[]
 
   @@index([clientId])
   @@map("websites")
+}
+
+// A single custom-domain host attached to a site (Connect/Automate). One owner "connect" creates a
+// PAIR of rows — the apex (e.g. acme.com) and its www (www.acme.com) — with one marked primary
+// (canonical) and the other set to redirect to it on Vercel. Other subdomains (book.acme.com) are a
+// lone row. Lifecycle per host: requested → verifying → active (error on failure). Admin approval
+// happens at the pair level. See src/lib/modules/website/domain.ts + ARCHITECTURE §11.
+model WebsiteDomain {
+  id        String  @id @default(cuid())
+  websiteId String
+  website   Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  host      String  @unique // fully-qualified host, e.g. acme.com or www.acme.com
+  kind      String // "apex" | "www" | "subdomain"
+  isPrimary Boolean @default(false) // the canonical host; its sibling redirects here
+
+  // requested → owner submitted, awaiting admin approval (NOT yet on Vercel)
+  // verifying → on the Vercel project, DNS not yet resolving · active → verified + SSL · error
+  status       String
+  verification Json? // DNS records to set: { records: [{type,name,value}], txt?: [...] }
+  error        String? // last failure reason for this host
+
+  requestedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([websiteId])
+  @@index([status])
+  @@map("website_domains")
 }
 
 model WebsiteVersion {
@@ -963,13 +1132,64 @@ model WebsiteVersion {
   // calls PageBee's shared /api/v1/public/* endpoints for all dynamic features.
   generatedHtml String? @db.Text
 
+  // The lead-capture form is built for every site at generation (so it matches the design) but
+  // STRIPPED OUT of generatedHtml into here — the page keeps only a [data-pb-leadform-slot]. It's
+  // injected back at serve time ONLY when the plan allows forms AND the owner enabled them, so the
+  // page never ships a form to a tier/owner that shouldn't have one. See src/lib/site/lead-form.ts.
+  leadFormHtml String? @db.Text
+
+  // Same pattern as leadFormHtml, for the appointment booking TRIGGER section (heading + "Book…"
+  // button). Stripped out of generatedHtml into here; the page keeps a [data-pb-booking-slot]. The
+  // platform-owned modal (calendar + submit) is added at serve time, and the trigger is injected back
+  // only when the plan allows booking AND the owner enabled it. See src/lib/site/booking.ts.
+  bookingHtml String? @db.Text
+
   config WebsiteConfig?
   pages  WebsitePage[]
   publishedFor Website? @relation("PublishedVersion")
+  reviewComments WebsiteReviewComment[]
 
   @@unique([websiteId, version])
   @@index([websiteId])
   @@map("website_versions")
+}
+
+// A pin-style review comment anchored to an element of a rendered version. Used by
+// both platform reviewers (admin queue) and clients (preview markup). Anchors only
+// need to be stable within a version's lifetime — a revision creates a new version.
+model WebsiteReviewComment {
+  id        String         @id @default(cuid())
+  versionId String
+  version   WebsiteVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  parentId String?                @map("parent_id")
+  parent   WebsiteReviewComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  WebsiteReviewComment[] @relation("CommentThread")
+
+  authorType ReviewActorType
+  authorId   String? // User.id (platform) or Client/ClientUser id; null for SYSTEM
+  authorName String? // denormalized for display
+
+  kind   ReviewCommentKind   @default(CHANGE_REQUEST)
+  status ReviewCommentStatus @default(OPEN)
+
+  // Element anchor (see serve.ts annotate bridge).
+  pagePath   String  @default("/") // which routed sub-page the pin sits on
+  selector   String? // CSS selector path to the target element
+  anchorText String? // nearby text snippet, for human context + fallback matching
+  x          Float? // fractional 0..1 position within the element
+  y          Float?
+  body       String
+
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([versionId])
+  @@index([versionId, status])
+  @@index([parentId])
+  @@map("website_review_comments")
 }
 
 model WebsiteConfig {
@@ -1026,6 +1246,7 @@ model WebsiteGenerationJob {
   status    WebsiteJobStatus @default(QUEUED)
   inputIntake Json // the intake form data fed to the generator
   output      Json? // structured website config produced by the AI service
+  promptLog   Json? // EVALUATION (temporary): exact LLM prompt(s) for this draft; safe to drop later
   error       String?
   startedAt   DateTime?
   finishedAt  DateTime?
@@ -1033,7 +1254,110 @@ model WebsiteGenerationJob {
 
   @@index([websiteId])
   @@index([status])
+  @@index([status, createdAt])
   @@map("website_generation_jobs")
+}
+
+// =============================================================================
+// PREVIEW / ONBOARDING — "Preview before you pay" acquisition model.
+// Free AI website preview -> approval -> setup fee -> launch -> subscription.
+// See docs/ONBOARDING.md. Previews reuse the SAME generation + renderer; preview
+// mode (banner, noindex, demo features) is controlled by flags until payment.
+// =============================================================================
+
+enum PreviewStatus {
+  INTAKE_STARTED
+  INTAKE_COMPLETED
+  PREVIEW_GENERATING
+  IN_REVIEW // generated, awaiting platform (admin) review before the client may see it
+  PREVIEW_READY
+  PREVIEW_SENT
+  PREVIEW_VIEWED
+  REVISION_REQUESTED
+  REVISION_COMPLETED
+  APPROVED
+  SETUP_FEE_PENDING
+  SETUP_FEE_PAID
+  LAUNCH_IN_PROGRESS
+  LIVE
+  LOST
+}
+
+model Preview {
+  id           String        @id @default(cuid())
+  // Origin: a sales prospect and/or (once converted) a client. Both nullable so a
+  // self-serve preview can exist before either record is created.
+  prospectId   String?
+  clientId     String?
+  client       Client?       @relation("ClientPreviews", fields: [clientId], references: [id], onDelete: Cascade)
+  websiteId    String?       @unique // the Website generated for this preview
+  selectedPlan PlanName
+  status       PreviewStatus @default(INTAKE_STARTED)
+
+  previewUrl   String? // temporary host, e.g. {token}.preview.pagebee.com
+  generatedAt  DateTime?
+  sentAt       DateTime?
+  viewedAt     DateTime?
+  approvedAt   DateTime?
+
+  revisionCount    Int @default(0)
+  maxFreeRevisions Int @default(1) // one minor revision before payment
+
+  createdById        String? // employee/user who created it (null = self-serve/system)
+  assignedSalesRepId String? // Employee.id when sales-led
+  notes              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  revisions  PreviewRevision[]
+  conversion Conversion?
+
+  @@index([status])
+  @@index([prospectId])
+  @@index([clientId])
+  @@index([clientId, createdAt])
+  @@index([assignedSalesRepId])
+  @@map("previews")
+}
+
+model PreviewRevision {
+  id          String    @id @default(cuid())
+  previewId   String
+  preview     Preview   @relation(fields: [previewId], references: [id], onDelete: Cascade)
+  requestedBy String? // "customer" or an Employee.id
+  requestText String
+  status      String    @default("requested") // requested, in_progress, completed
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([previewId])
+  @@map("preview_revisions")
+}
+
+model Conversion {
+  id           String   @id @default(cuid())
+  previewId    String   @unique
+  preview      Preview  @relation(fields: [previewId], references: [id], onDelete: Cascade)
+  prospectId   String?
+  clientId     String
+  selectedPlan PlanName
+
+  // Money in integer cents.
+  setupFeeAmount Int
+  monthlyAmount  Int
+  discountAmount Int @default(0)
+
+  setupFeePaidAt        DateTime?
+  subscriptionStartedAt DateTime?
+  convertedById         String? // Employee.id (sales) or null (self-serve)
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([prospectId])
+  @@map("conversions")
 }
 
 // =============================================================================
@@ -1048,11 +1372,24 @@ model Customer {
   email     String?
   phone     String?
   address   String?
+  billingAddress Json? // structured { line1, city, state, postalCode, country } — used for Stripe Tax
+  // CRM fields (owner-managed contact record). `company` for B2B/fleet accounts; `tags` for quick
+  // segmentation ("VIP", "Regular"); `notes` a free-text memo; `customFields` an ordered list of
+  // {label,value} for trade-specific details (vehicle/plate, preferred stylist, gate code, …) so the
+  // record fits any small business without bespoke columns. `source` = how they were acquired
+  // (manual, website, referral). `archivedAt` soft-hides a contact without losing their history.
+  company     String?
+  tags        String[] @default([])
+  note        String?  @db.Text @map("notes") // quick free-text memo (distinct from the threaded `notes` relation)
+  customFields Json?   // [{ label: string, value: string }]
+  source      String?  // "manual" | "website" | "import" | "booking" | …
+  archivedAt  DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   consents      CustomerConsent[]
   notes         CustomerNote[]
+  recurringPlans RecurringPlan[]
   leads         Lead[]
   bookings      Booking[]
   invoices      Invoice[]
@@ -1063,6 +1400,7 @@ model Customer {
 
   @@index([clientId])
   @@index([clientId, email])
+  @@index([clientId, archivedAt])
   @@map("customers")
 }
 
@@ -1123,6 +1461,7 @@ model Lead {
 
   @@index([clientId])
   @@index([clientId, status])
+  @@index([clientId, createdAt])
   @@map("leads")
 }
 
@@ -1143,6 +1482,7 @@ model Booking {
   depositRequired Boolean  @default(false)
   depositInvoiceId String? @unique
   depositInvoice   Invoice? @relation("BookingDeposit", fields: [depositInvoiceId], references: [id])
+  invoices         Invoice[] @relation("BookingInvoices") // invoices/estimates raised for this appointment
 
   confirmationSentAt DateTime?
   reminderSentAt     DateTime?
@@ -1151,7 +1491,36 @@ model Booking {
 
   @@index([clientId])
   @@index([clientId, startAt])
+  @@index([clientId, status])
   @@map("bookings")
+}
+
+/// Central catalog of services a client offers — the single source of truth wired into the
+/// appointments scheduler (title + typical duration) and the website services section, and
+/// reusable by invoices. The system-created `isDefault` "Other" row is hidden from the website
+/// but selectable in appointments/invoices, and cannot be deleted.
+model Service {
+  id              String  @id @default(cuid())
+  clientId        String
+  client          Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String?
+  icon            String? // lucide icon key (backend identifier)
+  durationMinutes Int     @default(60) // typical time to complete
+  price           Int? // cents, optional — used by invoices later
+
+  showOnWebsite   Boolean @default(true)
+  isDefault       Boolean @default(false) // the "Other" catch-all — not on the website, not deletable
+  sortOrder       Int     @default(0)
+  active          Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([clientId, active])
+  @@map("services")
 }
 
 model Conversation {
@@ -1238,29 +1607,67 @@ model TicketComment {
 model Invoice {
   id         String        @id @default(cuid())
   kind       InvoiceKind
+  docType    FinanceDocType @default(INVOICE) // ESTIMATE | QUOTE | INVOICE (client→customer docs)
   clientId   String // ledger owner: tenant whose books this belongs to
-  client     Client        @relation(fields: [clientId], references: [id])
+  client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   // Set only for CLIENT_CUSTOMER invoices (a client billing its customer).
   customerId String?
   customer   Customer?     @relation(fields: [customerId], references: [id])
 
-  number     String        @unique
+  number     String // unique per client (see @@unique below)
   status     InvoiceStatus @default(DRAFT)
   currency   String        @default("usd")
-  subtotal   Int           @default(0) // cents
-  tax        Int           @default(0)
-  total      Int           @default(0)
-  amountPaid Int           @default(0)
 
+  // Money (all integer cents). subtotal = sum of line amounts (post line-discount, pre invoice
+  // discount); discountTotal = invoice-level discount; tax = sum of line tax; total = subtotal -
+  // discountTotal + tax. amountPaid accumulates payments.
+  subtotal      Int           @default(0)
+  discountType  DiscountType?
+  discountValue Int           @default(0) // PERCENT → basis points, FIXED → cents
+  discountTotal Int           @default(0)
+  tax           Int           @default(0)
+  total         Int           @default(0)
+  amountPaid    Int           @default(0)
+  depositAmount Int           @default(0) // requested up-front deposit, cents
+
+  notes String?
+  terms String?
+
+  issueDate  DateTime?
   dueDate    DateTime?
+  expiresAt  DateTime? // estimate/quote expiry
   sentAt     DateTime?
   viewedAt   DateTime?
+  acceptedAt DateTime?
+  declinedAt DateTime?
   paidAt     DateTime?
 
-  stripeInvoiceId String?
+  // Conversion chain: ESTIMATE → QUOTE → INVOICE.
+  convertedFromId String?  @unique
+  convertedFrom   Invoice? @relation("InvoiceConversion", fields: [convertedFromId], references: [id])
+  convertedTo     Invoice? @relation("InvoiceConversion")
+
+  publicToken String? @unique // customer-facing hosted view token
+
+  stripeInvoiceId    String?
+  taxCalculationId   String? // Stripe Tax calculation id (automatic tax) — used to file the transaction on payment
+
+  // Payment-reminder bookkeeping (worker-driven): when we last emailed a reminder and how many we've
+  // sent, so the sweep fires at most one per day per the owner's reminder schedule.
+  lastReminderAt DateTime?
+  reminderCount  Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // General appointment link (distinct from the 1:1 deposit relation below): the appointment this
+  // invoice/estimate was raised for, so the appointment can show whether it's been invoiced/sent/paid.
+  bookingId String?
+  booking   Booking? @relation("BookingInvoices", fields: [bookingId], references: [id])
+
+  // The recurring plan that generated this invoice (null for one-off documents).
+  recurringPlanId String?
+  recurringPlan   RecurringPlan? @relation(fields: [recurringPlanId], references: [id])
 
   lineItems    InvoiceLineItem[]
   payments     Payment[]
@@ -1268,29 +1675,122 @@ model Invoice {
   paymentLinks PaymentLink[]
   bookingDeposit Booking? @relation("BookingDeposit")
 
+  @@unique([clientId, number])
   @@index([clientId])
+  @@index([clientId, docType, status])
   @@index([clientId, status])
   @@index([kind])
+  @@index([bookingId])
+  @@index([recurringPlanId])
   @@map("invoices")
+}
+
+// =============================================================================
+// RECURRING SERVICE PLANS — repeat billing (lawn care, cleaning, retainers, …)
+// =============================================================================
+
+enum RecurringInterval {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+// INVOICE = generate + email an invoice (with a pay link) each period.
+// AUTO_CHARGE = charge a saved card off-session each period (falls back to a pay link until a card
+// is on file / Stripe is live).
+enum RecurringMode {
+  INVOICE
+  AUTO_CHARGE
+}
+
+enum RecurringStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model RecurringPlan {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  title    String
+  mode     RecurringMode     @default(INVOICE)
+  interval RecurringInterval @default(MONTHLY)
+  status   RecurringStatus   @default(ACTIVE)
+
+  lineItems Json   // [{ description, quantity, unitAmount, serviceId?, taxRateId? }]
+  currency  String @default("usd")
+  notes     String?
+  dueDays   Int    @default(14) // INVOICE mode: due N days after each generation
+
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  occurrences Int       @default(0)
+
+  // AUTO_CHARGE: card saved on file (set once the customer pays the first pay link with save-card on).
+  stripeCustomerId      String?
+  stripePaymentMethodId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+
+  @@index([clientId])
+  @@index([status, nextRunAt])
+  @@index([customerId])
+  @@map("recurring_plans")
 }
 
 model InvoiceLineItem {
   id          String  @id @default(cuid())
   invoiceId   String
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceId   String? // soft reference to the Services catalog (provenance; not FK-enforced)
   description String
   quantity    Int     @default(1)
   unitAmount  Int     @default(0) // cents
-  amount      Int     @default(0)
+
+  // Per-line discount + tax (snapshots so deleting a rate/service can't corrupt totals).
+  discountType  DiscountType?
+  discountValue Int           @default(0) // PERCENT → basis points, FIXED → cents
+  taxRateId     String?
+  taxRateBps    Int           @default(0) // snapshot of the rate at line time
+  taxAmount     Int           @default(0) // computed cents
+  amount        Int           @default(0) // qty * unit − line discount (pre-tax)
+  position      Int           @default(0)
 
   @@index([invoiceId])
   @@map("invoice_line_items")
 }
 
+// Client-defined sales-tax rates (manual). Architected so Stripe Tax can replace the source later.
+model TaxRate {
+  id        String  @id @default(cuid())
+  clientId  String
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  rateBps   Int // basis points, e.g. 850 = 8.50%
+  inclusive Boolean @default(false)
+  isDefault Boolean @default(false)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("tax_rates")
+}
+
 model Payment {
   id         String          @id @default(cuid())
   clientId   String
-  client     Client          @relation(fields: [clientId], references: [id])
+  client     Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?
   customer   Customer?       @relation(fields: [customerId], references: [id])
   invoiceId  String?
@@ -1371,7 +1871,7 @@ model PaymentEvent {
 model Refund {
   id         String       @id @default(cuid())
   paymentId  String
-  payment    Payment      @relation(fields: [paymentId], references: [id])
+  payment    Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   invoiceId  String?
   invoice    Invoice?     @relation(fields: [invoiceId], references: [id])
   amount     Int
@@ -1389,7 +1889,7 @@ model Refund {
 model Statement {
   id         String   @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id])
   periodStart DateTime
@@ -1407,7 +1907,7 @@ model Statement {
 model Due {
   id         String   @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?
   invoiceId  String?
   amount     Int
@@ -1423,7 +1923,7 @@ model Due {
 model AccountBalance {
   id         String   @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   customerId String?  @unique
   customer   Customer? @relation(fields: [customerId], references: [id])
   balance    Int      @default(0) // cents owed; negative = credit
@@ -1591,6 +2091,7 @@ model NotificationEvent {
 
   @@index([clientId])
   @@index([event])
+  @@index([clientId, event])
   @@index([recipientId])
   @@map("notification_events")
 }

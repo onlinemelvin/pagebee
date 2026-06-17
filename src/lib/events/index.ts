@@ -10,7 +10,11 @@ export type DomainEvent =
   | "payment.failed"
   | "quote.created"
   | "website.generated"
-  | "website.published";
+  | "website.preview_released"
+  | "website.published"
+  | "domain.requested"
+  | "domain.approved"
+  | "domain.active";
 
 type Handler = (payload: unknown) => void | Promise<void>;
 

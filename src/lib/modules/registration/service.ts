@@ -67,6 +67,8 @@ export async function registerClient(input: RegisterInput) {
       data: {
         clientId: newClient.id,
         planId: plan.id,
+        // Preview-before-you-pay: nothing is active until the preview is approved and
+        // (for real accounts) the setup fee is paid. Test accounts launch free.
         status: isTest ? "ACTIVE" : "SETUP_PENDING",
         agreedSetupFee: plan.setupFee,
         agreedMonthlyFee: plan.monthlyFee,

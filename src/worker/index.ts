@@ -26,13 +26,29 @@ async function main() {
   const { claimNextQueuedJob, runGenerationJob, requeueStaleJobs } = await import(
     "@/lib/modules/website"
   );
+  const { sweepBookingReminders } = await import("@/lib/modules/booking");
+  const { sweepInvoiceReminders, sweepRecurringPlans } = await import("@/lib/modules/finance");
 
   console.log("[worker] PageBee generation worker started");
   const recovered = await requeueStaleJobs();
   if (recovered) console.log(`[worker] requeued ${recovered} stale job(s)`);
 
+  let lastReminderSweep = 0;
+  const REMINDER_SWEEP_MS = 10 * 60 * 1000;
+
   for (;;) {
     try {
+      // Appointment + invoice payment reminders every ~10 minutes.
+      if (Date.now() - lastReminderSweep > REMINDER_SWEEP_MS) {
+        lastReminderSweep = Date.now();
+        const r = await sweepBookingReminders();
+        if (r.sent) console.log(`[worker] booking reminders sent: ${r.sent}`);
+        const fr = await sweepInvoiceReminders();
+        if (fr.sent) console.log(`[worker] invoice reminders sent: ${fr.sent}`);
+        const rp = await sweepRecurringPlans();
+        if (rp.generated) console.log(`[worker] recurring invoices generated: ${rp.generated} (auto-charged: ${rp.charged})`);
+      }
+
       const id = await claimNextQueuedJob();
       if (id) {
         console.log(`[worker] processing job ${id}`);

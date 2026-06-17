@@ -1,42 +1,56 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { Inbox, LayoutDashboard, Globe } from "lucide-react";
-import { getAuthContext } from "@/lib/auth/session";
+import { ShieldCheck } from "lucide-react";
+import { getAuthContext, hasPermission } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/admin/SignOutButton";
+import { AdminNav, type AdminTab } from "@/components/admin/AdminNav";
+import { LogoMark, Wordmark } from "@/components/brand/Logo";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAuthContext();
-  if (!ctx?.isAdmin) redirect("/login");
+  // Admins get everything; a reviewer/contractor (website:review) gets in but only sees Websites.
+  const canReview = ctx ? hasPermission(ctx, "website:review") : false;
+  if (!ctx || (!ctx.isAdmin && !canReview)) redirect("/login");
+
+  const tabs: AdminTab[] = [];
+  if (ctx.isAdmin) {
+    tabs.push(
+      { key: "overview", label: "Overview", href: "/admin" },
+      { key: "leads", label: "Leads", href: "/admin/leads" },
+      { key: "upgrades", label: "Upgrades", href: "/admin/upgrade-requests" },
+    );
+  }
+  tabs.push({ key: "websites", label: "Websites", href: "/admin/websites" });
 
   return (
     <div className="grid min-h-screen grid-cols-[240px_1fr] bg-stone-50">
-      <aside className="flex flex-col border-r border-stone-200 bg-white px-4 py-6">
-        <div className="mb-8 flex items-center gap-2 px-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 text-lg">🐝</span>
-          <span className="font-display text-lg font-semibold text-stone-900">PageBee</span>
+      <aside className="sticky top-0 flex h-screen flex-col overflow-y-auto border-r border-stone-200 bg-white px-4 py-6">
+        <div className="mb-6 flex items-center gap-2.5 px-2">
+          <LogoMark size={36} />
+          <div className="leading-tight">
+            <Wordmark className="text-lg" />
+            <p className="text-xs text-stone-400">{ctx.isAdmin ? "Admin console" : "Reviewer"}</p>
+          </div>
         </div>
-        <nav className="flex flex-col gap-1 text-sm">
-          <Link href="/admin" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-600 hover:bg-stone-100">
-            <LayoutDashboard size={18} /> Overview
-          </Link>
-          <Link href="/admin/leads" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
-            <Inbox size={18} /> Leads
-          </Link>
-          <Link href="/admin/websites" className="flex items-center gap-3 rounded-lg px-3 py-2 text-stone-700 hover:bg-stone-100">
-            <Globe size={18} /> Websites
-          </Link>
-        </nav>
+
+        <AdminNav tabs={tabs} />
+
+        <div className="mt-auto rounded-2xl border border-stone-200 bg-stone-50 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-stone-600">
+            <ShieldCheck size={13} className="text-emerald-500" /> {ctx.isAdmin ? "Administrator" : "Website reviewer"}
+          </p>
+          <p className="mt-1 truncate text-xs text-stone-400">{ctx.email}</p>
+        </div>
       </aside>
 
-      <div className="flex flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-stone-200 bg-white px-8">
-          <span className="text-sm font-medium text-stone-500">Admin</span>
+      <div className="flex min-w-0 flex-col">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-stone-200 bg-white/85 px-8 backdrop-blur-md">
+          <span className="text-sm font-medium text-stone-400">Internal · PageBee Ops</span>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-stone-600">{ctx.email}</span>
+            <span className="hidden text-sm text-stone-600 sm:inline">{ctx.email}</span>
             <SignOutButton />
           </div>
         </header>
-        <main className="flex-1 p-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1280px] flex-1 p-6 sm:p-8">{children}</main>
       </div>
     </div>
   );

@@ -4,13 +4,21 @@
   /* Warm "paper" background with near-black ink — the PageBee honey palette. */
   --background: #fdfbf5;
   --foreground: #1c1917;
+  /* Brand amber — matches the yellow in the PageBee bee mark. */
+  --brand-amber: #f5a623;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand-amber: var(--brand-amber);
   --font-sans: var(--font-geist-sans);
   --font-display: var(--font-fraunces);
+  --font-brand: var(--font-brand);
+  /* Consistent card elevation so surfaces lift off the warm/textured backdrop on every page.
+     Layered: a tight contact shadow + a soft wide ambient. `card-hover` deepens it for clickable cards. */
+  --shadow-card: 0 1px 2px rgba(28, 25, 23, 0.04), 0 10px 24px -12px rgba(28, 25, 23, 0.12);
+  --shadow-card-hover: 0 4px 12px rgba(28, 25, 23, 0.06), 0 18px 36px -14px rgba(28, 25, 23, 0.18);
 }
 
 body {
@@ -21,4 +29,178 @@ body {
 
 .font-display {
   font-family: var(--font-display), ui-serif, Georgia, serif;
+}
+
+/* Brand wordmark — rounded, friendly to pair with the bee mark. */
+.font-brand {
+  font-family: var(--font-brand), ui-rounded, "Segoe UI", system-ui, sans-serif;
+}
+
+/* ----------------------------------------------------------------------------
+   Motion system — slick, animation-forward marketing surface.
+   All animations use transform/opacity only and are disabled under
+   prefers-reduced-motion. (UI/UX Pro Max §7: animation guidelines.)
+---------------------------------------------------------------------------- */
+
+@keyframes pb-aurora {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(4%, -3%, 0) scale(1.08); }
+  66%  { transform: translate3d(-3%, 2%, 0) scale(1.04); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes pb-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+@keyframes pb-gradient-pan {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes pb-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes pb-spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+/* Animated honey-gradient text */
+.text-gradient {
+  background: linear-gradient(100deg, #f59e0b, #f97316, #fb7185, #f59e0b);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: pb-gradient-pan 6s linear infinite;
+}
+
+/* Aurora mesh blobs for hero / CTA backgrounds */
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(64px);
+  opacity: 0.55;
+  will-change: transform;
+  animation: pb-aurora 18s ease-in-out infinite;
+}
+
+.animate-float { animation: pb-float 7s ease-in-out infinite; }
+.animate-spin-slow { animation: pb-spin-slow 22s linear infinite; }
+
+/* Scroll-reveal — paired with the <Reveal> client component */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+.reveal.is-visible { opacity: 1; transform: none; }
+
+/* Hover lift for cards (UI/UX Pro Max: bento hover scale ~1.02) */
+.lift {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.lift:hover { transform: translateY(-4px); }
+
+/* Shimmer sweep for locked/upgrade feature cards (hover-triggered light pass) */
+@keyframes pb-shimmer { to { transform: translateX(220%); } }
+.shimmer-sweep { position: relative; overflow: hidden; }
+.shimmer-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(245, 158, 11, 0.16) 50%, transparent 65%);
+  transform: translateX(-220%);
+}
+.shimmer-sweep:hover::after { animation: pb-shimmer 1.1s ease; }
+
+/* Marquee track */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: pb-marquee 32s linear infinite;
+}
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+
+/* ----------------------------------------------------------------------------
+   Dashboard motion — entrance, skeletons, tooltips, micro-interactions.
+---------------------------------------------------------------------------- */
+
+/* Staggered entrance for dashboard cards. Set --d (ms) inline for the stagger. */
+@keyframes pb-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.anim-rise {
+  opacity: 0;
+  animation: pb-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--d, 0ms);
+}
+
+/* Pop-in for modals / chips */
+@keyframes pb-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.anim-pop { animation: pb-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Skeleton glimmer — warm paper sweep */
+@keyframes pb-skeleton {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f3f0e9 25%, #faf8f2 50%, #f3f0e9 75%);
+  background-size: 200% 100%;
+  animation: pb-skeleton 1.4s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+/* Soft pulse for live/attention dots */
+@keyframes pb-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+.pulse-dot { animation: pb-pulse-ring 2s ease-out infinite; }
+
+/* Chart draw-in (stroke + bar grow are driven by inline transition + mount flag) */
+.chart-draw { transition: stroke-dashoffset 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+.bar-grow { transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: bottom; }
+
+/* Tooltip bubble (paired with the Tooltip component) */
+.tip {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  opacity: 0;
+  transform: translateY(4px) scale(0.97);
+  pointer-events: none;
+}
+.tip-trigger:hover .tip,
+.tip-trigger:focus-visible .tip,
+.tip-trigger:focus-within .tip {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-gradient,
+  .aurora-blob,
+  .animate-float,
+  .animate-spin-slow,
+  .marquee-track,
+  .skeleton,
+  .pulse-dot { animation: none !important; }
+  .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .anim-rise { opacity: 1 !important; animation: none !important; }
+  .anim-pop { animation: none !important; }
+  .lift:hover { transform: none; }
+  .shimmer-sweep:hover::after { animation: none; }
+  .chart-draw, .bar-grow { transition: none !important; }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
-import { createLead, leadInputSchema } from "@/lib/modules/lead";
+import { rateLimited } from "@/lib/ratelimit";
+import { createLead, leadCaptureEnabled, leadInputSchema } from "@/lib/modules/lead";
 import "@/lib/events/subscribers"; // register lead.created handlers
 
 export const runtime = "nodejs"; // Prisma requires the Node runtime
@@ -28,6 +29,9 @@ export function OPTIONS() {
  * Body: { type?, name, email, phone?, message?, source? }
  */
 export async function POST(req: Request) {
+  const limited = await rateLimited(req, "leads", { limit: 8, windowMs: 60_000 }, CORS);
+  if (limited) return limited;
+
   const site = await resolveSite(getSiteToken(req));
   if (!site) {
     return json({ error: "unauthorized" }, 401);
@@ -37,6 +41,17 @@ export async function POST(req: Request) {
   const parsed = leadInputSchema.safeParse(body);
   if (!parsed.success) {
     return json({ error: "validation_error", issues: parsed.error.flatten() }, 400);
+  }
+
+  // Preview mode (before launch): accept but don't deliver — demo only.
+  if (site.status === "preview") {
+    return json({ id: "demo", status: "DEMO", demo: true }, 200);
+  }
+
+  // Lead capture must be live (on-plan AND not turned off by the owner). The site hides the form
+  // when disabled, but enforce server-side so a stale/cached page can't deliver leads anyway.
+  if (!(await leadCaptureEnabled(site.clientId))) {
+    return json({ error: "forms_disabled" }, 403);
   }
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;

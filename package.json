@@ -19,6 +19,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
     "@prisma/client": "^6.19.3",
+    "@react-pdf/renderer": "^4.5.1",
+    "@stripe/connect-js": "^3.4.5",
+    "@stripe/react-connect-js": "^3.4.3",
+    "@stripe/stripe-js": "^9.8.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.108.0",
     "class-variance-authority": "^0.7.1",

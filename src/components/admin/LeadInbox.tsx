@@ -3,7 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/client/ui/EmptyState";
 // Import from the schema (zod-only) — NOT the module index, which pulls Prisma into the client bundle.
 import { LEAD_STATUSES } from "@/lib/modules/lead/schema";
 
@@ -60,8 +62,16 @@ export function LeadInbox({ leads, activeStatus }: { leads: LeadRow[]; activeSta
         ))}
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-2xl border border-stone-200 bg-white">
-        <table className="w-full text-sm">
+      {leads.length === 0 ? (
+        <EmptyState
+          className="mt-4"
+          icon={Inbox}
+          title={activeStatus ? `No ${activeStatus.toLowerCase()} leads` : "No leads yet"}
+          description={activeStatus ? "Try a different status filter." : "Inquiries captured from any client website land here, ready to triage."}
+        />
+      ) : (
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+        <table className="w-full min-w-[680px] text-sm">
           <thead className="border-b border-stone-200 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
             <tr>
               <th className="px-4 py-3 font-medium">Name</th>
@@ -72,16 +82,14 @@ export function LeadInbox({ leads, activeStatus }: { leads: LeadRow[]; activeSta
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
-            {leads.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-stone-400">
-                  No leads yet. Submit the contact form on the marketing site to create one.
-                </td>
-              </tr>
-            )}
             {leads.map((lead) => (
-              <tr key={lead.id} className="align-top">
-                <td className="px-4 py-3 font-medium text-stone-900">{lead.name}</td>
+              <tr key={lead.id} className="align-top hover:bg-stone-50">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-amber-100 to-amber-50 text-xs font-bold text-amber-700">{lead.name.slice(0, 2).toUpperCase()}</span>
+                    <span className="font-medium text-stone-900">{lead.name}</span>
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-stone-600">
                   <div>{lead.email ?? "—"}</div>
                   <div className="text-stone-400">{lead.phone ?? ""}</div>
@@ -119,6 +127,7 @@ export function LeadInbox({ leads, activeStatus }: { leads: LeadRow[]; activeSta
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

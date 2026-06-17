@@ -280,10 +280,18 @@ the master spec, persisted across `Website → WebsiteVersion → WebsiteConfig 
 WebsitePage`.
 
 Pipeline: intake → `WebsiteGenerationJob` (QUEUED → GENERATING) → structured
-config → **NEEDS_REVIEW** (admin review required before publish) → PUBLISHED.
-Versions support preview, published, rollback, and regeneration. Generation
-validates that no feature outside the client's plan is enabled and that no
-unsupported claim is made.
+config → **NEEDS_REVIEW** (admin review) → PUBLISHED. Versions support preview,
+published, rollback, and regeneration. Generation validates that no feature
+outside the client's plan is enabled and that no unsupported claim is made.
+
+**Preview-first onboarding (the acquisition model).** Self-serve signups don't wait
+in an admin queue — they get a **free AI website preview before paying** (banner +
+`noindex` + demo-mode features + expiry), reusing this *same* generator and renderer.
+Setup fee is charged only **after the customer approves**; the same `WebsiteVersion`
+then launches and the monthly subscription starts. Preview lifecycle/status lives in
+the `Preview` / `PreviewRevision` / `Conversion` models, kept separate from generation.
+Full spec: [ONBOARDING.md](ONBOARDING.md). (The model: *Free AI Website Preview →
+Approval → Setup Fee → Launch → Monthly Subscription*.)
 
 ---
 
@@ -329,11 +337,28 @@ Postgres, Auth, and Storage.
   `Host` header, resolves the `Website` by `subdomain`, and renders the published
   version. This is the only web address for **Launch**.
 - **Custom domain (Connect & Automate).** Higher tiers may map a custom domain
-  (e.g. `acmecleaning.com`). PageBee adds it to the Vercel project via the
-  **Vercel Domains API**, returns the DNS records for the client to set, and polls
-  verification; `Website.domain` / `domainStatus` track state
-  (`pending → verifying → verified → active`). Once active, middleware resolves the
-  tenant by custom domain too. Gated by the `customDomain` feature flag.
+  (e.g. `acmecleaning.com`). Each connected host is a **`WebsiteDomain`** row
+  (one-to-many off `Website`); a single connection provisions a **pair** — the apex
+  (`acme.com`) and its `www` — one marked `isPrimary` (canonical), the other set to
+  redirect to it. Flow (see `src/lib/modules/website/domain.ts`):
+  1. The owner submits a domain in their website settings (gated by the
+     `customDomain` feature flag). We expand it into the apex+www host pair and park
+     both as `requested`. **Nothing touches Vercel yet** — an unvetted/typo'd/abusive
+     domain is held for review.
+  2. An admin **approves** it (same `website:review` permission as the draft queue).
+     Only then does PageBee add each host to the Vercel project via the **Vercel
+     Domains API** (the sibling as a 308 redirect to the primary), store the DNS
+     records (A for apex / CNAME for www + any TXT challenge) on each row's
+     `verification`, and flip them to `verifying`.
+  3. The owner sets those DNS records at their registrar. A **cron**
+     (`/api/v1/cron/domains/verify`, scheduled in `vercel.json`) sweeps `verifying`
+     hosts, asks Vercel to verify, and flips each to `active` once DNS resolves (SSL
+     is auto-issued). Per-host state runs `requested → verifying → active`
+     (`error` on failure); reject/remove deletes the rows.
+  Once the primary host is active, middleware resolves the tenant by custom domain
+  too (any active host → its `Website`). When Vercel isn't configured
+  (`VERCEL_TOKEN`/`VERCEL_PROJECT_ID` unset, e.g. local dev) the flow still records
+  DNS records on approval but verification is manual.
 
 The public API's `Origin` check (§5) validates against **both** the site's
 `{subdomain}.pagebee.com` and any active custom domain.
