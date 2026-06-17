@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function FinanceSettingsPage({ searchParams }: { searchParams: Promise<{ connect?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (!ws.caps.invoices) redirect("/client/invoices"); // off-plan → finance index shows the upgrade gate
   if (ws.role !== "owner") redirect("/client/invoices"); // payment/tax config is owner-only
 
   const { connect } = await searchParams;

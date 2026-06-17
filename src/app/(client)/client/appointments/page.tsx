@@ -1,7 +1,9 @@
 import { getClientWorkspace } from "@/lib/modules/client";
 import { listBookings, getSchedulingSettings } from "@/lib/modules/booking";
 import { listBookableServices } from "@/lib/modules/service";
+import { bookingInvoiceStatuses } from "@/lib/modules/finance";
 import { AppointmentsManager } from "@/components/client/AppointmentsManager";
+import { UpgradeGate } from "@/components/client/UpgradeGate";
 import type { Appt, ApptService } from "@/components/client/appointments-types";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function ClientAppointmentsPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
+  // Booking is a Connect+ feature; surfaced to every tier in the nav, gated here for lower plans.
+  if (!ws.caps.booking) return <UpgradeGate title="Appointments" flag="booking" blurb="Let customers book and reschedule online, with availability and walk-in management — available on the CONNECT plan and up." />;
 
   const [bookings, settings, catalog] = await Promise.all([
     listBookings(ws.client.id),
@@ -16,6 +20,10 @@ export default async function ClientAppointmentsPage() {
     listBookableServices(ws.client.id),
   ]);
   const services: ApptService[] = catalog.map((s) => ({ name: s.title, durationMinutes: s.durationMinutes }));
+
+  // Finance is an Automate feature; only fetch linked-invoice statuses (and show the invoice action)
+  // when this plan includes it.
+  const invoiceMap = ws.caps.invoices ? await bookingInvoiceStatuses(ws.client.id, bookings.map((b) => b.id)) : {};
 
   const appointments: Appt[] = bookings.map((b) => ({
     id: b.id,
@@ -28,6 +36,7 @@ export default async function ClientAppointmentsPage() {
     customerEmail: b.customer?.email ?? null,
     customerPhone: b.customer?.phone ?? null,
     notes: b.notes,
+    invoice: invoiceMap[b.id] ?? null,
   }));
 
   return (
@@ -36,7 +45,7 @@ export default async function ClientAppointmentsPage() {
       <p className="mt-1 text-stone-500">
         Manage bookings, reschedule, add walk-ins, and set your availability.
       </p>
-      <AppointmentsManager appointments={appointments} settings={settings} services={services} />
+      <AppointmentsManager appointments={appointments} settings={settings} services={services} financeEnabled={ws.caps.invoices} />
     </div>
   );
 }

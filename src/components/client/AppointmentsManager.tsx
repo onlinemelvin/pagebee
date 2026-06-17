@@ -32,10 +32,12 @@ export function AppointmentsManager({
   appointments,
   settings,
   services,
+  financeEnabled = false,
 }: {
   appointments: Appt[];
   settings: SchedulingSettings;
   services: ApptService[];
+  financeEnabled?: boolean;
 }) {
   const today = ymd(new Date());
   const [monthStart, setMonthStart] = React.useState(() => {
@@ -94,7 +96,7 @@ export function AppointmentsManager({
   return (
     <div className="mt-6">
       {appointments.length === 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-4">
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-card">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-amber-600 shadow-sm">
             <Plus size={20} />
           </span>
@@ -128,7 +130,7 @@ export function AppointmentsManager({
       </div>
 
       {/* Month calendar (full width, large) */}
-      <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4">
+      <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 shadow-card">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xl text-stone-900">
             {monthStart.toLocaleString([], { month: "long", year: "numeric" })}
@@ -243,7 +245,7 @@ export function AppointmentsManager({
             <p className="mt-2 text-xs text-stone-400">Drag an appointment across columns to change its day, and up or down to change its time.</p>
           </div>
         ) : dayAppts.length === 0 ? (
-          <p className="mt-3 rounded-2xl border border-stone-200 bg-white p-10 text-center text-stone-400">
+          <p className="mt-3 rounded-2xl border border-stone-200 bg-white p-10 text-center text-stone-400 shadow-card">
             Nothing booked. Switch to Week to drag one here, or add one.
           </p>
         ) : (
@@ -254,7 +256,7 @@ export function AppointmentsManager({
         )}
       </div>
 
-      {detail && <BookingDetail appt={detail} history={history} onClose={() => setDetail(null)} />}
+      {detail && <BookingDetail appt={detail} history={history} financeEnabled={financeEnabled} onClose={() => setDetail(null)} />}
       {add && <AddAppointmentModal services={services} defaultDate={selected} onClose={() => setAdd(false)} />}
     </div>
   );

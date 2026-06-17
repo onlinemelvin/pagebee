@@ -245,7 +245,7 @@ export function DocumentEditor({
       {/* Main */}
       <div className="space-y-6">
         {/* Customer */}
-        <section className="rounded-2xl border border-stone-200 bg-white p-5">
+        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
           <div className="flex items-center justify-between">
             <h2 className="font-medium text-stone-900">Bill to</h2>
             <div className="inline-flex rounded-lg border border-stone-200 p-0.5 text-xs">
@@ -294,7 +294,7 @@ export function DocumentEditor({
         </section>
 
         {/* Line items */}
-        <section className="rounded-2xl border border-stone-200 bg-white p-5">
+        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
           <h2 className="font-medium text-stone-900">Items</h2>
           <div className="mt-3 space-y-3">
             {lines.map((l) => {
@@ -417,7 +417,7 @@ export function DocumentEditor({
       {/* Sidebar: totals + meta */}
       <aside className="space-y-4">
         <div className="sticky top-4 space-y-4">
-          <section className="rounded-2xl border border-stone-200 bg-white p-5">
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
             <h2 className="font-medium text-stone-900">Summary</h2>
             <dl className="mt-3 space-y-1.5 text-sm">
               <div className="flex justify-between"><dt className="text-stone-500">Subtotal</dt><dd>{fmt(totals.subtotal, currency)}</dd></div>
@@ -446,7 +446,7 @@ export function DocumentEditor({
             </label>
           </section>
 
-          <section className="rounded-2xl border border-stone-200 bg-white p-5">
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
             <h2 className="font-medium text-stone-900">Dates</h2>
             <div className="mt-3 space-y-2 text-sm">
               <label className="grid gap-1 font-medium text-stone-700">Issue date<Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></label>

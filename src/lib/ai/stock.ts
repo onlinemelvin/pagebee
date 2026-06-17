@@ -18,7 +18,7 @@ export async function fetchStockImages(queries: string[]): Promise<StockImage[]>
 
   const images: StockImage[] = [];
   const seen = new Set<string>();
-  for (const query of queries.slice(0, 5)) {
+  for (const query of queries.slice(0, 8)) {
     try {
       const res = await fetch(
         `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`,

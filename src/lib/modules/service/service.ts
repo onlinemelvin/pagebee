@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { Service as ServiceModel } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
+import { generateServiceMeta, uniqueIcon } from "@/lib/ai/service-meta";
 import { serviceInputSchema, serviceUpdateSchema } from "./schema";
 
 export class ServiceError extends Error {
@@ -14,6 +15,46 @@ export class ServiceError extends Error {
 
 /** Title of the system catch-all every client gets (hidden from the website, not deletable). */
 export const OTHER_TITLE = "Other";
+
+// Per-client website display toggles for the services section, stored as FeatureFlags (no schema
+// change). These are the explicit source of truth for whether the live site shows each service's
+// price / time — overriding any per-site default. Default off (owner opts in on the Services tab).
+const SHOW_PRICE_KEY = "service_show_price";
+const SHOW_DURATION_KEY = "service_show_duration";
+
+export interface ServiceDisplay {
+  showPrice: boolean;
+  showDuration: boolean;
+}
+
+/** The owner's "show price / show time on website" choices (default both off). */
+export async function getServiceDisplay(clientId: string): Promise<ServiceDisplay> {
+  const flags = await prisma.featureFlag.findMany({
+    where: { clientId, key: { in: [SHOW_PRICE_KEY, SHOW_DURATION_KEY] } },
+    select: { key: true, enabled: true },
+  });
+  const on = (key: string) => flags.find((f) => f.key === key)?.enabled === true;
+  return { showPrice: on(SHOW_PRICE_KEY), showDuration: on(SHOW_DURATION_KEY) };
+}
+
+/** Update one or both website display toggles. */
+export async function setServiceDisplay(
+  clientId: string,
+  patch: { showPrice?: boolean; showDuration?: boolean },
+): Promise<ServiceDisplay> {
+  const upsert = (key: string, enabled: boolean) =>
+    prisma.featureFlag.upsert({
+      where: { clientId_key: { clientId, key } },
+      update: { enabled },
+      create: { clientId, key, enabled },
+    });
+  await Promise.all([
+    patch.showPrice !== undefined ? upsert(SHOW_PRICE_KEY, patch.showPrice) : null,
+    patch.showDuration !== undefined ? upsert(SHOW_DURATION_KEY, patch.showDuration) : null,
+  ].filter(Boolean) as Promise<unknown>[]);
+  await writeAudit({ action: "service.display_updated", entityType: "Client", entityId: clientId, clientId });
+  return getServiceDisplay(clientId);
+}
 
 export interface ServiceDTO {
   id: string;
@@ -44,6 +85,21 @@ function toDTO(s: ServiceModel): ServiceDTO {
 }
 
 const ORDER = [{ isDefault: "asc" as const }, { sortOrder: "asc" as const }, { createdAt: "asc" as const }];
+
+/** Human label for a stored duration in minutes (e.g. 2880 → "2 days", 90 → "90 min"). */
+export function serviceDurationLabel(mins: number): string {
+  const DAY = 24 * 60;
+  const HOUR = 60;
+  if (mins > 0 && mins % DAY === 0) {
+    const d = mins / DAY;
+    return `${d} day${d === 1 ? "" : "s"}`;
+  }
+  if (mins > 0 && mins % HOUR === 0) {
+    const h = mins / HOUR;
+    return `${h} hour${h === 1 ? "" : "s"}`;
+  }
+  return `${mins} min`;
+}
 
 /** Create the system "Other" catch-all once per client. Idempotent. */
 export async function ensureDefaultServices(clientId: string): Promise<void> {
@@ -94,12 +150,35 @@ export async function getServiceDurations(clientId: string): Promise<Map<string,
 
 export async function createService(clientId: string, input: unknown): Promise<ServiceDTO> {
   const data = serviceInputSchema.parse(input);
+
+  // The owner now supplies only the service name; let the AI pick an icon and write a
+  // business-tied description from it. Any value the caller did pass takes precedence.
+  let icon = data.icon ?? null;
+  let description = data.description ?? null;
+  if (icon == null || description == null) {
+    const [client, usedRows] = await Promise.all([
+      prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true, businessType: true } }),
+      // Icons already on this client's catalog — so the AI pick (and the dedup backstop) don't repeat one.
+      prisma.service.findMany({ where: { clientId }, select: { icon: true } }),
+    ]);
+    const used = new Set(usedRows.map((r) => r.icon).filter((x): x is string => Boolean(x)));
+    const meta = await generateServiceMeta({
+      serviceName: data.title,
+      businessName: client?.businessName ?? "",
+      businessType: client?.businessType ?? null,
+      exclude: [...used],
+    });
+    // Only de-duplicate the AI-chosen icon; an explicit caller-supplied icon is respected as-is.
+    if (icon == null) icon = uniqueIcon(meta.icon, used, data.title);
+    description = description ?? meta.description;
+  }
+
   const created = await prisma.service.create({
     data: {
       clientId,
       title: data.title,
-      description: data.description ?? null,
-      icon: data.icon ?? null,
+      description,
+      icon,
       durationMinutes: data.durationMinutes,
       price: data.price ?? null,
       showOnWebsite: data.showOnWebsite,
@@ -135,7 +214,10 @@ export async function deleteService(clientId: string, id: string): Promise<{ id:
 
 /**
  * Seed the catalog from the website intake's plain service names, once. Skips if the client
- * already has real services, so it never duplicates an existing catalog.
+ * already has real services, so it never duplicates an existing catalog. Each seeded service
+ * gets an AI-generated icon + business-tied description (same as the Add-service modal), so the
+ * catalog isn't a wall of identical sparkles with no copy. AI runs in parallel; if it's
+ * unavailable, generateServiceMeta returns a keyword-matched icon (still varied) and no description.
  */
 export async function seedServicesFromNames(clientId: string, names: string[]): Promise<void> {
   await ensureDefaultServices(clientId);
@@ -143,7 +225,37 @@ export async function seedServicesFromNames(clientId: string, names: string[]): 
   if (count > 0) return;
   const clean = [...new Set(names.map((n) => n.trim()).filter(Boolean))].slice(0, 30);
   if (clean.length === 0) return;
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { businessName: true, businessType: true },
+  });
+  const metas = await Promise.all(
+    clean.map((title) =>
+      generateServiceMeta({
+        serviceName: title,
+        businessName: client?.businessName ?? "",
+        businessType: client?.businessType ?? null,
+      }),
+    ),
+  );
+
+  // The metas were generated in parallel, so they can't see each other's icon picks — enforce
+  // uniqueness across the batch here so the seeded catalog doesn't open with repeated icons.
+  const taken = new Set<string>();
   await prisma.service.createMany({
-    data: clean.map((title, i) => ({ clientId, title, durationMinutes: 60, showOnWebsite: true, sortOrder: i })),
+    data: clean.map((title, i) => {
+      const icon = uniqueIcon(metas[i].icon, taken, title);
+      taken.add(icon);
+      return {
+        clientId,
+        title,
+        icon,
+        description: metas[i].description,
+        durationMinutes: 60,
+        showOnWebsite: true,
+        sortOrder: i,
+      };
+    }),
   });
 }

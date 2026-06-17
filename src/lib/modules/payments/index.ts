@@ -5,6 +5,7 @@ export {
   verifyConnectState,
   refreshAccountStatus,
   createInvoiceCheckout,
+  chargeInvoiceOffSession,
   processStripeEvent,
   refundPayment,
   PaymentError,

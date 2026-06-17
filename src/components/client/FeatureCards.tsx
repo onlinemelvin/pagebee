@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -9,6 +10,7 @@ import {
   CreditCard,
   Globe,
   Image,
+  ImagePlus,
   Inbox,
   Lock,
   MessageSquare,
@@ -20,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { UpgradeModal } from "./UpgradeModal";
 import type { FeatureCardInfo } from "@/lib/modules/client";
+import { toggleFeature } from "@/app/(client)/client/_actions/features";
 
 const ICONS: Record<string, LucideIcon> = {
   gallery: Image,
@@ -60,15 +63,42 @@ export function FeatureCards({ features, title = "Features" }: { features: Featu
     });
   }, [features]);
 
+  // Reconcile against the authoritative DB value on mount. The RSC Router Cache can serve a stale
+  // prefetched copy of this page after a feature was toggled elsewhere (e.g. the Media gallery
+  // switch), so this `fetch` (no-store, bypasses that cache) corrects each card if needed.
+  React.useEffect(() => {
+    let active = true;
+    fetch("/api/v1/client/features", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active || !data?.features) return;
+        const fresh = new Map<string, FeatureCardInfo["state"]>(
+          (data.features as FeatureCardInfo[]).map((f) => [f.key, f.state]),
+        );
+        setOptimistic((prev) => {
+          const next = new Map(prev);
+          for (const f of features) {
+            const fs = fresh.get(f.key);
+            if ((fs === "enabled" || fs === "available") && fs !== f.state) next.set(f.key, fs);
+            else if (fs === f.state) next.delete(f.key);
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function toggle(f: FeatureCardInfo, enabled: boolean) {
     if (!f.toggleKey) return;
     setOptimistic((m) => new Map(m).set(f.key, enabled ? "enabled" : "available")); // flip now
     try {
-      const res = await fetch("/api/v1/client/features", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: f.toggleKey, enabled }),
-      });
+      // Server Action (not a fetch): its revalidatePath evicts the Media page's cached copy too,
+      // so its gallery switch reflects this toggle without a hard reload.
+      const res = await toggleFeature(f.toggleKey, enabled);
       if (res.ok) {
         router.refresh(); // props catch up; reconcile effect drops the override
       } else {
@@ -105,10 +135,10 @@ export function FeatureCards({ features, title = "Features" }: { features: Featu
             <div
               key={f.key}
               className={cn(
-                "lift group flex flex-col rounded-2xl border p-5",
+                "lift group flex flex-col rounded-2xl border p-5 shadow-card transition-shadow",
                 locked
-                  ? "shimmer-sweep border-stone-200 bg-stone-50 hover:border-amber-300 hover:shadow-lg"
-                  : "border-stone-200 bg-white hover:border-amber-300 hover:shadow-lg",
+                  ? "shimmer-sweep border-stone-200 bg-stone-50 hover:border-amber-300 hover:shadow-card-hover"
+                  : "border-stone-200 bg-white hover:border-amber-300 hover:shadow-card-hover",
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -120,62 +150,106 @@ export function FeatureCards({ features, title = "Features" }: { features: Featu
                 >
                   <Icon size={20} />
                 </span>
-                {enabled && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">
-                    <Check size={11} /> Enabled
-                  </span>
-                )}
-                {state === "available" && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-                    Available
-                  </span>
-                )}
-                {locked && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-stone-200 px-2 py-0.5 text-[11px] font-semibold text-stone-600">
-                    <Lock size={11} /> {f.toPlanLabel}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {enabled && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">
+                      <Check size={11} /> Enabled
+                    </span>
+                  )}
+                  {state === "available" && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                      Available
+                    </span>
+                  )}
+                  {locked && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-stone-200 px-2 py-0.5 text-[11px] font-semibold text-stone-600">
+                      <Lock size={11} /> {f.toPlanLabel}
+                    </span>
+                  )}
+                  {/* On-plan features toggle right here; blocked (no page room) can't be enabled. */}
+                  {!locked && (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enabled}
+                      aria-label={`${enabled ? "Disable" : "Enable"} ${f.title}`}
+                      title={!enabled && f.blockedReason ? f.blockedReason : undefined}
+                      onClick={() => (enabled ? toggle(f, false) : onEnable(f))}
+                      disabled={!enabled && Boolean(f.blockedReason)}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50",
+                        enabled ? "bg-amber-500" : "bg-stone-300",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+                          enabled ? "translate-x-5" : "translate-x-0.5",
+                        )}
+                      />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <p className={cn("mt-3 font-medium", locked ? "text-stone-500" : "text-stone-900")}>{f.title}</p>
               <p className={cn("mt-1 flex-1 text-sm", locked ? "text-stone-400" : "text-stone-600")}>{f.desc}</p>
 
-              <div className="mt-4">
-                {enabled && (
-                  <button
-                    onClick={() => toggle(f, false)}
-                    className="text-xs font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline"
-                  >
-                    Disable
-                  </button>
-                )}
+              {/* Gallery photos live in the Media library — point owners there to add/manage them. */}
+              {f.key === "gallery" && !locked && (
+                <Link
+                  href="/client/media"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 underline-offset-2 hover:text-amber-800 hover:underline"
+                >
+                  <ImagePlus size={13} /> Add photos in your Media page
+                </Link>
+              )}
 
-                {state === "available" && (
-                  <button
-                    onClick={() => onEnable(f)}
-                    className={cn(
-                      "inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 px-4 py-2 text-sm font-semibold text-white",
-                      "shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-6px_rgba(245,158,11,0.6)] active:translate-y-0",
-                      "motion-reduce:transform-none",
-                    )}
-                  >
-                    Enable
-                  </button>
-                )}
+              {/* Lead form submissions land in Inquiries — point owners there to read & reply. */}
+              {f.key === "forms" && !locked && (
+                <Link
+                  href="/client/inquiries"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 underline-offset-2 hover:text-amber-800 hover:underline"
+                >
+                  <Inbox size={13} /> View messages in your Inquiries page
+                </Link>
+              )}
 
-                {locked && f.toPlan && (
-                  <button
-                    onClick={() => setUpsell(f)}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white",
-                      "transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800 hover:shadow-[0_8px_24px_-6px_rgba(28,25,23,0.5)] active:translate-y-0",
-                      "motion-reduce:transform-none",
-                    )}
-                  >
-                    <Sparkles size={14} className="text-amber-400" /> Upgrade to unlock
-                  </button>
-                )}
-              </div>
+              {((state === "available" && f.blockedReason) || (locked && f.toPlan)) && (
+                <div className="mt-4">
+                  {/* Available but no page room: explain why the toggle is disabled + offer the upgrade. */}
+                  {state === "available" && f.blockedReason && (
+                    <div>
+                      <p className="mb-2 text-xs text-stone-500">{f.blockedReason}</p>
+                      {f.toPlan && (
+                        <button
+                          onClick={() => setUpsell(f)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white",
+                            "transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800 hover:shadow-[0_8px_24px_-6px_rgba(28,25,23,0.5)] active:translate-y-0",
+                            "motion-reduce:transform-none",
+                          )}
+                        >
+                          <Sparkles size={14} className="text-amber-400" /> Upgrade to {f.toPlanLabel}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {locked && f.toPlan && (
+                    <button
+                      onClick={() => setUpsell(f)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white",
+                        "transition-all duration-200 hover:-translate-y-0.5 hover:bg-stone-800 hover:shadow-[0_8px_24px_-6px_rgba(28,25,23,0.5)] active:translate-y-0",
+                        "motion-reduce:transform-none",
+                      )}
+                    >
+                      <Sparkles size={14} className="text-amber-400" /> Upgrade to unlock
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

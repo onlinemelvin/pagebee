@@ -101,7 +101,8 @@ function QuickSearch({ tabs }: { tabs: NavTab[] }) {
   const [q, setQ] = React.useState("");
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
 
-  const keys = new Set(tabs.map((t) => t.key));
+  // Only on-plan tabs expose deep-link shortcuts; locked (upsell) tabs jump to their page's gate.
+  const keys = new Set(tabs.filter((t) => !t.locked).map((t) => t.key));
   const dest: { label: string; href: string; icon: LucideIcon; group: string }[] = [
     ...tabs.map((t) => ({ label: t.label, href: t.href, icon: TAB_ICONS[t.key] ?? LayoutDashboard, group: "Go to" })),
   ];

@@ -24,7 +24,13 @@ export function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section style={style} className={cn("rounded-2xl border border-stone-200 bg-white p-5 sm:p-6", className)}>
+    <section
+      style={style}
+      className={cn(
+        "rounded-2xl border border-stone-200/80 bg-white p-5 shadow-card sm:p-6",
+        className,
+      )}
+    >
       {(title || action) && (
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">

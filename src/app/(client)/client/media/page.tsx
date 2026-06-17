@@ -8,6 +8,7 @@ export default async function ClientMediaPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
   const items = await listMedia(ws.client.id);
+  const gallery = ws.features.find((f) => f.key === "gallery");
 
   return (
     <div>
@@ -17,8 +18,13 @@ export default async function ClientMediaPage() {
         hero, or services. You can add or remove images anytime.
       </p>
 
-      <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
-        <MediaManager initial={items} />
+      <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
+        <MediaManager
+          initial={items}
+          galleryEnabled={gallery?.state === "enabled"}
+          galleryLocked={gallery?.state === "locked"}
+          galleryBlockedReason={gallery?.blockedReason ?? null}
+        />
       </div>
     </div>
   );

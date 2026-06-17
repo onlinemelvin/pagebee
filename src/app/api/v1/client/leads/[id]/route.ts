@@ -26,6 +26,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "validation_error", issues: parsed.error.flatten() }, { status: 400 });
   }
 
-  const lead = await updateLead(id, parsed.data, { userId: ctx.userId });
+  const lead = await updateLead(id, parsed.data, { userId: ctx.userId }, client.id);
   return NextResponse.json({ lead });
 }

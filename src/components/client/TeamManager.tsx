@@ -61,7 +61,7 @@ export function TeamManager({ state, isOwner }: { state: TeamState; isOwner: boo
   return (
     <div className="mt-6 space-y-6">
       {/* Seat usage */}
-      <div className="rounded-2xl border border-stone-200 bg-white p-6">
+      <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center justify-between">
           <div>
             <p className="font-display text-lg text-stone-900">Seats</p>
@@ -76,7 +76,7 @@ export function TeamManager({ state, isOwner }: { state: TeamState; isOwner: boo
 
       {/* Invite form (owner only) */}
       {isOwner && (
-        <form onSubmit={invite} className="rounded-2xl border border-stone-200 bg-white p-6">
+        <form onSubmit={invite} className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
           <p className="flex items-center gap-2 font-display text-lg text-stone-900"><UserPlus size={18} className="text-amber-500" /> Invite a teammate</p>
           <p className="mt-1 text-sm text-stone-500">They&apos;ll get an email to set up their login and join {full ? "" : "your team"}.</p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -98,7 +98,7 @@ export function TeamManager({ state, isOwner }: { state: TeamState; isOwner: boo
       )}
 
       {/* Members */}
-      <div className="rounded-2xl border border-stone-200 bg-white p-6">
+      <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <p className="font-display text-lg text-stone-900">Members</p>
         <ul className="mt-3 divide-y divide-stone-100">
           {state.members.map((m) => (
@@ -128,7 +128,7 @@ export function TeamManager({ state, isOwner }: { state: TeamState; isOwner: boo
 
       {/* Pending invites */}
       {state.invites.length > 0 && (
-        <div className="rounded-2xl border border-stone-200 bg-white p-6">
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
           <p className="font-display text-lg text-stone-900">Pending invites</p>
           <ul className="mt-3 divide-y divide-stone-100">
             {state.invites.map((i) => (

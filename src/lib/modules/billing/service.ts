@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getStripe, appBaseUrl } from "@/lib/stripe/client";
 import { planByName, type PlanDef, type PlanName } from "@/lib/plans";
@@ -37,14 +38,18 @@ async function ensurePrices(stripe: Stripe, plan: PlanDef): Promise<{ monthly: s
     ).id;
   }
   if (!setup) {
-    setup = (
-      await stripe.prices.create({
-        lookup_key: setupKey,
-        currency: "usd",
-        unit_amount: plan.setupFee,
-        product_data: { name: `PageBee ${plan.label} — setup fee` },
-      })
-    ).id;
+    const created = await stripe.prices.create({
+      lookup_key: setupKey,
+      currency: "usd",
+      unit_amount: plan.setupFee,
+      product_data: { name: `PageBee ${plan.label} — setup fee` },
+    });
+    setup = created.id;
+    // Caption the one-time line item in Checkout ("One-time fee") to mirror the recurring
+    // "Billed monthly" caption Stripe auto-adds to the monthly price.
+    if (typeof created.product === "string") {
+      await stripe.products.update(created.product, { description: "One-time fee" });
+    }
   }
   return { monthly, setup };
 }
@@ -130,8 +135,17 @@ async function switchPlan(clientId: string, planName: string): Promise<void> {
   });
 }
 
-/** Process a verified Stripe billing webhook event. Idempotent. */
+/** Process a verified Stripe billing webhook event. Idempotent — dedupes redeliveries by event id
+ *  (same PaymentEvent ledger the Connect webhook uses) so a retried setup-fee event can't double-launch. */
 export async function processBillingEvent(event: Stripe.Event): Promise<void> {
+  const existing = await prisma.paymentEvent.findUnique({ where: { externalId: event.id }, select: { processedAt: true } });
+  if (existing?.processedAt) return;
+  await prisma.paymentEvent.upsert({
+    where: { externalId: event.id },
+    create: { externalId: event.id, type: event.type, payload: event as unknown as Prisma.InputJsonValue },
+    update: {},
+  });
+
   switch (event.type) {
     case "checkout.session.completed": {
       const s = event.data.object as Stripe.Checkout.Session;
@@ -198,4 +212,6 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
       break;
     }
   }
+
+  await prisma.paymentEvent.update({ where: { externalId: event.id }, data: { processedAt: new Date() } });
 }

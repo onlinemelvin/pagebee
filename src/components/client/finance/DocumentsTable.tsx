@@ -35,7 +35,7 @@ export function DocumentsTable({ documents }: { documents: DocumentDTO[] }) {
   const rows = tab === "ALL" ? documents : documents.filter((d) => d.docType === tab);
 
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white">
+    <div className="rounded-2xl border border-stone-200 bg-white shadow-card">
       <div className="flex items-center gap-1 border-b border-stone-100 p-2">
         {TABS.map((t) => (
           <button

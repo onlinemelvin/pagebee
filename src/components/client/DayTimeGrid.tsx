@@ -181,7 +181,7 @@ export function DayTimeGrid({
   }
 
   return (
-    <div className="overflow-y-auto rounded-2xl border border-stone-200 bg-white" style={{ maxHeight: 520 }}>
+    <div className="overflow-y-auto rounded-2xl border border-stone-200 bg-white shadow-card" style={{ maxHeight: 520 }}>
       <div className="relative" style={{ height: HEIGHT }}>
         {/* Hour lines + labels */}
         {Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => {

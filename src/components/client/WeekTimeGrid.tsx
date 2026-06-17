@@ -213,7 +213,7 @@ export function WeekTimeGrid({
   const colW = 100 / 7;
 
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white">
+    <div className="rounded-2xl border border-stone-200 bg-white shadow-card">
       <div className="overflow-x-auto">
         <div className="min-w-[680px]">
           {/* Day headers */}

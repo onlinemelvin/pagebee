@@ -1,5 +1,7 @@
 export {
   createBooking,
+  bookingEnabled,
+  getBookingMeta,
   getAvailability,
   getOwnerSlots,
   listBookings,

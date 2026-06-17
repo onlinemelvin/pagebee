@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function AppointmentsSettingsPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  // Only relevant when booking is enabled.
-  if (!(ws.caps.booking && ws.choices.booking)) redirect("/client/appointments");
+  // Off-plan → appointments index shows the upgrade gate; on-plan owners can always configure.
+  if (!ws.caps.booking) redirect("/client/appointments");
 
   const settings = await getSchedulingSettings(ws.client.id);
   const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";

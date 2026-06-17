@@ -861,6 +861,7 @@ model Client {
   bookings      Booking[]
   conversations Conversation[]
   invoices      Invoice[]
+  recurringPlans RecurringPlan[]
   payments      Payment[]
   statements    Statement[]
   dues          Due[]
@@ -928,6 +929,7 @@ model ClientMedia {
   name      String?
   alt       String?
   kind      String   @default("image") // image, logo, document
+  inGallery Boolean  @default(true) // whether this image appears in the public photo gallery
   createdAt DateTime @default(now())
 
   @@index([clientId])
@@ -1061,10 +1063,17 @@ model Website {
   // Every site is reachable at {subdomain}.pagebee.com; Connect/Automate may add a
   // custom domain provisioned through the Vercel Domains API (see ARCHITECTURE §11).
   subdomain    String?  @unique // tenant slug host, e.g. acme.pagebee.com
-  domain       String?  @unique // custom domain, e.g. acmecleaning.com
-  domainStatus String?  // null | pending | verifying | verified | active
+  // Custom domains (Connect/Automate) live in the WebsiteDomain table below — a connection
+  // provisions a host PAIR (apex + www) so both resolve here, one redirecting to the other.
   siteToken    String   @unique // public API key for this site's calls
   status       String   @default("draft") // draft, preview, published
+
+  // The owner's chosen primary call-to-action (e.g. "Request a quote"). Set from the intake at
+  // generation and editable any time from the Inquiries page with NO rebuild — it drives the live
+  // site's CTA button label, the form's submit label, and the lead `type` at serve time (see
+  // src/lib/site/lead-goals.ts + the /api/v1/public/lead-form endpoint). Null → use whatever the
+  // form was generated with.
+  leadFormGoal String?
 
   publishedVersionId String?  @unique
   publishedVersion   WebsiteVersion? @relation("PublishedVersion", fields: [publishedVersionId], references: [id])
@@ -1076,9 +1085,39 @@ model Website {
   generationJobs WebsiteGenerationJob[]
   assets         WebsiteAsset[]
   visits         WebsiteVisit[]
+  domains        WebsiteDomain[]
 
   @@index([clientId])
   @@map("websites")
+}
+
+// A single custom-domain host attached to a site (Connect/Automate). One owner "connect" creates a
+// PAIR of rows — the apex (e.g. acme.com) and its www (www.acme.com) — with one marked primary
+// (canonical) and the other set to redirect to it on Vercel. Other subdomains (book.acme.com) are a
+// lone row. Lifecycle per host: requested → verifying → active (error on failure). Admin approval
+// happens at the pair level. See src/lib/modules/website/domain.ts + ARCHITECTURE §11.
+model WebsiteDomain {
+  id        String  @id @default(cuid())
+  websiteId String
+  website   Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  host      String  @unique // fully-qualified host, e.g. acme.com or www.acme.com
+  kind      String // "apex" | "www" | "subdomain"
+  isPrimary Boolean @default(false) // the canonical host; its sibling redirects here
+
+  // requested → owner submitted, awaiting admin approval (NOT yet on Vercel)
+  // verifying → on the Vercel project, DNS not yet resolving · active → verified + SSL · error
+  status       String
+  verification Json? // DNS records to set: { records: [{type,name,value}], txt?: [...] }
+  error        String? // last failure reason for this host
+
+  requestedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([websiteId])
+  @@index([status])
+  @@map("website_domains")
 }
 
 model WebsiteVersion {
@@ -1092,6 +1131,18 @@ model WebsiteVersion {
   // Code-generated mode: a complete self-contained HTML/Tailwind document that
   // calls PageBee's shared /api/v1/public/* endpoints for all dynamic features.
   generatedHtml String? @db.Text
+
+  // The lead-capture form is built for every site at generation (so it matches the design) but
+  // STRIPPED OUT of generatedHtml into here — the page keeps only a [data-pb-leadform-slot]. It's
+  // injected back at serve time ONLY when the plan allows forms AND the owner enabled them, so the
+  // page never ships a form to a tier/owner that shouldn't have one. See src/lib/site/lead-form.ts.
+  leadFormHtml String? @db.Text
+
+  // Same pattern as leadFormHtml, for the appointment booking TRIGGER section (heading + "Book…"
+  // button). Stripped out of generatedHtml into here; the page keeps a [data-pb-booking-slot]. The
+  // platform-owned modal (calendar + submit) is added at serve time, and the trigger is injected back
+  // only when the plan allows booking AND the owner enabled it. See src/lib/site/booking.ts.
+  bookingHtml String? @db.Text
 
   config WebsiteConfig?
   pages  WebsitePage[]
@@ -1195,6 +1246,7 @@ model WebsiteGenerationJob {
   status    WebsiteJobStatus @default(QUEUED)
   inputIntake Json // the intake form data fed to the generator
   output      Json? // structured website config produced by the AI service
+  promptLog   Json? // EVALUATION (temporary): exact LLM prompt(s) for this draft; safe to drop later
   error       String?
   startedAt   DateTime?
   finishedAt  DateTime?
@@ -1228,7 +1280,6 @@ enum PreviewStatus {
   SETUP_FEE_PAID
   LAUNCH_IN_PROGRESS
   LIVE
-  EXPIRED
   LOST
 }
 
@@ -1244,7 +1295,6 @@ model Preview {
   status       PreviewStatus @default(INTAKE_STARTED)
 
   previewUrl   String? // temporary host, e.g. {token}.preview.pagebee.com
-  expiresAt    DateTime? // default 14 days from generation; extendable by sales/admin
   generatedAt  DateTime?
   sentAt       DateTime?
   viewedAt     DateTime?
@@ -1323,11 +1373,23 @@ model Customer {
   phone     String?
   address   String?
   billingAddress Json? // structured { line1, city, state, postalCode, country } — used for Stripe Tax
+  // CRM fields (owner-managed contact record). `company` for B2B/fleet accounts; `tags` for quick
+  // segmentation ("VIP", "Regular"); `notes` a free-text memo; `customFields` an ordered list of
+  // {label,value} for trade-specific details (vehicle/plate, preferred stylist, gate code, …) so the
+  // record fits any small business without bespoke columns. `source` = how they were acquired
+  // (manual, website, referral). `archivedAt` soft-hides a contact without losing their history.
+  company     String?
+  tags        String[] @default([])
+  note        String?  @db.Text @map("notes") // quick free-text memo (distinct from the threaded `notes` relation)
+  customFields Json?   // [{ label: string, value: string }]
+  source      String?  // "manual" | "website" | "import" | "booking" | …
+  archivedAt  DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   consents      CustomerConsent[]
   notes         CustomerNote[]
+  recurringPlans RecurringPlan[]
   leads         Lead[]
   bookings      Booking[]
   invoices      Invoice[]
@@ -1338,6 +1400,7 @@ model Customer {
 
   @@index([clientId])
   @@index([clientId, email])
+  @@index([clientId, archivedAt])
   @@map("customers")
 }
 
@@ -1419,6 +1482,7 @@ model Booking {
   depositRequired Boolean  @default(false)
   depositInvoiceId String? @unique
   depositInvoice   Invoice? @relation("BookingDeposit", fields: [depositInvoiceId], references: [id])
+  invoices         Invoice[] @relation("BookingInvoices") // invoices/estimates raised for this appointment
 
   confirmationSentAt DateTime?
   reminderSentAt     DateTime?
@@ -1588,8 +1652,22 @@ model Invoice {
   stripeInvoiceId    String?
   taxCalculationId   String? // Stripe Tax calculation id (automatic tax) — used to file the transaction on payment
 
+  // Payment-reminder bookkeeping (worker-driven): when we last emailed a reminder and how many we've
+  // sent, so the sweep fires at most one per day per the owner's reminder schedule.
+  lastReminderAt DateTime?
+  reminderCount  Int       @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // General appointment link (distinct from the 1:1 deposit relation below): the appointment this
+  // invoice/estimate was raised for, so the appointment can show whether it's been invoiced/sent/paid.
+  bookingId String?
+  booking   Booking? @relation("BookingInvoices", fields: [bookingId], references: [id])
+
+  // The recurring plan that generated this invoice (null for one-off documents).
+  recurringPlanId String?
+  recurringPlan   RecurringPlan? @relation(fields: [recurringPlanId], references: [id])
 
   lineItems    InvoiceLineItem[]
   payments     Payment[]
@@ -1602,7 +1680,71 @@ model Invoice {
   @@index([clientId, docType, status])
   @@index([clientId, status])
   @@index([kind])
+  @@index([bookingId])
+  @@index([recurringPlanId])
   @@map("invoices")
+}
+
+// =============================================================================
+// RECURRING SERVICE PLANS — repeat billing (lawn care, cleaning, retainers, …)
+// =============================================================================
+
+enum RecurringInterval {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+// INVOICE = generate + email an invoice (with a pay link) each period.
+// AUTO_CHARGE = charge a saved card off-session each period (falls back to a pay link until a card
+// is on file / Stripe is live).
+enum RecurringMode {
+  INVOICE
+  AUTO_CHARGE
+}
+
+enum RecurringStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model RecurringPlan {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  title    String
+  mode     RecurringMode     @default(INVOICE)
+  interval RecurringInterval @default(MONTHLY)
+  status   RecurringStatus   @default(ACTIVE)
+
+  lineItems Json   // [{ description, quantity, unitAmount, serviceId?, taxRateId? }]
+  currency  String @default("usd")
+  notes     String?
+  dueDays   Int    @default(14) // INVOICE mode: due N days after each generation
+
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  occurrences Int       @default(0)
+
+  // AUTO_CHARGE: card saved on file (set once the customer pays the first pay link with save-card on).
+  stripeCustomerId      String?
+  stripePaymentMethodId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices Invoice[]
+
+  @@index([clientId])
+  @@index([status, nextRunAt])
+  @@index([customerId])
+  @@map("recurring_plans")
 }
 
 model InvoiceLineItem {

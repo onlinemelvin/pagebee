@@ -27,7 +27,7 @@ export function DemoVideo({ url }: { url?: string }) {
         type="button"
         onClick={() => url && setOpen(true)}
         disabled={!url}
-        className="group relative block aspect-video w-full overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-100 via-amber-50 to-stone-100 text-left shadow-sm transition hover:shadow-lg disabled:cursor-default"
+        className="group relative block aspect-video w-full overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-100 via-amber-50 to-stone-100 text-left shadow-card transition hover:shadow-card-hover disabled:cursor-default"
       >
         {/* Honeycomb texture hint */}
         <div

@@ -13,7 +13,7 @@ const LABEL: Record<DocType, string> = { ESTIMATE: "Estimate", QUOTE: "Quote", I
 export default async function NewDocumentPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (!ws.caps.invoices) redirect("/client/invoices"); // off-plan → finance index shows the upgrade gate
 
   const { type } = await searchParams;
   const docType: DocType = type === "ESTIMATE" || type === "QUOTE" ? type : "INVOICE";

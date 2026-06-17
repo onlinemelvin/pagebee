@@ -108,7 +108,7 @@ export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSe
   return (
     <div className="mt-6 space-y-6">
       {/* Timezone */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Timezone</h2>
         <p className="mt-1 text-sm text-stone-500">
           Your business timezone. Availability hours and the times customers see are all in this zone.
@@ -125,7 +125,7 @@ export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSe
       </section>
 
       {/* Weekly hours + recurring off-days */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Weekly hours</h2>
         <p className="mt-1 text-sm text-stone-500">Uncheck a day to make it a recurring day off (e.g. weekends).</p>
         <div className="mt-4 space-y-2">
@@ -168,7 +168,7 @@ export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSe
       </section>
 
       {/* Capacity & rules */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Booking rules</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <NumberField label="Concurrent appointments" min={1} value={s.concurrent} onChange={(n) => setS({ ...s, concurrent: Math.max(1, n) })} hint="How many you can take at once (default 1)." />
@@ -181,7 +181,7 @@ export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSe
       </section>
 
       {/* Services moved to the central catalog */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Services</h2>
         <p className="mt-1 text-sm text-stone-500">
           Services and their typical durations now live in your central{" "}
@@ -193,7 +193,7 @@ export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSe
       </section>
 
       {/* Blocked dates (specific off-days) */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Days off</h2>
         <p className="mt-1 text-sm text-stone-500">Block specific dates (holidays, vacation).</p>
         {s.blockedDates.length > 0 && (
@@ -234,7 +234,7 @@ export function SchedulingSettings({ initial, icalUrl }: { initial: SchedulingSe
 
       {/* Calendar subscription (iCal feed) */}
       {icalUrl && (
-        <section className="rounded-2xl border border-stone-200 bg-white p-6">
+        <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
           <h2 className="flex items-center gap-2 font-display text-lg text-stone-900">
             <CalendarPlus size={18} className="text-amber-500" /> Sync to your calendar
           </h2>

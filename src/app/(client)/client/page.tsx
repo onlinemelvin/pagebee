@@ -1,12 +1,13 @@
 import Link from "next/link";
 import {
   Inbox, CalendarClock, Wallet, Globe, Users, RefreshCw, TrendingUp, ArrowRight,
-  MessageSquare, CalendarCheck, Sparkles,
+  MessageSquare, CalendarCheck, Sparkles, AlertTriangle, ScrollText, ReceiptText,
 } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { listLeads } from "@/lib/modules/lead";
 import { listBookings } from "@/lib/modules/booking";
-import { getFinanceDashboard, get1099Summary } from "@/lib/modules/finance";
+import { getFinanceDashboard, get1099Summary, pastUninvoicedAppointments } from "@/lib/modules/finance";
+import { AttentionPanel, type AttentionItem } from "@/components/client/ui/AttentionPanel";
 import { SetupWizard } from "@/components/client/SetupWizard";
 import { CreateSiteWelcome } from "@/components/client/CreateSiteWelcome";
 import { PreviewPanel } from "@/components/client/PreviewPanel";
@@ -64,11 +65,12 @@ export default async function ClientHomePage() {
   const year = new Date().getFullYear();
   const curMonth = new Date().getMonth();
 
-  const [leads, bookings, finance, form1099] = await Promise.all([
+  const [leads, bookings, finance, form1099, uninvoiced] = await Promise.all([
     listLeads({ clientId: ws.client.id }),
     hasBooking ? listBookings(ws.client.id) : Promise.resolve([]),
     hasFinance ? getFinanceDashboard(ws.client.id) : Promise.resolve(null),
     hasFinance ? get1099Summary(ws.client.id, year) : Promise.resolve(null),
+    hasFinance && hasBooking ? pastUninvoicedAppointments(ws.client.id) : Promise.resolve(0),
   ]);
 
   // ── Last-6-months window ──
@@ -105,6 +107,19 @@ export default async function ClientHomePage() {
     .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
     .slice(0, 5);
 
+  // ── "Needs your attention": the time-sensitive things to act on, surfaced up top ──
+  const plural = (n: number, s: string, p = `${s}s`) => `${n} ${n === 1 ? s : p}`;
+  const apptSoon = bookings.filter((b) => b.status !== "CANCELLED" && b.startAt.getTime() >= now && b.startAt.getTime() <= now + 86_400_000).length;
+  const openQuotes = finance ? finance.counts.openQuotes + finance.counts.openEstimates : 0;
+  // (The PreviewPanel below already surfaces preview-ready / setup-fee states, so they're not repeated here.)
+  const attention: AttentionItem[] = [];
+  if (ws.counts.newInquiries > 0) attention.push({ key: "inq", icon: Inbox, tone: "violet", text: `${plural(ws.counts.newInquiries, "new inquiry", "new inquiries")} to reply to`, href: "/client/inquiries", cta: "Open" });
+  if (hasBooking && ws.counts.pendingAppointments > 0) attention.push({ key: "appt-req", icon: CalendarClock, tone: "teal", text: `${plural(ws.counts.pendingAppointments, "appointment request")} to confirm`, href: "/client/appointments", cta: "Review" });
+  if (hasBooking && apptSoon > 0) attention.push({ key: "appt-soon", icon: CalendarCheck, tone: "teal", text: `${plural(apptSoon, "appointment")} in the next 24 hours`, href: "/client/appointments", cta: "View" });
+  if (finance && finance.counts.overdue > 0) attention.push({ key: "overdue", icon: AlertTriangle, tone: "red", text: `${plural(finance.counts.overdue, "overdue invoice")} — send a payment reminder`, href: "/client/invoices", cta: "Open" });
+  if (openQuotes > 0) attention.push({ key: "quotes", icon: ScrollText, tone: "violet", text: `${plural(openQuotes, "quote/estimate")} awaiting your customer`, href: "/client/invoices", cta: "View" });
+  if (uninvoiced > 0) attention.push({ key: "uninv", icon: ReceiptText, tone: "amber", text: `${plural(uninvoiced, "completed appointment")} ready to invoice`, href: "/client/invoices", cta: "Invoice" });
+
   const websiteStatus = ws.preview.live ? "Live" : ws.preview.ready ? "Preview ready" : ws.website.exists ? "In progress" : "Not started";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -115,7 +130,7 @@ export default async function ClientHomePage() {
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm text-stone-400">{dateStr}</p>
+          <p className="text-sm font-medium text-stone-500">{dateStr}</p>
           <h1 className="mt-0.5 font-display text-3xl text-stone-900">
             {greeting}, {ws.client.ownerName ?? ws.client.businessName}
           </h1>
@@ -128,6 +143,8 @@ export default async function ClientHomePage() {
       {!ws.onboarding.complete && ws.role === "owner" && <SetupWizard steps={ws.onboarding.steps} />}
 
       <PreviewPanel preview={ws.preview} />
+
+      <AttentionPanel items={attention} />
 
       {/* Stat cards (adaptive) */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

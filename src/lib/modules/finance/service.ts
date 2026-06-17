@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/modules/audit";
 import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { requireWithinLimit, UsageError } from "@/lib/modules/usage";
 import { computeTotals, type LineInput } from "./money";
+import { renderDocumentPdf, pdfFilename, type PdfBusiness } from "./pdf";
 import { calculateTax } from "@/lib/modules/payments/tax";
 import {
   documentInputSchema,
@@ -159,6 +160,7 @@ export interface DocumentDTO {
   convertedFromId: string | null;
   convertedToId: string | null;
   publicToken: string | null;
+  bookingId: string | null;
   createdAt: string;
   lineItems: DocLineDTO[];
 }
@@ -201,6 +203,7 @@ function documentDTO(inv: InvoiceWithRelations): DocumentDTO {
     convertedFromId: inv.convertedFromId,
     convertedToId: inv.convertedTo?.id ?? null,
     publicToken: inv.publicToken,
+    bookingId: inv.bookingId,
     createdAt: inv.createdAt.toISOString(),
     lineItems: [...inv.lineItems]
       .sort((a, b) => a.position - b.position)
@@ -483,15 +486,96 @@ export async function sendDocument(clientId: string, id: string): Promise<Docume
   if (inv.customer?.email) {
     const client = await prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true, ownerEmail: true } });
     const label = inv.docType.charAt(0) + inv.docType.slice(1).toLowerCase();
+    const dto = documentDTO(updated);
+    // Attach a PDF copy so the customer keeps a record even without opening the hosted link. Best-
+    // effort: if PDF generation fails for any reason, still send the email with the link.
+    let attachments;
+    try {
+      const business = await buildPdfBusiness(clientId);
+      attachments = [{ filename: pdfFilename(dto), content: await renderDocumentPdf(dto, business) }];
+    } catch (err) {
+      console.error("[finance] PDF attach failed; sending without it", err);
+    }
     await sendEmail({
       to: inv.customer.email,
       subject: `${label} ${inv.number} from ${client?.businessName ?? "your provider"}`,
-      html: `<p>Hi ${escapeHtml(inv.customer.name ?? "there")},</p><p>Your ${label.toLowerCase()} <strong>${escapeHtml(inv.number)}</strong> is ready to view.</p><p><a href="${APP_URL}/d/${token}">View ${label.toLowerCase()} →</a></p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
+      html: `<p>Hi ${escapeHtml(inv.customer.name ?? "there")},</p><p>Your ${label.toLowerCase()} <strong>${escapeHtml(inv.number)}</strong> is ready to view${attachments ? " (a PDF copy is attached)" : ""}.</p><p><a href="${APP_URL}/d/${token}">View ${label.toLowerCase()} →</a></p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
       replyTo: client?.ownerEmail ?? undefined,
+      attachments,
     });
   }
   await writeAudit({ action: "finance.document_sent", entityType: "Invoice", entityId: id, clientId });
   return documentDTO(updated);
+}
+
+/** Build the business header for a PDF from finance settings (falling back to the client record). */
+async function buildPdfBusiness(clientId: string): Promise<PdfBusiness> {
+  const [client, settings] = await Promise.all([
+    prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true, ownerEmail: true } }),
+    getFinanceSettings(clientId),
+  ]);
+  const bi = settings.businessInfo ?? { name: "", email: "", phone: "", address: "" };
+  return {
+    name: bi.name || client?.businessName || null,
+    email: bi.email || client?.ownerEmail || null,
+    phone: bi.phone || null,
+    address: bi.address || null,
+  };
+}
+
+/**
+ * Create a DRAFT invoice/estimate from an appointment: prefills the customer and a single line from
+ * the booked service (using the catalog price when the name matches), and links it back to the
+ * booking so the appointment can show its invoice status. Returns the new draft.
+ */
+export async function createDocumentFromBooking(clientId: string, bookingId: string, opts?: { docType?: DocType }): Promise<DocumentDTO> {
+  await assertFinanceEnabled(clientId);
+  const booking = await prisma.booking.findFirst({ where: { id: bookingId, clientId }, include: { customer: true } });
+  if (!booking) throw new FinanceError(404, "booking_not_found");
+  // Match a catalog service by name for the unit price (best-effort; falls back to 0 to fill in).
+  const svc = await prisma.service.findFirst({ where: { clientId, title: { equals: booking.serviceName, mode: "insensitive" } }, select: { id: true, price: true } });
+  const docType = opts?.docType ?? "INVOICE";
+  const doc = await createDocument(clientId, {
+    docType,
+    customerId: booking.customerId ?? null,
+    customer: booking.customerId ? undefined : { name: booking.customer?.name ?? "Customer", email: booking.customer?.email ?? "", phone: booking.customer?.phone ?? "" },
+    currency: undefined,
+    lineItems: [{ serviceId: svc?.id ?? null, description: booking.serviceName, quantity: 1, unitAmount: svc?.price ?? 0, discountType: null, discountValue: 0, taxRateId: null }],
+  });
+  await prisma.invoice.update({ where: { id: doc.id }, data: { bookingId } });
+  await writeAudit({ action: "finance.document_from_booking", entityType: "Invoice", entityId: doc.id, clientId, metadata: { bookingId } satisfies Prisma.InputJsonValue });
+  return getDocument(clientId, doc.id);
+}
+
+/** Latest invoice/estimate linked to each of the given bookings — to show invoice status on appointments. */
+export async function bookingInvoiceStatuses(clientId: string, bookingIds: string[]): Promise<Record<string, { id: string; status: InvoiceStatus; docType: FinanceDocType }>> {
+  if (bookingIds.length === 0) return {};
+  const rows = await prisma.invoice.findMany({
+    where: { clientId, bookingId: { in: bookingIds } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, bookingId: true, status: true, docType: true },
+  });
+  const map: Record<string, { id: string; status: InvoiceStatus; docType: FinanceDocType }> = {};
+  for (const r of rows) {
+    if (r.bookingId && !map[r.bookingId]) map[r.bookingId] = { id: r.id, status: r.status, docType: r.docType };
+  }
+  return map;
+}
+
+/** Owner-side PDF download for a document (tenant-scoped). */
+export async function getDocumentPdf(clientId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
+  const doc = await getDocument(clientId, id);
+  const business = await buildPdfBusiness(clientId);
+  return { buffer: await renderDocumentPdf(doc, business), filename: pdfFilename(doc) };
+}
+
+/** Public PDF download for a hosted document (by its public token). Null if the token is unknown. */
+export async function getPublicDocumentPdf(token: string): Promise<{ buffer: Buffer; filename: string } | null> {
+  const row = await prisma.invoice.findFirst({ where: { publicToken: token }, select: { clientId: true } });
+  const doc = await getPublicDocument(token);
+  if (!row || !doc) return null;
+  const business = await buildPdfBusiness(row.clientId);
+  return { buffer: await renderDocumentPdf(doc, business), filename: pdfFilename(doc) };
 }
 
 /** Estimate/quote decision (by the owner, or via the public endpoint). */

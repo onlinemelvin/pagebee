@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/brand/Logo";
+import { LEAD_GOALS } from "@/lib/site/lead-goals";
 
 type Phase = "idle" | "working" | "error";
 
@@ -32,16 +33,9 @@ const PALETTES: { key: string; name: string; colors: string[] }[] = [
 ];
 
 // Primary call-to-action options (form-enabled plans only). The label is sent verbatim
-// as `primaryGoal` and steers the generated form's heading, fields, and lead `type`.
-const GOALS = [
-  "Book an appointment",
-  "Request a quote",
-  "Request an estimate",
-  "Request a callback",
-  "Book a free consultation",
-  "Request a demo",
-  "Send a general message",
-];
+// as `primaryGoal` and steers the generated form's heading, fields, and lead `type`. The same
+// canonical list is reused on the Inquiries page so the owner can change it after launch.
+const GOALS = LEAD_GOALS;
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -49,6 +43,17 @@ type Hour = { day: string; closed: boolean; open: string; close: string };
 
 // Draft persistence for the long "about" text — survives refreshes/navigation via localStorage.
 const ABOUT_DRAFT_KEY = "pagebee:intake:about";
+
+// Dev-only quick-fill for testing generation. Text is intentionally left as typed (typos and all)
+// to exercise the AI's spelling/grammar cleanup. Shown only outside production.
+const TEST_PREFILL = {
+  about:
+    "A family owned mobile auto-repair shop. We come to you to repair your car. For more serious matters, we drive it to our garrage, repair it and bring it back. We also tow if your car is not drivable",
+  services: ["Tire rotation", "oil change", "engine repair", "flat tires", "auto-detailing", "car wash", "paint job"],
+  serviceAreas: ["Greater Tampa area"],
+  customInstructions:
+    "Please emphasize the fact that even though we are a family owned business, we price competitvely",
+};
 
 interface PricingRow { name: string; price: string }
 interface FaqRow { q: string; a: string }
@@ -90,6 +95,7 @@ export function WebsiteIntakeForm({
   // Field state
   const [services, setServices] = React.useState<string[]>([]);
   const [serviceAreas, setServiceAreas] = React.useState<string[]>([]);
+  const [customInstructions, setCustomInstructions] = React.useState("");
   const [palette, setPalette] = React.useState("auto");
   // Default selection, capped to the plan's page allowance. Priority order ensures a 3-page plan
   // (Launch) still gets a complete minimal site — Home / Services / Contact — rather than overflowing.
@@ -174,7 +180,10 @@ export function WebsiteIntakeForm({
       const s = await checkOnce();
       if (s === "done") {
         stopPolling();
-        setPhase("idle");
+        // Keep showing the "we're building your site" holding view (phase stays "working") and let
+        // the server refresh swap this form out for the page's awaiting-review holding state. Do
+        // NOT flip back to "idle" first — that briefly re-renders the questionnaire before the
+        // refresh lands, which is the flicker (working → form → holding state).
         router.refresh();
       } else if (s === "failed") {
         stopPolling();
@@ -330,6 +339,18 @@ export function WebsiteIntakeForm({
     setUploading(false);
   }
 
+  // Dev-only: fill the core fields with a known sample so generation is quick to test.
+  function prefillTestData() {
+    setAboutDraft(TEST_PREFILL.about);
+    try {
+      localStorage.setItem(ABOUT_DRAFT_KEY, TEST_PREFILL.about);
+    } catch {}
+    setServices(TEST_PREFILL.services);
+    setServiceAreas(TEST_PREFILL.serviceAreas);
+    setCustomInstructions(TEST_PREFILL.customInstructions);
+    setFieldErrors({});
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -410,7 +431,7 @@ export function WebsiteIntakeForm({
 
   if (phase === "working") {
     return (
-      <div className="anim-rise rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center">
+      <div className="anim-rise rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center shadow-card">
         <span className="pulse-dot mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm"><LogoMark size={32} /></span>
         <p className="font-display text-xl text-stone-900">We&apos;re setting up your website</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-stone-600">
@@ -427,6 +448,19 @@ export function WebsiteIntakeForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-6">
+      {process.env.NODE_ENV !== "production" && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-amber-400 bg-amber-50 px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Testing</span>
+          <button
+            type="button"
+            onClick={prefillTestData}
+            className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700"
+          >
+            Prefill test data
+          </button>
+        </div>
+      )}
+
       <p className="text-xs text-stone-400">
         Fields marked <span className="text-red-500">*</span> are required.
       </p>
@@ -865,6 +899,8 @@ export function WebsiteIntakeForm({
         <Textarea
           id="customInstructions"
           name="customInstructions"
+          value={customInstructions}
+          onChange={(e) => setCustomInstructions(e.target.value)}
           placeholder="e.g. Emphasize that we're family-owned and eco-friendly. Add a section for seasonal promotions. Keep the hero short."
         />
       </div>

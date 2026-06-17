@@ -5,24 +5,47 @@ import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Clock, Globe, EyeOff, X, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SERVICE_ICON_MAP } from "./service-icons";
-import { SERVICE_ICONS, type ServiceDTO } from "@/lib/modules/service";
+import { type ServiceDTO, type ServiceDisplay } from "@/lib/modules/service";
 
-const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+type DurationUnit = "min" | "hour" | "day";
+const UNIT_TO_MIN: Record<DurationUnit, number> = { min: 1, hour: 60, day: 24 * 60 };
+const UNIT_LABEL: Record<DurationUnit, string> = { min: "minutes", hour: "hours", day: "days" };
+const MAX_DURATION_MINUTES = 30 * 24 * 60;
+
+/** Quick-pick presets per unit (in that unit's own numbers). */
+const DURATION_PRESETS: Record<DurationUnit, number[]> = {
+  min: [15, 30, 45, 90],
+  hour: [1, 2, 4, 8],
+  day: [1, 2, 3, 5],
+};
+
+/** Render stored minutes back as the cleanest {value, unit} for editing. */
+function splitDuration(mins: number): { value: number; unit: DurationUnit } {
+  if (mins > 0 && mins % UNIT_TO_MIN.day === 0) return { value: mins / UNIT_TO_MIN.day, unit: "day" };
+  if (mins > 0 && mins % UNIT_TO_MIN.hour === 0) return { value: mins / UNIT_TO_MIN.hour, unit: "hour" };
+  return { value: mins, unit: "min" };
+}
 
 function dollars(cents: number | null): string {
   return cents == null ? "" : (cents / 100).toFixed(2);
+}
+
+/** Compact human label for a stored minutes value (e.g. 2880 → "2 days", 90 → "90 min"). */
+function formatDuration(mins: number): string {
+  const { value, unit } = splitDuration(mins);
+  if (unit === "min") return `${value} min`;
+  const noun = value === 1 ? unit : `${unit}s`;
+  return `${value} ${noun}`;
 }
 
 interface FormState {
   id: string | null;
   isDefault: boolean;
   title: string;
-  description: string;
-  icon: string;
-  durationMinutes: number;
+  durationValue: number;
+  durationUnit: DurationUnit;
   price: string; // dollars, as typed
   showOnWebsite: boolean;
 }
@@ -31,33 +54,64 @@ const EMPTY: FormState = {
   id: null,
   isDefault: false,
   title: "",
-  description: "",
-  icon: "sparkles",
-  durationMinutes: 60,
+  durationValue: 60,
+  durationUnit: "min",
   price: "",
   showOnWebsite: true,
 };
 
-export function ServicesManager({ services }: { services: ServiceDTO[] }) {
+export function ServicesManager({
+  services,
+  websiteEditsRemaining,
+  display,
+}: {
+  services: ServiceDTO[];
+  /** Monthly website-update allowance left; when 0 the "show on website" toggle is locked. */
+  websiteEditsRemaining: number;
+  /** Owner's website display toggles (show price / show time) for the services section. */
+  display: ServiceDisplay;
+}) {
   const router = useRouter();
+  const noWebsiteEdits = websiteEditsRemaining <= 0;
   const [form, setForm] = React.useState<FormState | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
 
+  // Website display toggles — optimistic so the checkbox flips instantly while the backend saves.
+  const [disp, setDisp] = React.useState<ServiceDisplay>(display);
+  React.useEffect(() => setDisp(display), [display]);
+  async function toggleDisplay(patch: Partial<ServiceDisplay>) {
+    const next = { ...disp, ...patch };
+    setDisp(next); // optimistic
+    try {
+      const res = await fetch("/api/v1/client/services/display", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) router.refresh();
+      else setDisp(disp); // revert
+    } catch {
+      setDisp(disp);
+    }
+  }
+
   function openAdd() {
     setError(null);
-    setForm({ ...EMPTY });
+    // With no website updates left, a new service can't go live yet — default it off so the
+    // disabled (but otherwise checked) toggle can't slip it onto the site.
+    setForm({ ...EMPTY, showOnWebsite: !noWebsiteEdits });
   }
   function openEdit(s: ServiceDTO) {
     setError(null);
+    const { value, unit } = splitDuration(s.durationMinutes);
     setForm({
       id: s.id,
       isDefault: s.isDefault,
       title: s.title,
-      description: s.description ?? "",
-      icon: s.icon ?? "sparkles",
-      durationMinutes: s.durationMinutes,
+      durationValue: value,
+      durationUnit: unit,
       price: dollars(s.price),
       showOnWebsite: s.showOnWebsite,
     });
@@ -66,16 +120,20 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
   async function save() {
     if (!form) return;
     if (!form.title.trim()) {
-      setError("Give the service a title.");
+      setError("Give the service a name.");
       return;
     }
     setBusy(true);
     setError(null);
+    const durationMinutes = Math.min(
+      MAX_DURATION_MINUTES,
+      Math.max(5, Math.round((form.durationValue || 0) * UNIT_TO_MIN[form.durationUnit])),
+    );
+    // icon + description are intentionally omitted: the server's AI fills them from the name
+    // on create, and leaves them untouched on edit.
     const payload = {
       title: form.title.trim(),
-      description: form.description.trim() || null,
-      icon: form.icon || null,
-      durationMinutes: form.durationMinutes,
+      durationMinutes,
       price: form.price.trim() ? Math.round(parseFloat(form.price) * 100) : null,
       showOnWebsite: form.showOnWebsite,
     };
@@ -124,6 +182,31 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
         </Button>
       </div>
 
+      {/* Website display — explicit control over what each service card shows on the live site.
+          Overrides the per-site default. Off → no card shows that field; on → only cards that have
+          the value show it. */}
+      <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-stone-200 bg-white px-4 py-3 shadow-card">
+        <span className="text-xs font-semibold uppercase tracking-wide text-stone-400">Website display</span>
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-stone-700">
+          <input
+            type="checkbox"
+            checked={disp.showPrice}
+            onChange={(e) => toggleDisplay({ showPrice: e.target.checked })}
+            className="h-4 w-4 rounded border-stone-300 text-amber-500 focus:ring-amber-400"
+          />
+          Show price
+        </label>
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-stone-700">
+          <input
+            type="checkbox"
+            checked={disp.showDuration}
+            onChange={(e) => toggleDisplay({ showDuration: e.target.checked })}
+            className="h-4 w-4 rounded border-stone-300 text-amber-500 focus:ring-amber-400"
+          />
+          Show average time
+        </label>
+      </div>
+
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {services.map((s) => {
           const Icon = SERVICE_ICON_MAP[s.icon ?? ""] ?? SERVICE_ICON_MAP.sparkles;
@@ -131,7 +214,7 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
             <div
               key={s.id}
               className={cn(
-                "group anim-rise relative flex flex-col rounded-2xl border p-4 transition-shadow hover:shadow-sm",
+                "group anim-rise relative flex flex-col rounded-2xl border p-4 shadow-card transition-shadow hover:shadow-card-hover",
                 s.isDefault ? "border-dashed border-stone-300 bg-stone-50" : "border-stone-200 bg-white",
               )}
             >
@@ -151,7 +234,7 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
                   </h3>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
                     <span className="inline-flex items-center gap-1">
-                      <Clock size={12} /> {s.durationMinutes} min
+                      <Clock size={12} /> {formatDuration(s.durationMinutes)}
                     </span>
                     {s.price != null && <span className="font-medium text-stone-700">${dollars(s.price)}</span>}
                     <span
@@ -237,31 +320,8 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
               </button>
             </div>
 
-            {/* Icon picker */}
-            <p className="mt-4 text-sm font-medium text-stone-700">Icon</p>
-            <div className="mt-2 grid grid-cols-7 gap-1.5 sm:grid-cols-10">
-              {SERVICE_ICONS.map((key) => {
-                const Icon = SERVICE_ICON_MAP[key];
-                const selected = form.icon === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setForm({ ...form, icon: key })}
-                    className={cn(
-                      "grid aspect-square place-items-center rounded-lg border transition-colors",
-                      selected ? "border-amber-400 bg-amber-100 text-amber-700" : "border-stone-200 text-stone-500 hover:bg-stone-100",
-                    )}
-                    aria-label={key}
-                  >
-                    <Icon size={16} />
-                  </button>
-                );
-              })}
-            </div>
-
             <label className="mt-4 grid gap-1 text-sm font-medium text-stone-700">
-              Title
+              Service name
               <Input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -271,42 +331,44 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
               {form.isDefault && <span className="text-xs font-normal text-stone-400">The Other entry's name is fixed.</span>}
             </label>
 
-            <label className="mt-3 grid gap-1 text-sm font-medium text-stone-700">
-              Description
-              <Textarea
-                rows={2}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Short description shown on your website."
-              />
-            </label>
-
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1 text-sm font-medium text-stone-700">
                 Typical time
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
-                    min={5}
-                    step={5}
-                    value={form.durationMinutes}
-                    onChange={(e) => setForm({ ...form, durationMinutes: Math.max(5, Number(e.target.value) || 5) })}
-                    className="w-24"
+                    min={1}
+                    step={1}
+                    value={form.durationValue}
+                    onChange={(e) => setForm({ ...form, durationValue: Math.max(1, Number(e.target.value) || 1) })}
+                    className="w-20"
                   />
-                  <span className="text-sm text-stone-400">min</span>
+                  <select
+                    value={form.durationUnit}
+                    onChange={(e) => setForm({ ...form, durationUnit: e.target.value as DurationUnit })}
+                    className="h-9 rounded-lg border border-stone-300 bg-white px-2 text-sm text-stone-700"
+                    aria-label="Time unit"
+                  >
+                    {(Object.keys(UNIT_LABEL) as DurationUnit[]).map((u) => (
+                      <option key={u} value={u}>
+                        {UNIT_LABEL[u]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {DURATION_PRESETS.map((d) => (
+                  {DURATION_PRESETS[form.durationUnit].map((d) => (
                     <button
                       key={d}
                       type="button"
-                      onClick={() => setForm({ ...form, durationMinutes: d })}
+                      onClick={() => setForm({ ...form, durationValue: d })}
                       className={cn(
                         "rounded-md px-2 py-0.5 text-xs",
-                        form.durationMinutes === d ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200",
+                        form.durationValue === d ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200",
                       )}
                     >
-                      {d}m
+                      {d}
+                      {form.durationUnit === "min" ? "m" : form.durationUnit === "hour" ? "h" : "d"}
                     </button>
                   ))}
                 </div>
@@ -325,20 +387,33 @@ export function ServicesManager({ services }: { services: ServiceDTO[] }) {
                     placeholder="0.00"
                   />
                 </div>
-                <span className="text-xs font-normal text-stone-400">Used on invoices later.</span>
               </label>
             </div>
 
             {!form.isDefault && (
-              <label className="mt-4 flex items-center gap-2 text-sm font-medium text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={form.showOnWebsite}
-                  onChange={(e) => setForm({ ...form, showOnWebsite: e.target.checked })}
-                  className="h-4 w-4 rounded border-stone-300 accent-amber-500"
-                />
-                Show on my website
-              </label>
+              <div className="mt-4">
+                <label
+                  className={cn(
+                    "flex items-center gap-2 text-sm font-medium",
+                    noWebsiteEdits ? "text-stone-400" : "text-stone-700",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.showOnWebsite}
+                    disabled={noWebsiteEdits}
+                    onChange={(e) => setForm({ ...form, showOnWebsite: e.target.checked })}
+                    className="h-4 w-4 rounded border-stone-300 accent-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  Show on my website
+                </label>
+                {noWebsiteEdits && (
+                  <p className="mt-1 text-xs text-stone-400">
+                    You&apos;re out of website updates this month. Upgrade for more updates — or wait for your monthly
+                    edit reset.
+                  </p>
+                )}
+              </div>
             )}
 
             {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

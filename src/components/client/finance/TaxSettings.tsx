@@ -43,7 +43,7 @@ export function TaxSettings({ status }: { status: TaxStatus }) {
   }
 
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white p-6">
+    <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
       <div className="flex items-center gap-2">
         <Calculator size={18} className="text-stone-500" />
         <h2 className="font-display text-lg text-stone-900">Sales tax</h2>

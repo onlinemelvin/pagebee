@@ -1,5 +1,6 @@
 import { on } from "@/lib/events";
 import { sendEmail } from "@/lib/modules/email";
+import { upsertCustomerFromLead } from "@/lib/modules/customer";
 import type { Lead, Booking } from "@prisma/client";
 
 // Register domain-event handlers exactly once (survives dev hot reload).
@@ -10,6 +11,15 @@ if (!globalForSubs.__pagebeeSubscribers) {
 
   on("lead.created", async (payload) => {
     const { lead } = payload as { lead: Lead };
+
+    // Auto-add the lead to the CRM: link to an existing contact (by email/phone) or create one. Fail-
+    // soft — a CRM hiccup must never block lead capture or the owner notification below.
+    try {
+      await upsertCustomerFromLead(lead);
+    } catch (err) {
+      console.error("[event:lead.created] customer upsert failed", err);
+    }
+
     // TODO: look up the client owner's email; for now notify the platform inbox.
     const ownerEmail = process.env.RESEND_FROM_EMAIL ?? "owner@pagebee.com";
     await sendEmail({

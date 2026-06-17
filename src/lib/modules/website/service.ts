@@ -14,8 +14,13 @@ import {
   type HtmlEditRequest,
 } from "@/lib/ai/website-generator";
 import { recompileTailwind } from "@/lib/site/tailwind";
+import { splitLeadForm } from "@/lib/site/lead-form";
+import { splitBookingSection, type BookingMeta } from "@/lib/site/booking";
+import { isLeadGoal, type LeadFormMeta } from "@/lib/site/lead-goals";
+import { getLeadFormMeta } from "@/lib/modules/lead";
+import { getBookingMeta } from "@/lib/modules/booking";
 import { getUpdateQuota, type UpdateQuota } from "@/lib/modules/subscription";
-import { seedServicesFromNames, listWebsiteServices } from "@/lib/modules/service";
+import { seedServicesFromNames, listWebsiteServices, serviceDurationLabel } from "@/lib/modules/service";
 import type { WebsiteIntakeForm } from "./schema";
 
 /** Stored generation input: the client intake plus revision context the client never sends
@@ -180,11 +185,27 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       update: { enabled: useGallery },
       create: { clientId, key: "gallery", enabled: useGallery },
     });
+    // The library picker can re-select images the owner previously excluded from the gallery, so
+    // make sure every chosen photo is actually flagged in-gallery (newly uploaded ones already are).
+    if (form.galleryImageUrls?.length) {
+      await prisma.clientMedia.updateMany({
+        where: { clientId, url: { in: form.galleryImageUrls } },
+        data: { inGallery: true },
+      });
+    }
 
     // Services shown on the site come from the central catalog (visible ones, excluding "Other");
     // fall back to the raw intake names if the catalog is somehow empty.
     const websiteServices = await listWebsiteServices(clientId);
     const services = websiteServices.length ? websiteServices.map((s) => s.title) : form.services;
+    // Rich catalog so the services section is server-rendered (SEO/first-paint) with real
+    // descriptions, durations, and prices — the live feed then keeps it in sync on the client.
+    const serviceCatalog = websiteServices.map((s) => ({
+      title: s.title,
+      description: s.description ?? "",
+      durationLabel: serviceDurationLabel(s.durationMinutes),
+      priceLabel: s.price != null ? `$${(s.price / 100).toFixed(2)}` : null,
+    }));
 
     const intake: WebsiteIntake = {
       businessName: client.businessName,
@@ -198,6 +219,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       team: form.team,
       about: form.about,
       services,
+      serviceCatalog,
       serviceAreas: form.serviceAreas,
       hours: formatBusinessHours(form.businessHours),
       tone: form.tone,
@@ -245,14 +267,25 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     let configCreate: Prisma.WebsiteConfigCreateWithoutVersionInput;
     let pagesCreate: Prisma.WebsitePageCreateWithoutVersionInput[];
     let jobOutput: Prisma.InputJsonValue;
+    // EVALUATION (temporary): capture the exact LLM prompt(s) for this draft so admins can verify
+    // generation quality. Stored on the job alongside inputIntake. Disable with EVAL_SAVE_PROMPTS=false;
+    // safe to remove this whole capture + the job's promptLog column later.
+    const savePrompts = process.env.EVAL_SAVE_PROMPTS !== "false";
+    let promptLog: Prisma.InputJsonValue | undefined;
 
     if (surgical && prev) {
       await setJobStage(job.id, 45, "Applying your requested changes");
-      const edited = await editSiteHtml(prev.generatedHtml as string, edits, limits);
+      const edited = await editSiteHtml(prev.generatedHtml as string, edits, limits, clientId, {
+        businessType: intake.businessType,
+        services: intake.services,
+      });
       generatedHtml = edited.html;
       htmlEngine = edited.engine;
       configEngine = "carried-forward";
       appliedEdits = edited.applied;
+      if (savePrompts && edited.prompt) {
+        promptLog = { kind: "surgical-edit", edit: edited.prompt } as unknown as Prisma.InputJsonValue;
+      }
       // Carry the previous version's config + pages forward unchanged — only the HTML's pinned
       // elements were touched; copy, theme, components, and pages stay exactly as approved.
       const pc = prev.config;
@@ -279,10 +312,17 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       const result = await generateWebsiteConfig(intake, limits);
       // Code-generated full site (HTML) wired to PageBee shared APIs.
       await setJobStage(job.id, 55, "Designing and building your pages");
-      const site = await generateSiteHtml(intake, limits);
+      const site = await generateSiteHtml(intake, limits, clientId);
       generatedHtml = site.html;
       htmlEngine = site.engine;
       configEngine = result.engine;
+      if (savePrompts && (result.prompt || site.prompt)) {
+        promptLog = {
+          kind: "full-generation",
+          config: result.prompt ?? null,
+          html: site.prompt ?? null,
+        } as unknown as Prisma.InputJsonValue;
+      }
       configCreate = {
         theme: result.config.theme as unknown as Prisma.InputJsonValue,
         copy: result.config.copy as unknown as Prisma.InputJsonValue,
@@ -309,12 +349,28 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     await setJobStage(job.id, 90, "Finalizing your preview");
     const versionNo = (prev?.version ?? 0) + 1;
 
+    // Strip the lead-capture form out of the page into its own column. The page keeps a slot; the
+    // form is injected back at serve time only when the plan allows it AND the owner enabled it
+    // (see src/lib/site/lead-form.ts). Surgical edits operate on a page that's already stripped, so
+    // there are no markers to find — carry the previous version's form forward in that case.
+    const { pageHtml, leadFormHtml: extractedForm } = splitLeadForm(generatedHtml);
+    generatedHtml = pageHtml;
+    const leadFormHtml = extractedForm ?? prev?.leadFormHtml ?? null;
+
+    // Same for the booking trigger section (see src/lib/site/booking.ts) — strip it into its own
+    // column, leaving a slot; carry the previous version's section forward on surgical edits.
+    const { pageHtml: pageHtml2, bookingHtml: extractedBooking } = splitBookingSection(generatedHtml);
+    generatedHtml = pageHtml2;
+    const bookingHtml = extractedBooking ?? prev?.bookingHtml ?? null;
+
     const version = await prisma.websiteVersion.create({
       data: {
         websiteId: website.id,
         version: versionNo,
         status: "PREVIEW",
         generatedHtml,
+        leadFormHtml,
+        bookingHtml,
         config: { create: configCreate },
         pages: { create: pagesCreate },
       },
@@ -326,14 +382,26 @@ export async function runGenerationJob(jobId: string): Promise<void> {
         status: "NEEDS_REVIEW",
         output: jobOutput,
         finishedAt: new Date(),
+        ...(promptLog ? { promptLog } : {}),
       },
     });
 
-  // Preview-before-you-pay: the generated site enters PREVIEW mode (not live). It first
-  // goes to IN_REVIEW — a platform reviewer must release it before the client can see it
-  // (the client just sees "we're setting up your website"). It launches only after the
-  // client approves (+ setup-fee payment). See docs/ONBOARDING.md.
-  await prisma.website.update({ where: { id: website.id }, data: { status: "preview" } });
+    // Persist the chosen primary CTA/lead goal on the site so the owner can change it later from the
+    // Inquiries page without a rebuild. Only overwrite when the intake actually carried a valid goal
+    // ("Let AI choose" / surgical edits send nothing) — keep any previously chosen goal otherwise.
+    if (isLeadGoal(form.primaryGoal)) {
+      await prisma.website.update({ where: { id: website.id }, data: { leadFormGoal: form.primaryGoal } });
+    }
+
+  // Preview-before-you-pay: a brand-new site enters PREVIEW mode (not live) until the client
+  // approves (+ setup-fee payment). But a site that's ALREADY launched stays "published" — its
+  // live version keeps serving via publishedVersionId while this new version awaits review as a
+  // pending update. Demoting it here would hide the live URL and make approve() re-charge the
+  // setup fee (it treats non-published as a first launch). See docs/ONBOARDING.md.
+  const alreadyLaunched = Boolean(website.publishedVersionId) || website.status === "published";
+  if (!alreadyLaunched) {
+    await prisma.website.update({ where: { id: website.id }, data: { status: "preview" } });
+  }
   const planName = client.subscription?.plan.name ?? "LAUNCH";
   await prisma.preview.upsert({
     where: { websiteId: website.id },
@@ -514,6 +582,79 @@ export async function requestReviewChanges(versionId: string, actorId: string | 
 }
 
 /**
+ * Admin "regenerate from scratch": re-run a FULL generation from the same original instructions,
+ * producing a brand-new version that re-enters the review queue. For when the reviewer doesn't
+ * like a draft and wants a fresh attempt — no pins, no surgical edits. Strips any revision deltas
+ * from the stored intake so it's a clean rebuild, not an edit of the prior draft.
+ */
+export async function regenerateFromScratch(versionId: string, actorId: string | null = null) {
+  const version = await prisma.websiteVersion.findUnique({
+    where: { id: versionId },
+    include: { website: { select: { id: true, clientId: true } } },
+  });
+  if (!version) throw new Error("version_not_found");
+  const websiteId = version.website.id;
+  const clientId = version.website.clientId;
+
+  const lastJob = await prisma.websiteGenerationJob.findFirst({
+    where: { websiteId },
+    orderBy: { createdAt: "desc" },
+    select: { inputIntake: true },
+  });
+  if (!lastJob) throw new Error("no_prior_intake");
+
+  const base = { ...(lastJob.inputIntake as Record<string, unknown>) };
+  delete base.revisionNote;
+  delete base.revisionEdits;
+  const form = base as GenerationForm;
+
+  // Show "building…" on the client dashboard while it regenerates (don't disturb a live preview).
+  await prisma.preview.updateMany({
+    where: { websiteId, status: { not: "LIVE" } },
+    data: { status: "PREVIEW_GENERATING" },
+  });
+
+  const { jobId } = await startGeneration(clientId, form);
+  void claimAndRun(jobId).catch((e) => console.error("[website] admin regenerate-from-scratch failed", jobId, e));
+  await writeAudit({
+    action: "website.admin_regenerated_from_scratch",
+    entityType: "WebsiteVersion",
+    entityId: versionId,
+    clientId,
+    actorId,
+  });
+  return { ok: true as const, jobId };
+}
+
+/**
+ * For the admin regenerate flow: given the version page they're on, report the website's current
+ * newest version id and whether a generation is still running — so the UI can poll and jump the
+ * reviewer to the freshly-built draft when it's ready (instead of leaving them on the old one).
+ */
+export async function getWebsiteGenStatus(versionId: string) {
+  const v = await prisma.websiteVersion.findUnique({ where: { id: versionId }, select: { websiteId: true } });
+  if (!v) return null;
+  const [latest, recentJob] = await Promise.all([
+    prisma.websiteVersion.findFirst({
+      where: { websiteId: v.websiteId },
+      orderBy: { version: "desc" },
+      select: { id: true },
+    }),
+    prisma.websiteGenerationJob.findFirst({
+      where: { websiteId: v.websiteId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true },
+    }),
+  ]);
+  const generating = recentJob?.status === "QUEUED" || recentJob?.status === "GENERATING";
+  return {
+    latestVersionId: latest?.id ?? versionId,
+    generating,
+    failed: recentJob?.status === "FAILED",
+  };
+}
+
+/**
  * Client-initiated update to a LIVE site. Quota-gated (one of the plan's monthly updates),
  * then runs the SAME surgical-edit + review pipeline as a preview revision — the new version
  * enters the review queue and the admin republishes it. Returns `out_of_updates` (with the
@@ -641,6 +782,37 @@ export async function getVersionDetail(versionId: string) {
       },
     },
   });
+}
+
+/**
+ * EVALUATION (temporary): the latest generation job for a site, with the exact user inputs
+ * (inputIntake) and the exact LLM prompt(s) used (promptLog). For admins to sanity-check draft
+ * generation. Returns the most recent job (≈ the current draft). Remove with the feature.
+ */
+export async function getDraftEvaluation(websiteId: string) {
+  const job = await prisma.websiteGenerationJob.findFirst({
+    where: { websiteId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      createdAt: true,
+      status: true,
+      inputIntake: true,
+      promptLog: true,
+      website: { select: { clientId: true } },
+    },
+  });
+  if (!job) return null;
+  // The generation engine ("claude"/"claude+magic" vs "stub") is recorded in the website.generated
+  // audit. Surface it so a STUB fallback (e.g. AI key missing or out of credits) is obvious to the
+  // reviewer instead of silently shipping a verbatim, un-enriched draft.
+  const audit = await prisma.auditLog.findFirst({
+    where: { action: "website.generated", clientId: job.website.clientId },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+  const meta = (audit?.metadata ?? null) as { htmlEngine?: string; engine?: string } | null;
+  return { ...job, htmlEngine: meta?.htmlEngine ?? null, configEngine: meta?.engine ?? null };
 }
 
 /** The raw generated HTML for one version — loaded on demand (manual editor), not on page render. */
@@ -839,6 +1011,44 @@ export async function releaseToClient(versionId: string, reviewerId: string | nu
   });
 }
 
+/** SLA after which an unreviewed generated preview is released to the client automatically. */
+export const PREVIEW_AUTO_RELEASE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Failsafe for the preview-before-you-pay SLA: if a client's freshly generated site has sat
+ * IN_REVIEW (awaiting a human reviewer) past PREVIEW_AUTO_RELEASE_MS and no admin ever released
+ * it, release the latest version to the client automatically — so they're never stuck on the
+ * "we're building your website" screen because we dropped the ball. Idempotent and cheap: the
+ * WHERE clause matches only an overdue, still-in-review preview, so the usual path is a single
+ * indexed read returning nothing. Safe to call on any client page load. Returns whether it
+ * released one.
+ */
+export async function autoReleaseStalePreview(clientId: string): Promise<boolean> {
+  const cutoff = new Date(Date.now() - PREVIEW_AUTO_RELEASE_MS);
+  const stale = await prisma.preview.findFirst({
+    where: { clientId, status: "IN_REVIEW", generatedAt: { lte: cutoff } },
+    select: { id: true, websiteId: true },
+  });
+  if (!stale?.websiteId) return false;
+
+  const version = await prisma.websiteVersion.findFirst({
+    where: { websiteId: stale.websiteId },
+    orderBy: { version: "desc" },
+    select: { id: true },
+  });
+  if (!version) return false;
+
+  await releaseToClient(version.id, null); // system release — no human reviewer
+  await writeAudit({
+    action: "website.preview_auto_released",
+    entityType: "Preview",
+    entityId: stale.id,
+    clientId,
+    metadata: { reason: "sla_no_admin_review", afterMs: PREVIEW_AUTO_RELEASE_MS } as Prisma.InputJsonValue,
+  });
+  return true;
+}
+
 /** Approve a generated version and publish it as the live site version. reviewerId is null for auto-publish. */
 export async function approveAndPublish(versionId: string, reviewerId: string | null = null) {
   const version = await prisma.websiteVersion.findUnique({
@@ -881,10 +1091,15 @@ export async function getPublishedSiteBySubdomain(subdomain: string) {
   });
 }
 
-/** A live (published) site resolved by custom domain. */
+/** A live (published) site resolved by an active custom-domain host (apex or www). */
 export async function getPublishedSiteByDomain(domain: string) {
+  const link = await prisma.websiteDomain.findFirst({
+    where: { host: domain, status: "active" },
+    select: { websiteId: true },
+  });
+  if (!link) return null;
   return prisma.website.findFirst({
-    where: { domain, status: "published", publishedVersionId: { not: null } },
+    where: { id: link.websiteId, status: "published", publishedVersionId: { not: null } },
     include: publishedInclude,
   });
 }
@@ -895,48 +1110,67 @@ export interface ServeSite {
   kind: "published" | "preview";
   siteToken: string;
   html: string;
+  // Goal-derived lead-form state, inlined into the served page so the CTA labels on first paint.
+  leadForm?: LeadFormMeta;
+  // Booking-widget state (trigger section + enabled), inlined so the booking section paints instantly.
+  booking?: BookingMeta | null;
 }
 
 /** Resolve a PUBLISHED site by host part, for the public renderer. Previews are NOT
  *  served on the public host — they're only viewable by the signed-in owner at /preview. */
-async function getServeSite(where: { subdomain?: string; domain?: string }): Promise<ServeSite | null> {
+async function getServeSite(where: { subdomain?: string; id?: string }): Promise<ServeSite | null> {
   const site = await prisma.website.findFirst({
     where: { ...where, status: "published", publishedVersionId: { not: null } },
     include: { publishedVersion: true },
   });
   const html = site?.publishedVersion?.generatedHtml;
   if (!site || !html) return null;
-  return { kind: "published", siteToken: site.siteToken, html };
+  const [leadForm, booking] = await Promise.all([
+    getLeadFormMeta(site.clientId),
+    getBookingMeta(site.clientId, site.publishedVersion?.bookingHtml ?? null),
+  ]);
+  return { kind: "published", siteToken: site.siteToken, html, leadForm, booking };
 }
 
 export function getServeSiteBySubdomain(subdomain: string) {
   return getServeSite({ subdomain });
 }
-export function getServeSiteByDomain(domain: string) {
-  return getServeSite({ domain });
+/** Custom-domain host → site: resolve the active host to its website, then serve it. */
+export async function getServeSiteByDomain(domain: string): Promise<ServeSite | null> {
+  const link = await prisma.websiteDomain.findFirst({
+    where: { host: domain, status: "active" },
+    select: { websiteId: true },
+  });
+  return link ? getServeSite({ id: link.websiteId }) : null;
 }
 
 /** The in-preview site for a signed-in client — for the authenticated /preview route only.
  *  Gated on platform review: the client can't see the preview until an admin has released
  *  it (config.adminReviewed), even if they navigate straight to /preview. */
 export async function getPreviewSiteForClient(clientId: string): Promise<ServeSite | null> {
+  // Not filtered by website.status: a published site can have a newer RELEASED revision the owner
+  // is reviewing (their pending update). We serve the latest released version either way — for an
+  // in-preview site that's the approved preview; for a live site with a pending update it's that
+  // update. The page/redirect logic decides when to actually surface it vs the live site.
   const site = await prisma.website.findFirst({
-    where: { clientId, status: "preview" },
+    where: { clientId },
     select: {
       siteToken: true,
-      // The latest RELEASED version — so a pending (unreleased) revision keeps showing the last
-      // approved preview instead of hiding it ("Coming soon").
       versions: {
         where: { config: { adminReviewed: true } },
         orderBy: { version: "desc" },
         take: 1,
-        select: { generatedHtml: true },
+        select: { generatedHtml: true, bookingHtml: true },
       },
     },
   });
   const html = site?.versions[0]?.generatedHtml;
   if (!site || !html) return null;
-  return { kind: "preview", siteToken: site.siteToken, html };
+  const [leadForm, booking] = await Promise.all([
+    getLeadFormMeta(clientId),
+    getBookingMeta(clientId, site.versions[0]?.bookingHtml ?? null),
+  ]);
+  return { kind: "preview", siteToken: site.siteToken, html, leadForm, booking };
 }
 
 /** The client's website with its latest version's metadata. Narrow select — no generatedHtml. */
@@ -952,6 +1186,7 @@ export async function getClientWebsite(clientId: string) {
         select: {
           version: true,
           status: true,
+          generatedHtml: true, // server-side only — used to extract the real accent color for the cover
           config: { select: { copy: true } },
         },
       },

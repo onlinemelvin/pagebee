@@ -71,8 +71,8 @@ export function StatCard({
   );
 
   const cls = cn(
-    "anim-rise block rounded-2xl border border-stone-200 bg-white p-5",
-    href && "lift hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
+    "anim-rise block rounded-2xl border border-stone-200/80 bg-white p-5 shadow-card",
+    href && "lift transition-shadow hover:shadow-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
   );
   const style = { "--d": `${index * 60}ms` } as React.CSSProperties;
 

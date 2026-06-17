@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
 import { rateLimited } from "@/lib/ratelimit";
-import { createBooking, bookingInputSchema, BookingError } from "@/lib/modules/booking";
+import { createBooking, bookingEnabled, bookingInputSchema, BookingError } from "@/lib/modules/booking";
 import "@/lib/events/subscribers"; // register booking.created handlers
 
 export const runtime = "nodejs";
@@ -40,6 +40,10 @@ export async function POST(req: Request) {
   if (site.status === "preview") {
     return json({ id: "demo", status: "DEMO", demo: true }, 200);
   }
+
+  // Respect the owner's dashboard toggle (plan + override), not just the plan. createBooking also
+  // asserts the plan, but this honors an owner who turned booking off after launch.
+  if (!(await bookingEnabled(site.clientId))) return json({ error: "booking_disabled" }, 403);
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   try {

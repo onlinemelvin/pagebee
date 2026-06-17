@@ -1,7 +1,8 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/session";
-import { planForFlag } from "@/lib/plans";
+import { planForFlag, nextTier } from "@/lib/plans";
+import { autoReleaseStalePreview } from "@/lib/modules/website";
 
 export interface PreviewInfo {
   status: string; // PreviewStatus or "NONE"
@@ -9,6 +10,7 @@ export interface PreviewInfo {
   viewable: boolean; // a released version exists → the client can always open /preview
   reviewing: boolean; // a newer revision is pending review while a released preview is still shown
   live: boolean; // launched
+  updateInReview: boolean; // live site has a newer version being prepared (not yet released to review)
   awaitingPayment: boolean; // approved, setup fee due
   revisionsLeft: number;
   canComment: boolean; // may mark up the preview (reviewable + revisions left)
@@ -19,6 +21,9 @@ export interface Tab {
   label: string;
   href: string;
   badge?: number;
+  tier?: 1 | 2 | 3; // tier the feature belongs to — used to group the nav (1 = base, 2/3 = premium)
+  locked?: boolean; // the current plan doesn't include this feature → shown as an upsell, gated on open
+  lockLabel?: string; // plan that unlocks it (e.g. "Connect") — rendered as a small tag on locked items
 }
 export interface OnboardingStep {
   key: string;
@@ -42,6 +47,7 @@ export interface FeatureCardInfo {
   state: "enabled" | "available" | "locked";
   toggleKey?: string; // feature_flags key to enable/disable (enabled/available states)
   disclaimer?: string; // shown in a confirm modal before enabling (responsibility warning)
+  blockedReason?: string; // on an "available" feature, why it can't be enabled right now (e.g. no page slots left)
   toPlan?: string; // for locked — target plan name
   toPlanLabel?: string; // for locked — target plan label
 }
@@ -105,22 +111,32 @@ const FEATURE_CATALOG: {
     disclaimer:
       "The AI answers visitors on your behalf from your knowledge base. Review it carefully — AI can make mistakes, and a wrong answer can mislead a customer.",
   },
-  {
-    key: "domain",
-    flag: "customDomain",
-    defaultOn: false,
-    title: "Custom domain",
-    desc: "Connect your own domain name.",
-    disclaimer:
-      "Connecting a custom domain requires DNS changes that you control. A misconfiguration can take your site offline until it's corrected.",
-  },
+  // NOTE: Custom domain is intentionally NOT a feature card — it needs a domain + DNS + admin
+  // review, not a simple on/off toggle. It has its own panel (CustomDomainPanel) on the website
+  // page, gated by caps.customDomain. See src/lib/modules/website/domain.ts.
 ];
+// Canonical sidebar nav. Every feature tab is ALWAYS surfaced (for all tiers) so lower-tier owners
+// see what's available and can be upsold — a tab whose `flag` isn't on the plan renders locked and,
+// when opened, shows an upgrade gate. `tier` drives the grouped layout (base → premium). `needsSite`
+// tabs (services/media) are pure content with nothing to upsell, so they stay hidden until a site
+// exists. `planForFlag(flag)` resolves the unlocking plan for the tag + gate message.
+const NAV_CATALOG: { key: string; label: string; href: string; tier: 1 | 2 | 3; flag: string | null; needsSite?: boolean }[] = [
+  { key: "overview", label: "Overview", href: "/client", tier: 1, flag: null },
+  { key: "website", label: "Website", href: "/client/website", tier: 1, flag: null },
+  { key: "services", label: "Services", href: "/client/services", tier: 1, flag: null, needsSite: true },
+  { key: "media", label: "Media", href: "/client/media", tier: 1, flag: null, needsSite: true },
+  { key: "inquiries", label: "Inquiries", href: "/client/inquiries", tier: 2, flag: "contactForm" },
+  { key: "customers", label: "Customers", href: "/client/customers", tier: 2, flag: null },
+  { key: "appointments", label: "Appointments", href: "/client/appointments", tier: 2, flag: "booking" },
+  { key: "invoices", label: "Finance", href: "/client/invoices", tier: 3, flag: "invoices" },
+];
+
 export interface ClientWorkspace {
   email: string;
   role: string; // "owner" | "staff"
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
-  caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; maxPages: number; teamSeats: number };
+  caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; customDomain: boolean; maxPages: number; teamSeats: number };
   choices: { booking: boolean | null; invoices: boolean | null };
   website: { exists: boolean; published: boolean; subdomain: string | null; latestVersionStatus: string | null };
   counts: { newInquiries: number; pendingAppointments: number };
@@ -150,7 +166,10 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
               versions: {
                 orderBy: { version: "desc" },
                 take: 1,
-                include: { config: { select: { adminReviewed: true } } },
+                include: {
+                  config: { select: { adminReviewed: true } },
+                  _count: { select: { pages: true } }, // content units used (gates the gallery vs maxPages)
+                },
               },
             },
           },
@@ -161,12 +180,18 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   if (!membership) return null;
   const client = membership.client;
 
+  // SLA failsafe: if a generated preview has sat unreviewed past the 48h window, release it to
+  // the client now so they're never stuck waiting on us. No-op unless one is overdue; we await it
+  // before reading preview state below so this load reflects the just-released preview.
+  await autoReleaseStalePreview(client.id).catch((e) => console.error("[workspace] auto-release failed", e));
+
   const planFlags = (client.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
   const caps = {
     forms: Boolean(planFlags.contactForm),
     booking: Boolean(planFlags.booking),
     invoices: Boolean(planFlags.invoices ?? planFlags.payments),
     ai: Boolean(planFlags.aiAssistant),
+    customDomain: Boolean(planFlags.customDomain),
     maxPages: Number(planFlags.maxPages ?? 5),
     teamSeats: Number(planFlags.teamSeats ?? 1),
   };
@@ -234,6 +259,8 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     viewable: releasedExists && !isLive,
     reviewing: releasedExists && !latestReviewed && !isLive,
     live: previewRow?.status === "LIVE",
+    // Published site whose latest version is a not-yet-released update (being generated/reviewed).
+    updateInReview: site?.status === "published" && Boolean(latestVersion) && !latestReviewed,
     awaitingPayment: previewRow?.status === "APPROVED" || previewRow?.status === "SETUP_FEE_PENDING",
     revisionsLeft: previewRow ? Math.max(0, previewRow.maxFreeRevisions - previewRow.revisionCount) : 0,
     canComment:
@@ -259,25 +286,26 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   if (caps.invoices) steps.push({ key: "invoices", title: "Send invoices", done: choices.invoices, optional: true });
   const complete = steps.every((s) => s.done);
 
-  // ── Tabs (auto-customized) ──
-  const tabs: Tab[] = [{ key: "overview", label: "Overview", href: "/client" }];
-  // Inquiries/Services/Media only make sense once a site exists (first preview generated),
-  // so they stay hidden until then to keep the initial workspace focused on creating the site.
-  if (website.exists) {
-    tabs.push({ key: "inquiries", label: "Inquiries", href: "/client/inquiries", badge: newInquiries || undefined });
-  }
-  if (caps.booking && choices.booking) {
-    tabs.push({ key: "appointments", label: "Appointments", href: "/client/appointments", badge: pendingAppointments || undefined });
-  }
-  if (caps.invoices && choices.invoices) {
-    tabs.push({ key: "invoices", label: "Finance", href: "/client/invoices" });
-  }
-  if (website.exists) {
-    tabs.push({ key: "services", label: "Services", href: "/client/services" });
-  }
-  tabs.push({ key: "website", label: "Website", href: "/client/website" });
-  if (website.exists) {
-    tabs.push({ key: "media", label: "Media", href: "/client/media" });
+  // ── Tabs (grouped by tier; every feature surfaced for upsell) ──
+  // Premium tabs always appear, locked when off-plan; content-only tabs (services/media) wait for a
+  // site. Badges come from the counts loaded above. Opening a locked tab hits its page's UpgradeGate.
+  const tabs: Tab[] = [];
+  for (const item of NAV_CATALOG) {
+    if (item.needsSite && !website.exists) continue;
+    const onPlan = !item.flag || Boolean(planFlags[item.flag]);
+    const badge =
+      item.key === "inquiries" ? newInquiries || undefined
+      : item.key === "appointments" ? pendingAppointments || undefined
+      : undefined;
+    tabs.push({
+      key: item.key,
+      label: item.label,
+      href: item.href,
+      tier: item.tier,
+      badge,
+      locked: !onPlan,
+      lockLabel: onPlan ? undefined : planForFlag(item.flag!)?.name,
+    });
   }
 
   // ── Surfaced action items ──
@@ -303,6 +331,10 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   }
 
   // ── Feature cards: enabled (on), available (on plan but off → enable), or locked (upgrade). ──
+  // Content units the current site uses (Home/Services/Contact/…) — the gallery adds one, so we
+  // can't let it be enabled once every page/section slot in the plan is already taken.
+  const usedPages = site?.versions[0]?._count?.pages ?? 0;
+
   const features: FeatureCardInfo[] = FEATURE_CATALOG.map((f) => {
     const toggleKey = f.flag ?? "gallery";
     if (f.flag && !planFlags[f.flag]) {
@@ -312,6 +344,14 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     // On plan (or gallery): the override wins; otherwise the feature's default-on policy applies.
     const ov = overrides.get(toggleKey);
     const on = ov !== undefined ? ov : f.defaultOn;
+    // The gallery is a content unit — block enabling it when the site is already at its page limit.
+    const blockedReason =
+      f.key === "gallery" && !on && usedPages >= caps.maxPages
+        ? `Your plan includes up to ${caps.maxPages} pages & sections, and they're all in use. Remove one (or upgrade) to add a gallery.`
+        : undefined;
+    // When blocked for room, offer the next tier that actually grants MORE pages.
+    const up = blockedReason ? nextTier(client.subscription?.plan.name ?? "") : null;
+    const upgrade = up && up.maxPages > caps.maxPages ? { toPlan: up.name, toPlanLabel: up.label } : {};
     return {
       key: f.key,
       title: f.title,
@@ -319,6 +359,8 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
       state: on ? ("enabled" as const) : ("available" as const),
       toggleKey,
       disclaimer: f.disclaimer,
+      blockedReason,
+      ...upgrade,
     };
   });
 

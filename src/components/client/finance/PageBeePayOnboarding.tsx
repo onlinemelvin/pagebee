@@ -252,7 +252,7 @@ export function PageBeePayOnboarding({ settings, state: initialState }: { settin
   // ── Document-needed state ──
   if (phase === "document") {
     return (
-      <div className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white p-6">
+      <div className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700"><Upload size={18} /></span>
           <h2 className="font-display text-lg text-stone-900">One more thing — verify your ID</h2>
@@ -277,7 +277,7 @@ export function PageBeePayOnboarding({ settings, state: initialState }: { settin
   // ── Pending / more-info state ──
   if (phase === "pending") {
     return (
-      <div className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white p-6">
+      <div className="mt-6 max-w-xl rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700"><Clock size={18} /></span>
           <h2 className="font-display text-lg text-stone-900">{onb.currentlyDue.length ? "A little more needed" : "Verifying your details"}</h2>
@@ -314,7 +314,7 @@ export function PageBeePayOnboarding({ settings, state: initialState }: { settin
         ))}
       </div>
 
-      <div className="rounded-2xl border border-stone-200 bg-white p-6">
+      <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-stone-900 text-amber-300"><Sparkles size={18} /></span>
           <h2 className="font-display text-lg text-stone-900">Activate PageBee Pay</h2>

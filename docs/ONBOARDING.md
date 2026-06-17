@@ -88,11 +88,12 @@ discounts, mainly on setup fees**. Monthly-fee discounts require **admin approva
 
 ---
 
-## 5. Preview Expiration
+## 5. Preview Lifetime
 
-- Preview expires after **14 days** (`Preview.expiresAt`, default = generatedAt + 14d).
-- Sales reps may **extend once**; further extensions need **admin approval**.
-- The system **notifies the customer before expiration**.
+- Previews are **evergreen** — they **never expire**. A generated preview stays available for the
+  customer to review (and for us to revise) until they approve & launch or abandon it.
+- There is no expiry countdown, expiry reminder email, or `EXPIRED` transition. (`Preview.expiresAt`
+  remains in the schema as a nullable legacy column and is left unset.)
 
 ---
 
@@ -218,7 +219,7 @@ Anything below these (or any monthly discount) requires **admin approval**
 See [../prisma/schema.prisma](../prisma/schema.prisma):
 
 - **`Preview`** — `prospectId?`, `clientId?`, `websiteId?`, `selectedPlan`, `status`,
-  `previewUrl`, `expiresAt`, `generatedAt`, `sentAt`, `viewedAt`, `approvedAt`,
+  `previewUrl`, `generatedAt`, `sentAt`, `viewedAt`, `approvedAt`,
   `revisionCount`, `maxFreeRevisions`, `createdById`, `assignedSalesRepId`, `notes`.
 - **`PreviewRevision`** — `previewId`, `requestedBy`, `requestText`, `status`,
   `completedAt`.
@@ -260,7 +261,7 @@ POST /api/v1/sales/previews/{previewId}/create-quote
 
 Track: preview requests · generation success rate · viewed rate · approval rate ·
 preview→paid conversion rate · avg time intake→preview · avg time sent→approval ·
-avg time setup-fee-paid→launch · lost previews · expired previews · conversion by
+avg time setup-fee-paid→launch · lost previews · conversion by
 plan · conversion by sales rep · discount impact on conversion · setup-fee revenue ·
 MRR started from previews.
 
@@ -291,9 +292,9 @@ Spec + data model are in place; the **flow is implemented in the Stripe/preview 
   the site at day 14. This is a stopgap — it does *not* match this spec.
 - **To build (preview phase):**
   1. Replace signup-creates-live-trial with **signup-creates-`Preview`** (status flow
-     above); render in **preview mode** — banner + `noindex` + demo features +
-     `expiresAt` — served by the existing renderer.
-  2. Enforce **one free revision**, expiration + reminders, sales/admin extension.
+     above); render in **preview mode** — banner + `noindex` + demo features —
+     served by the existing renderer.
+  2. Enforce **one free revision**. Previews are evergreen (no expiration/reminders).
   3. On **approval → setup-fee payment** (Stripe) → create `Conversion`, **launch**
      (publish version, activate plan features, connect domain), **start subscription**
      (with the §7 grace period).

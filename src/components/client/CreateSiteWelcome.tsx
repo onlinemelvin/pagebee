@@ -97,7 +97,7 @@ export function CreateSiteWelcome({ ownerName, businessName, planName, isOwner, 
           <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">How it works</h2>
           <div className="mt-3 grid gap-4 sm:grid-cols-3">
             {STEPS.map((s) => (
-              <div key={s.n} className="rounded-2xl border border-stone-200 bg-white p-5">
+              <div key={s.n} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-amber-100 font-display text-base font-semibold text-amber-700">
                   {s.n}
                 </span>
@@ -114,7 +114,7 @@ export function CreateSiteWelcome({ ownerName, businessName, planName, isOwner, 
         <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">What you'll manage here</h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {tour.map((t) => (
-            <div key={t.title} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5">
+            <div key={t.title} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-amber-700">
                 <t.icon size={20} />
               </span>

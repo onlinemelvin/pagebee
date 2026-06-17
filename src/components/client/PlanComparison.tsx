@@ -24,7 +24,7 @@ export function PlanComparison({ currentPlan }: { currentPlan: string }) {
             <div
               key={p.name}
               className={cn(
-                "relative flex flex-col rounded-2xl border bg-white p-5",
+                "relative flex flex-col rounded-2xl border bg-white p-5 shadow-card",
                 isCurrent ? "border-amber-400 ring-2 ring-amber-200" : "border-stone-200",
               )}
             >

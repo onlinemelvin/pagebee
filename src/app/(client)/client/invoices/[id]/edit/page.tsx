@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function EditDocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (!ws.caps.invoices) redirect("/client/invoices"); // off-plan → finance index shows the upgrade gate
 
   const { id } = await params;
   let doc;

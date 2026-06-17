@@ -25,6 +25,6 @@ export async function GET(req: Request) {
 
   const site = await getPreviewSiteForClient(client.id);
   const annotate = new URL(req.url).searchParams.get("annotate") === "1";
-  if (annotate && site) return serveReviewFrame(site.html, site.siteToken, req);
+  if (annotate && site) return serveReviewFrame(site.html, site.siteToken, req, site.leadForm, site.booking);
   return serveTenant(site, req);
 }

@@ -1,3 +1,9 @@
+export interface ApptInvoice {
+  id: string;
+  status: string;
+  docType: string;
+}
+
 export interface Appt {
   id: string;
   serviceName: string;
@@ -9,6 +15,7 @@ export interface Appt {
   customerEmail: string | null;
   customerPhone: string | null;
   notes: string | null;
+  invoice?: ApptInvoice | null; // latest linked invoice/estimate (Finance plans)
 }
 
 export interface ApptService {

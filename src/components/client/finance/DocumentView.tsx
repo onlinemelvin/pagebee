@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Send, ArrowRight, Printer, Trash2, DollarSign, Copy, Check } from "lucide-react";
+import { Pencil, Send, ArrowRight, Printer, Trash2, DollarSign, Copy, Check, Download } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -94,6 +94,7 @@ export function DocumentView({ doc, appUrl }: { doc: DocumentDTO; appUrl: string
               <DollarSign size={14} /> Record payment
             </Button>
           )}
+          <a href={`/api/v1/client/finance/documents/${doc.id}/pdf`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"><Download size={14} /> PDF</a>
           <Button size="sm" variant="ghost" onClick={() => window.print()}><Printer size={14} /> Print</Button>
           {editable && (
             <button onClick={del} disabled={busy} className="rounded-lg p-2 text-stone-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={15} /></button>
@@ -122,7 +123,7 @@ export function DocumentView({ doc, appUrl }: { doc: DocumentDTO; appUrl: string
       )}
 
       {/* The document itself */}
-      <article className="mt-4 rounded-2xl border border-stone-200 bg-white p-8 print:border-0 print:p-0">
+      <article className="mt-4 rounded-2xl border border-stone-200 bg-white p-8 shadow-card print:border-0 print:p-0 print:shadow-none">
         <header className="flex items-start justify-between gap-4">
           <div>
             <p className="font-display text-2xl text-stone-900">{DOC_LABEL[doc.docType]}</p>

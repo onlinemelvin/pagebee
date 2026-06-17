@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AnnotatablePreview } from "@/components/review/AnnotatablePreview";
+import { UpgradeModal } from "./UpgradeModal";
+import { nextTier } from "@/lib/plans";
 
 const ERR: Record<string, string> = {
   no_content: "Pin a change on the page or add a comment before sending.",
@@ -23,22 +25,30 @@ const ERR: Record<string, string> = {
 export function ClientPreviewReview({
   canComment,
   revisionsLeft,
+  planName,
   reviewing = false,
 }: {
   canComment: boolean;
   revisionsLeft: number;
+  /** Current plan — drives the "out of edits" upsell to the next tier. */
+  planName: string;
   /** A revision is already in our review queue — show the existing preview, locked, with a notice. */
   reviewing?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [modalOpen, setModalOpen] = React.useState(false);
+  const [upsell, setUpsell] = React.useState(false);
   const [justSent, setJustSent] = React.useState(false); // changes submitted this session
   const [error, setError] = React.useState<string | null>(null);
 
   // Locked whenever changes are with our team — either submitted just now, or a revision was
   // already pending when the page loaded.
   const sent = justSent || reviewing;
+
+  // No website edits left this cycle: don't invite markup, hide "Send my changes", upsell instead.
+  const outOfEdits = !sent && revisionsLeft <= 0;
+  const next = nextTier(planName);
 
   async function post(path: string, body?: unknown): Promise<boolean> {
     setBusy(true);
@@ -93,17 +103,27 @@ export function ClientPreviewReview({
   ) : (
     <div className="flex flex-wrap items-center gap-2">
       {error && <span className="text-[11px] font-semibold text-red-800">{error}</span>}
-      <button
-        onClick={() => {
-          setError(null);
-          setModalOpen(true);
-        }}
-        disabled={busy || revisionsLeft <= 0}
-        title={revisionsLeft <= 0 ? "You've used your free revision" : undefined}
-        className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-900 hover:bg-white disabled:opacity-50"
-      >
-        Send my changes
-      </button>
+      {outOfEdits ? (
+        next && (
+          <button
+            onClick={() => setUpsell(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-stone-700"
+          >
+            ✦ Upgrade to {next.label} for more edits
+          </button>
+        )
+      ) : (
+        <button
+          onClick={() => {
+            setError(null);
+            setModalOpen(true);
+          }}
+          disabled={busy}
+          className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-900 hover:bg-white disabled:opacity-50"
+        >
+          Send my changes
+        </button>
+      )}
       <button
         onClick={approve}
         disabled={busy}
@@ -114,26 +134,36 @@ export function ClientPreviewReview({
     </div>
   );
 
+  // What the yellow footer says when comment mode is off. Out of edits → reflect that and point
+  // to the upsell / reset instead of inviting markup.
+  const bannerMessage = sent
+    ? "Your review comments are received — our team is reviewing them (about a 48-hour turnaround). You're viewing your current preview in the meantime."
+    : outOfEdits
+      ? next
+        ? `This site isn't live yet. You've used all your website edits — upgrade to ${next.label} for more, or wait for your monthly reset. Approve & launch whenever you're ready.`
+        : "This site isn't live yet. You've used all your website edits this cycle — they reset next month. Approve & launch whenever you're ready."
+      : undefined;
+
   return (
     <div className="flex h-screen flex-col">
       <AnnotatablePreview
         frameSrc="/preview/frame?annotate=1"
         apiBase="/api/v1/client/preview"
         initialComments={[]}
-        canComment={canComment}
+        canComment={canComment && !outOfEdits}
         canResolve={false}
         deletePolicy="own"
         bordered={false}
         locked={sent}
-        bannerMessage={
-          sent
-            ? "Your review comments are received — our team is reviewing them (about a 48-hour turnaround). You're viewing your current preview in the meantime."
-            : undefined
-        }
+        bannerMessage={bannerMessage}
         className="h-full"
         footerStart={footerStart}
         footerEnd={footerEnd}
       />
+
+      {next && (
+        <UpgradeModal open={upsell} onClose={() => setUpsell(false)} toPlan={next.name} reason="preview_out_of_edits" />
+      )}
 
       {modalOpen && (
         <div

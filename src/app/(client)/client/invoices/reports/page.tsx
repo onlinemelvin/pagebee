@@ -4,8 +4,9 @@ import { ShieldCheck, Download, FileText } from "lucide-react";
 
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 import { getClientWorkspace } from "@/lib/modules/client";
-import { getTaxReport, getIncomeReport, get1099Summary } from "@/lib/modules/finance";
+import { getTaxReport, getIncomeReport, get1099Summary, getFinanceAnalytics, getFinanceDashboard } from "@/lib/modules/finance";
 import { ReportControls } from "@/components/client/finance/ReportControls";
+import { FinanceAnalytics } from "@/components/client/finance/FinanceAnalytics";
 import { fmt } from "@/components/client/finance/money-format";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ function parseDate(s: string | undefined, fallback: Date): Date {
 export default async function FinanceReportsPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (!ws.caps.invoices) redirect("/client/invoices"); // off-plan → finance index shows the upgrade gate
 
   const { from: fromQ, to: toQ } = await searchParams;
   const now = new Date();
@@ -29,10 +30,12 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
   const toStr = to.toISOString().slice(0, 10);
 
   const year = now.getFullYear();
-  const [tax, income, form1099] = await Promise.all([
+  const [tax, income, form1099, analytics, dash] = await Promise.all([
     getTaxReport(ws.client.id, from, to),
     getIncomeReport(ws.client.id, from, to),
     get1099Summary(ws.client.id, year),
+    getFinanceAnalytics(ws.client.id),
+    getFinanceDashboard(ws.client.id),
   ]);
 
   return (
@@ -41,12 +44,14 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
       <h1 className="mt-2 font-display text-3xl text-stone-900">Tax &amp; reports</h1>
       <p className="mt-1 text-stone-500">Download what you (or your accountant) need to file. Figures cover paid invoices in the selected period.</p>
 
+      <FinanceAnalytics data={analytics} aging={dash.aging} />
+
       <div className="mt-6">
         <ReportControls from={fromStr} to={toStr} />
       </div>
 
       {/* Sales tax collected */}
-      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg text-stone-900">Sales tax collected</h2>
           <span className="text-sm text-stone-400">{fmt(tax.totalTax)} total</span>
@@ -78,7 +83,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
       </section>
 
       {/* Income summary */}
-      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg text-stone-900">Income (collected)</h2>
           <span className="text-sm text-stone-400">{fmt(income.totalCollected)} · {income.invoiceCount} invoice{income.invoiceCount === 1 ? "" : "s"}</span>
@@ -87,7 +92,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
       </section>
 
       {/* 1099-K summary */}
-      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck size={18} className="text-stone-500" />

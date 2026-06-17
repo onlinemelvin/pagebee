@@ -16,7 +16,6 @@ const STATUS_LABEL: Record<string, string> = {
   SETUP_FEE_PENDING: "Approved — setup fee due to launch",
   APPROVED: "Approved — setup fee due to launch",
   PREVIEW_READY: "Free preview ready to review",
-  EXPIRED: "Preview expired",
   NONE: "No website yet",
 };
 const STATUS_TONE: Record<string, string> = {
@@ -24,7 +23,6 @@ const STATUS_TONE: Record<string, string> = {
   SETUP_FEE_PENDING: "bg-amber-100 text-amber-800",
   APPROVED: "bg-amber-100 text-amber-800",
   PREVIEW_READY: "bg-amber-100 text-amber-800",
-  EXPIRED: "bg-rose-100 text-rose-700",
   NONE: "bg-stone-100 text-stone-600",
 };
 
@@ -34,7 +32,7 @@ function UsageTile({ icon: Icon, label, used, limit, unlimited, accent }: {
 }) {
   const pct = unlimited ? Math.min(100, Math.round((used / Math.max(limit, 1)) * 100)) : limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   return (
-    <div className="rounded-xl border border-stone-200 bg-white p-4">
+    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-card">
       <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
         <span className={`grid h-7 w-7 place-items-center rounded-lg ${accent}`}><Icon size={15} /></span>
         {label}
@@ -155,7 +153,7 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
       </div>
 
       {/* Payment / launch CTA */}
-      <div className="anim-rise overflow-hidden rounded-2xl border border-stone-200 bg-white">
+      <div className="anim-rise overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-card">
         <div className="flex flex-col items-center px-6 py-10 text-center">
           <span className={`grid h-14 w-14 place-items-center rounded-2xl ${awaiting ? "bg-amber-100 text-amber-600" : "bg-stone-100 text-stone-400"}`}>
             {awaiting ? <Rocket size={26} /> : <CreditCard size={26} />}

@@ -200,6 +200,47 @@ async function applyPayment(invoiceId: string, amount: number, refs: { paymentIn
   await writeAudit({ action: "payments.charge_succeeded", entityType: "Invoice", entityId: inv.id, clientId: inv.clientId, metadata: { amount } });
 }
 
+/**
+ * Attempt an off-session charge for a recurring AUTO_CHARGE plan, using a card saved on file. Best-
+ * effort and fully guarded: returns { charged:false } (so the caller falls back to emailing a pay
+ * link) when Stripe isn't configured, the account can't accept payments, or the charge fails. Only
+ * runs when a saved customer + payment method are supplied.
+ */
+export async function chargeInvoiceOffSession(
+  invoiceId: string,
+  opts: { stripeCustomerId: string; paymentMethodId: string },
+): Promise<{ charged: boolean; reason?: string }> {
+  if (!stripeConfigured()) return { charged: false, reason: "stripe_not_configured" };
+  const inv = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { id: true, total: true, amountPaid: true, currency: true, client: { select: { stripeConnectAccountId: true, paymentsEnabled: true } } },
+  });
+  if (!inv) return { charged: false, reason: "not_found" };
+  const account = inv.client.stripeConnectAccountId;
+  const amount = inv.total - inv.amountPaid;
+  if (!account || !inv.client.paymentsEnabled) return { charged: false, reason: "payments_unavailable" };
+  if (amount <= 0) return { charged: false, reason: "nothing_due" };
+  try {
+    const pi = await getStripe().paymentIntents.create({
+      amount,
+      currency: inv.currency,
+      customer: opts.stripeCustomerId,
+      payment_method: opts.paymentMethodId,
+      off_session: true,
+      confirm: true,
+      application_fee_amount: applicationFee(amount),
+      transfer_data: { destination: account },
+    });
+    if (pi.status === "succeeded") {
+      await applyPayment(inv.id, amount, { paymentIntentId: pi.id, chargeId: typeof pi.latest_charge === "string" ? pi.latest_charge : null });
+      return { charged: true };
+    }
+    return { charged: false, reason: pi.status };
+  } catch (e) {
+    return { charged: false, reason: e instanceof Error ? e.message : "charge_failed" };
+  }
+}
+
 /** Process a verified Stripe webhook event (idempotent via PaymentEvent). */
 export async function processStripeEvent(event: Stripe.Event): Promise<void> {
   const existing = await prisma.paymentEvent.findUnique({ where: { externalId: event.id }, select: { processedAt: true } });

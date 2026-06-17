@@ -21,7 +21,7 @@ export function RegenerateSection({
 
   if (!open) {
     return (
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-6">
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <div>
           <h2 className="font-display text-xl text-stone-900">Want changes to your website?</h2>
           <p className="mt-1 text-sm text-stone-500">
@@ -34,7 +34,7 @@ export function RegenerateSection({
   }
 
   return (
-    <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6">
+    <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
       <div className="flex items-center justify-between gap-4">
         <h2 className="font-display text-xl text-stone-900">Regenerate your website</h2>
         <button onClick={() => setOpen(false)} className="text-sm text-stone-500 hover:underline">

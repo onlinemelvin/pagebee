@@ -60,7 +60,7 @@ export function FinanceSettings({ initialSettings, initialTaxRates, taxMode }: {
     <div className="mt-6 space-y-6">
       {/* Manual tax rates — hidden when automatic (Stripe Tax) is on. */}
       {taxMode !== "automatic" && (
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Tax rates</h2>
         <p className="mt-1 text-sm text-stone-500">Define the rates you charge. Pick one per line when building a document.</p>
         {initialTaxRates.length > 0 && (
@@ -85,7 +85,7 @@ export function FinanceSettings({ initialSettings, initialTaxRates, taxMode }: {
       )}
 
       {/* Document defaults */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Document defaults</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <label className="grid gap-1 text-sm font-medium text-stone-700">Currency<Input value={s.currency} onChange={(e) => setS({ ...s, currency: e.target.value })} /></label>
@@ -104,7 +104,7 @@ export function FinanceSettings({ initialSettings, initialTaxRates, taxMode }: {
       </section>
 
       {/* Business info (shown on documents) */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-6">
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
         <h2 className="font-display text-lg text-stone-900">Your business details</h2>
         <p className="mt-1 text-sm text-stone-500">Appears in the header of documents your customers see.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

@@ -50,6 +50,7 @@ export default async function PreviewPage() {
     <ClientPreviewReview
       canComment={ws.preview.canComment}
       revisionsLeft={ws.preview.revisionsLeft}
+      planName={ws.planName}
       reviewing={ws.preview.reviewing}
     />
   );

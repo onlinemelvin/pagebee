@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, X, Lock } from "lucide-react";
+import { Check, X, Lock, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fmt } from "./money-format";
@@ -50,7 +50,7 @@ export function PublicDocumentView({ doc, businessName, paymentsEnabled }: { doc
   return (
     <div className="min-h-dvh bg-stone-100 py-10">
       <div className="mx-auto max-w-2xl px-4">
-        <article className="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">
+        <article className="rounded-2xl border border-stone-200 bg-white p-8 shadow-card">
           <header className="flex items-start justify-between gap-4">
             <div>
               <p className="font-display text-2xl text-stone-900">{businessName ?? "Your provider"}</p>
@@ -141,7 +141,12 @@ export function PublicDocumentView({ doc, businessName, paymentsEnabled }: { doc
             </div>
           )}
         </article>
-        <p className="mt-4 text-center text-xs text-stone-400">Powered by PageBee</p>
+        <div className="mt-4 text-center">
+          <a href={`/api/v1/public/finance/${doc.publicToken}/pdf`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-stone-500 hover:text-stone-800">
+            <Download size={14} /> Download PDF
+          </a>
+        </div>
+        <p className="mt-3 text-center text-xs text-stone-400">Powered by PageBee</p>
       </div>
     </div>
   );

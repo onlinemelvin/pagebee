@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function PageBeePayPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (!ws.caps.invoices) redirect("/client/invoices"); // off-plan → finance index shows the upgrade gate
   if (ws.role !== "owner") redirect("/client/invoices"); // payout onboarding is owner-only
 
   const [settings, state] = await Promise.all([getFinanceSettings(ws.client.id), getOnboardingState(ws.client.id)]);

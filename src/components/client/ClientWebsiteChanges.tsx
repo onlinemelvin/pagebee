@@ -64,7 +64,7 @@ export function ClientWebsiteChanges({
   }
 
   return (
-    <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6">
+    <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
       <div>
         <h2 className="font-display text-xl text-stone-900">Make changes to your website</h2>
         <p className="mt-1 text-sm text-stone-500">

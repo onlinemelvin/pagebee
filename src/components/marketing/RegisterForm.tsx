@@ -39,11 +39,11 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
     const f = formRef.current;
     if (!f) return;
     const fields: Record<string, string> = {
-      businessName: "Sparkle Cleaning Co.",
-      businessType: "Cleaning service",
-      ownerName: "Jane Smith",
-      phone: "(555) 123-4567",
-      password: "test12345",
+      businessName: "K & K Automobiles",
+      businessType: "Mobile auto-repair",
+      ownerName: "Melvin Abraham",
+      phone: "804-714-4973",
+      password: "january@13",
     };
     for (const [name, val] of Object.entries(fields)) {
       const el = f.elements.namedItem(name) as HTMLInputElement | null;
@@ -53,7 +53,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
 
   function fillTestData() {
     if (!plan) setPlan("AUTOMATE");
-    setEmail(`test${Math.floor(Math.random() * 100000)}@test.com`);
+    setEmail("onlinemelvin@gmail.com");
     if (step === "details") applyTestFill();
     else {
       pendingFill.current = true;

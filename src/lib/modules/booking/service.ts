@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
 import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { getServiceDurations } from "@/lib/modules/service";
+import { defaultBookingHtml, type BookingMeta } from "@/lib/site/booking";
 import { schedulingSettingsSchema, type BookingInput, type ManualBookingInput, type SchedulingSettings } from "./schema";
 import { computeSlots, normalizeSettings, type BusyInterval, type DaySlots } from "./availability";
 
@@ -28,6 +29,40 @@ async function assertBookingEnabled(clientId: string) {
   const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
   if (!flags.booking) throw new BookingError(403, "feature_not_enabled");
   return client;
+}
+
+/**
+ * Whether the public booking widget is live for a tenant: the plan includes `booking` AND the owner
+ * hasn't turned it off via the feature card. Mirrors leadCaptureEnabled — used by the public booking
+ * status feed (serve-time show/hide) and to gate public booking submissions. Default-on when on-plan.
+ */
+export async function bookingEnabled(clientId: string): Promise<boolean> {
+  const [client, override] = await Promise.all([
+    prisma.client.findUnique({
+      where: { id: clientId },
+      select: { subscription: { select: { plan: { select: { featureFlags: true } } } } },
+    }),
+    prisma.featureFlag.findUnique({
+      where: { clientId_key: { clientId, key: "booking" } },
+      select: { enabled: true },
+    }),
+  ]);
+  const planFlags = (client?.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
+  if (!planFlags.booking) return false; // not on this plan
+  return override?.enabled !== false; // default-on unless explicitly disabled
+}
+
+/**
+ * Serve-time booking state for a tenant: whether the widget is live + the trigger section to show.
+ * Mirrors getLeadFormMeta — falls back to a platform-default trigger so booking works on EXISTING
+ * booking-enabled sites with no rebuild (the AI's tailored section is used once a site is regenerated).
+ * Returns null only for sites that can never show booking (not on plan / owner-off AND no stored
+ * section), so the serve pipeline injects nothing there.
+ */
+export async function getBookingMeta(clientId: string, bookingHtml: string | null): Promise<BookingMeta | null> {
+  const enabled = await bookingEnabled(clientId);
+  if (!enabled && !bookingHtml) return null;
+  return { enabled, html: bookingHtml ?? defaultBookingHtml() };
 }
 
 export interface CreateBookingParams {

@@ -27,7 +27,7 @@ export function PaymentsConnect({ status, notice }: { status: PaymentStatus; not
   const fee = (status.feeBps / 100).toFixed(2);
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-stone-200 bg-gradient-to-br from-white to-amber-50/40">
+    <section className="overflow-hidden rounded-2xl border border-stone-200 bg-gradient-to-br from-white to-amber-50/40 shadow-card">
       <div className="p-6">
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-stone-900 text-amber-300"><Sparkles size={18} /></span>

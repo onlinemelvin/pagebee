@@ -2,11 +2,22 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { X, FileText, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { STATUS_STYLES, type Appt } from "./appointments-types";
+
+const INV_STATUS_STYLE: Record<string, string> = {
+  DRAFT: "bg-stone-100 text-stone-600",
+  SENT: "bg-blue-100 text-blue-700",
+  VIEWED: "bg-indigo-100 text-indigo-700",
+  ACCEPTED: "bg-green-100 text-green-700",
+  PARTIALLY_PAID: "bg-amber-100 text-amber-800",
+  PAID: "bg-green-100 text-green-700",
+  OVERDUE: "bg-red-100 text-red-700",
+  DECLINED: "bg-red-100 text-red-700",
+};
 
 interface Change {
   action: string;
@@ -36,9 +47,31 @@ function localTime(iso: string): string {
 }
 
 /** Slide-over: customer + actions, manual date/time edit with a reason, and change history. */
-export function BookingDetail({ appt, history, onClose }: { appt: Appt; history: Appt[]; onClose: () => void }) {
+export function BookingDetail({ appt, history, financeEnabled = false, onClose }: { appt: Appt; history: Appt[]; financeEnabled?: boolean; onClose: () => void }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
+  const [invBusy, setInvBusy] = React.useState(false);
+
+  async function createInvoice() {
+    setInvBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/client/bookings/${appt.id}/invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docType: "INVOICE" }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? `Failed (${res.status})`);
+      }
+      const { document } = (await res.json()) as { document: { id: string } };
+      router.push(`/client/invoices/${document.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+      setInvBusy(false);
+    }
+  }
   const [date, setDate] = React.useState(() => localDate(appt.startAt));
   const [time, setTime] = React.useState(() => localTime(appt.startAt));
   const [reason, setReason] = React.useState("");
@@ -133,6 +166,29 @@ export function BookingDetail({ appt, history, onClose }: { appt: Appt; history:
           </div>
           {appt.notes && <p className="mt-2 text-sm text-stone-600">{appt.notes}</p>}
         </div>
+
+        {/* Invoice link — shows whether this appointment has been invoiced/sent/paid (Finance plans). */}
+        {financeEnabled && (
+          <div className="mt-4 rounded-xl border border-stone-200 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Invoice</p>
+            {appt.invoice ? (
+              <button onClick={() => router.push(`/client/invoices/${appt.invoice!.id}`)} className="mt-2 flex w-full items-center justify-between gap-2 rounded-lg border border-stone-200 px-3 py-2 text-left hover:bg-stone-50">
+                <span className="flex items-center gap-2 text-sm text-stone-700"><FileText size={15} className="text-stone-400" /> {appt.invoice.docType === "INVOICE" ? "Invoice" : appt.invoice.docType.toLowerCase()}</span>
+                <span className="flex items-center gap-2">
+                  <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", INV_STATUS_STYLE[appt.invoice.status] ?? "bg-stone-100 text-stone-600")}>{appt.invoice.status.replace("_", " ")}</span>
+                  <ArrowRight size={14} className="text-stone-400" />
+                </span>
+              </button>
+            ) : (
+              <div className="mt-2">
+                <p className="text-sm text-stone-500">Not invoiced yet.</p>
+                <Button size="sm" className="mt-2" disabled={invBusy} onClick={createInvoice}>
+                  <FileText size={14} /> {invBusy ? "Creating…" : "Create invoice"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Status actions */}
         <div className="mt-5 flex flex-wrap gap-2">

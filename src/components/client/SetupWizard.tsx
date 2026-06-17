@@ -49,7 +49,7 @@ export function SetupWizard({ steps }: { steps: Step[] }) {
   }
 
   return (
-    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
+    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6 shadow-card">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl text-stone-900">Set up your account</h2>
         <span className="text-xs font-semibold text-amber-800">

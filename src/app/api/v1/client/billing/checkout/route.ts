@@ -14,7 +14,8 @@ const schema = z.object({ kind: z.enum(["setup", "upgrade"]), toPlan: z.string()
 export async function POST(req: Request) {
   let client;
   try {
-    ({ client } = await requireOwner());
+    // allowInactive: paying the setup fee / subscription is how a blocked tenant reactivates.
+    ({ client } = await requireOwner({ allowInactive: true }));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

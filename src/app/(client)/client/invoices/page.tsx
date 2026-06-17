@@ -1,9 +1,13 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { FileText, FilePlus2, ScrollText, SlidersHorizontal, FileBarChart, Wallet, ReceiptText, Clock3 } from "lucide-react";
+import { Wallet, ReceiptText, Clock3, ScrollText, CalendarClock, ArrowRight } from "lucide-react";
+import { prisma } from "@/lib/db";
 import { getClientWorkspace } from "@/lib/modules/client";
-import { getFinanceDashboard, listDocuments } from "@/lib/modules/finance";
+import { getFinanceDashboard, listDocuments, listTaxRates, getFinanceSettings, pastUninvoicedAppointments } from "@/lib/modules/finance";
+import { listBookableServices } from "@/lib/modules/service";
 import { DocumentsTable } from "@/components/client/finance/DocumentsTable";
+import { FinanceActions } from "@/components/client/finance/FinanceActions";
+import { CustomerResponses } from "@/components/client/finance/CustomerResponses";
+import { UpgradeGate } from "@/components/client/UpgradeGate";
 import { StatCard } from "@/components/client/ui/StatCard";
 import { fmt } from "@/components/client/finance/money-format";
 
@@ -12,9 +16,22 @@ export const dynamic = "force-dynamic";
 export default async function ClientInvoicesPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  // Finance (invoices/payments/statements) is an Automate feature; surfaced to every tier as an
+  // upsell, gated here for lower plans. On-plan owners reach the dashboard whether or not they've
+  // toggled it on yet — the feature card still governs what's live on their public site.
+  if (!ws.caps.invoices) return <UpgradeGate title="Finance" flag="invoices" blurb="Send invoices, take card payments, and share statements — available on the AUTOMATE plan." />;
 
-  const [dash, documents] = await Promise.all([getFinanceDashboard(ws.client.id), listDocuments(ws.client.id)]);
+  const [dash, documents, services, taxRates, settings, customerRows, uninvoiced] = await Promise.all([
+    getFinanceDashboard(ws.client.id),
+    listDocuments(ws.client.id),
+    listBookableServices(ws.client.id),
+    listTaxRates(ws.client.id),
+    getFinanceSettings(ws.client.id),
+    prisma.customer.findMany({ where: { clientId: ws.client.id, archivedAt: null }, select: { id: true, name: true, email: true, phone: true, billingAddress: true }, orderBy: { name: "asc" } }),
+    ws.caps.booking ? pastUninvoicedAppointments(ws.client.id) : Promise.resolve(0),
+  ]);
+  const customers = customerRows.map((c) => ({ ...c, billingAddress: (c.billingAddress as { line1?: string; city?: string; state?: string; postalCode?: string; country?: string } | null) ?? null }));
+  const editorServices = services.map((s) => ({ id: s.id, title: s.title, description: s.description, price: s.price, durationMinutes: s.durationMinutes }));
 
   return (
     <div>
@@ -23,13 +40,13 @@ export default async function ClientInvoicesPage() {
           <h1 className="font-display text-3xl text-stone-900">Finance</h1>
           <p className="mt-1 text-stone-500">Estimates, quotes, invoices, payments, and statements.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/client/invoices/new?type=INVOICE" className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-amber-300"><FilePlus2 size={16} /> New invoice</Link>
-          <Link href="/client/invoices/new?type=ESTIMATE" className="inline-flex items-center gap-2 rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"><FileText size={16} /> Estimate</Link>
-          <Link href="/client/invoices/new?type=QUOTE" className="inline-flex items-center gap-2 rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"><ScrollText size={16} /> Quote</Link>
-          <Link href="/client/invoices/reports" className="inline-flex items-center gap-2 rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"><FileBarChart size={16} /> Tax &amp; reports</Link>
-          <Link href="/client/invoices/settings" className="inline-flex items-center gap-2 rounded-xl border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-100"><SlidersHorizontal size={16} /> Settings</Link>
-        </div>
+        <FinanceActions
+          services={editorServices}
+          taxRates={taxRates}
+          customers={customers}
+          settings={{ currency: settings.currency, defaultTerms: settings.defaultTerms, defaultNotes: settings.defaultNotes }}
+          taxMode={settings.taxMode}
+        />
       </div>
 
       {/* Metrics */}
@@ -57,6 +74,18 @@ export default async function ClientInvoicesPage() {
           ))}
         </div>
       )}
+
+      {uninvoiced > 0 && (
+        <Link href="/client/appointments" className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 hover:bg-amber-100">
+          <CalendarClock size={18} className="shrink-0" />
+          <span className="flex-1">
+            <strong>{uninvoiced}</strong> completed appointment{uninvoiced === 1 ? " hasn't" : "s haven't"} been invoiced yet.
+          </span>
+          <span className="inline-flex items-center gap-1 font-semibold">Review <ArrowRight size={14} /></span>
+        </Link>
+      )}
+
+      <CustomerResponses documents={documents} />
 
       <div className="mt-6">
         <DocumentsTable documents={documents} />

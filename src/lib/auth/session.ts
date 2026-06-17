@@ -1,6 +1,11 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { AuthError } from "./errors";
+import { assertActiveAccount } from "./policy";
+
+// Re-exported so the many `import { AuthError } from "@/lib/auth/session"` callers keep working.
+export { AuthError };
 
 export interface AuthContext {
   userId: string; // our User.id (not the Supabase auth id)
@@ -9,12 +14,6 @@ export interface AuthContext {
   roles: string[];
   permissions: string[]; // permission keys granted via roles (e.g. "website:review")
   isAdmin: boolean;
-}
-
-export class AuthError extends Error {
-  constructor(public status: 401 | 403) {
-    super(status === 401 ? "unauthorized" : "forbidden");
-  }
 }
 
 /** True if the context grants a permission key. Admins implicitly have every permission. */
@@ -82,16 +81,22 @@ export function requireReview(): Promise<AuthContext> {
   return requirePermission("website:review");
 }
 
-/** For client API routes: throws AuthError(401) when the caller has no client tenant. */
-export async function requireClient() {
+/**
+ * For client API routes: throws AuthError(401) when the caller has no client tenant, and (by
+ * default) AuthError(402) when the tenant's account is suspended/cancelled — so account-status
+ * enforcement is centralized here rather than repeated per route. Reactivation routes (billing
+ * checkout, plan upgrade) pass `{ allowInactive: true }` so a blocked tenant can still pay.
+ */
+export async function requireClient(opts?: { allowInactive?: boolean }) {
   const result = await getCurrentClient();
   if (!result) throw new AuthError(401);
+  if (!opts?.allowInactive) assertActiveAccount(result.client);
   return result; // { ctx, client, role }
 }
 
-/** For owner-only client actions: throws 401 (no tenant) or 403 (staff member). */
-export async function requireOwner() {
-  const result = await requireClient();
+/** For owner-only client actions: throws 401 (no tenant), 402 (inactive account), or 403 (staff). */
+export async function requireOwner(opts?: { allowInactive?: boolean }) {
+  const result = await requireClient(opts);
   if (result.role !== "owner") throw new AuthError(403);
   return result;
 }

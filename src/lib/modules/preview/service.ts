@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/modules/audit";
 import { startGeneration, claimAndRun, approveAndPublish } from "@/lib/modules/website";
 import type { GenerationForm } from "@/lib/modules/website";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
+import { setupFeeRequired } from "@/lib/auth/policy";
 
 export class PreviewError extends Error {
   constructor(
@@ -101,11 +102,29 @@ export async function approve(clientId: string) {
   if (preview.status === "LIVE") return { launched: true };
   if (preview.status !== "PREVIEW_READY") throw new PreviewError(400, "not_ready");
 
+  // Approving a change to an already-launched site: the setup fee is already paid, so republish the
+  // new version straight to the live site — no payment step. Decide "already launched" from durable
+  // signals (publishedVersionId / setupFeePaid), NOT website.status: generating an update can leave
+  // status non-"published", which would otherwise make this re-charge the setup fee.
+  const website = preview.websiteId
+    ? await prisma.website.findUnique({ where: { id: preview.websiteId }, select: { status: true, publishedVersionId: true } })
+    : null;
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { setupFeePaid: true } });
+  const alreadyLaunched =
+    website?.status === "published" || Boolean(website?.publishedVersionId) || sub?.setupFeePaid === true;
+  if (alreadyLaunched) {
+    await launchPreview(preview.id);
+    await writeAudit({ action: "preview.update_approved", entityType: "Preview", entityId: preview.id, clientId });
+    return { launched: true, updated: true };
+  }
+
   await prisma.preview.update({ where: { id: preview.id }, data: { status: "APPROVED", approvedAt: new Date() } });
   await writeAudit({ action: "preview.approved", entityType: "Preview", entityId: preview.id, clientId });
 
+  // Whether the one-time setup fee must be collected before launch. Centralized + fail-closed:
+  // test accounts launch free; real accounts require payment in production even if the flag is unset.
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { isTest: true } });
-  if (client?.isTest) {
+  if (!setupFeeRequired(client ?? { isTest: false })) {
     await launchPreview(preview.id);
     return { launched: true };
   }

@@ -62,7 +62,7 @@ export function InviteAccept({
     "w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100";
 
   return (
-    <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-7 shadow-sm">
+    <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-7 shadow-card">
       <LogoMark size={48} />
       <h1 className="mt-4 font-display text-2xl text-stone-900">Join {businessName}</h1>
       <p className="mt-1 text-sm text-stone-500">

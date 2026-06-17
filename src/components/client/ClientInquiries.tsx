@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Inbox, Search, Mail, Phone, Send, MessageSquarePlus, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { LEAD_STATUSES } from "@/lib/modules/lead/schema";
+import { LEAD_GOALS } from "@/lib/site/lead-goals";
 import { EmptyState } from "@/components/client/ui/EmptyState";
+import { toggleFeature } from "@/app/(client)/client/_actions/features";
 
 export interface InquiryRow {
   id: string;
@@ -42,13 +43,74 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function ClientInquiries({ inquiries }: { inquiries: InquiryRow[] }) {
+export function ClientInquiries({ inquiries, goal, formsEnabled }: { inquiries: InquiryRow[]; goal: string | null; formsEnabled: boolean }) {
   const router = useRouter();
   const [replyTo, setReplyTo] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [note, setNote] = React.useState<{ id: string; text: string; ok: boolean } | null>(null);
   const [filter, setFilter] = React.useState<(typeof FILTERS)[number]>("ALL");
   const [search, setSearch] = React.useState("");
+  const [currentGoal, setCurrentGoal] = React.useState<string>(goal ?? "");
+
+  // Lead-capture master switch. It writes the same `contactForm` flag as the Website page's feature
+  // card, so the two stay in sync: flip optimistically, refresh so the server prop catches up (then drop
+  // the override once it matches), or revert on failure — mirrors the Media gallery switch.
+  const [formsOverride, setFormsOverride] = React.useState<boolean | null>(null);
+  const [savingForms, setSavingForms] = React.useState(false);
+  const formsOn = formsOverride ?? formsEnabled;
+  React.useEffect(() => {
+    setFormsOverride((o) => (o === formsEnabled ? null : o));
+  }, [formsEnabled]);
+  // Reconcile against the authoritative DB value on mount (the Router Cache can serve a stale prefetched
+  // copy after a toggle on the Website page).
+  React.useEffect(() => {
+    let active = true;
+    fetch("/api/v1/client/features", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active || !data?.features) return;
+        const f = data.features.find((x: { key: string }) => x.key === "forms");
+        if (!f) return;
+        const fresh = f.state === "enabled";
+        setFormsOverride((o) => (fresh === formsEnabled ? o : fresh));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function toggleForms() {
+    if (savingForms) return;
+    const next = !formsOn;
+    setSavingForms(true);
+    setFormsOverride(next); // flip now
+    try {
+      const res = await toggleFeature("contactForm", next);
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setFormsOverride(null); // revert to the server value
+    } finally {
+      setSavingForms(false);
+    }
+  }
+
+  async function setGoal(next: string) {
+    const prev = currentGoal;
+    setCurrentGoal(next); // optimistic; the live site picks it up at serve time
+    try {
+      const res = await fetch("/api/v1/client/lead-form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal: next }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setCurrentGoal(prev); // revert on failure
+    }
+  }
 
   async function setStatus(id: string, status: string) {
     await fetch(`/api/v1/client/leads/${id}`, {
@@ -95,20 +157,84 @@ export function ClientInquiries({ inquiries }: { inquiries: InquiryRow[] }) {
     return true;
   });
 
+  // Lead-capture settings card: the master switch (shared with the Website page) + the primary-action
+  // dropdown. The dropdown only matters while the form is live, so it's disabled when the switch is off.
+  const goalSelector = (
+    <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-card">
+      {/* Master switch — in sync with the Website page's "Lead capture form" feature card */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 grid h-9 w-9 place-items-center rounded-xl bg-amber-50 text-amber-600">
+            <Inbox size={18} />
+          </span>
+          <div>
+            <p className="font-display text-base text-stone-900">Collect inquiries from my website</p>
+            <p className="text-sm text-stone-500">
+              {formsOn
+                ? "Your contact form is live — visitors can send you inquiries."
+                : "Your contact form is hidden. Visitors see a “Contact Us” button instead."}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={formsOn}
+          aria-label="Collect inquiries from my website"
+          onClick={toggleForms}
+          disabled={savingForms}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50",
+            formsOn ? "bg-amber-500" : "bg-stone-300",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+              formsOn ? "translate-x-5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Primary action — sets the CTA label, the form copy, and the type new leads come in as */}
+      <div className={cn("flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 px-5 py-4", !formsOn && "opacity-50")}>
+        <div>
+          <p className="text-sm font-semibold text-stone-900">What your website asks visitors to do</p>
+          <p className="mt-0.5 text-xs text-stone-500">Sets your call-to-action and the kind of inquiry you collect.</p>
+        </div>
+        <select
+          className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100 disabled:cursor-not-allowed"
+          value={currentGoal}
+          disabled={!formsOn}
+          onChange={(e) => setGoal(e.target.value)}
+        >
+          {currentGoal === "" && <option value="" disabled>Choose an action…</option>}
+          {LEAD_GOALS.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+
   if (inquiries.length === 0) {
     return (
-      <EmptyState
-        className="mt-6"
-        icon={Inbox}
-        title="No inquiries yet"
-        description="When someone fills out a form or messages you on your website, their inquiry lands here — ready for you to reply in one click."
-        cta={{ label: "Preview your website", href: "/client/website" }}
-      />
+      <div className="mt-6 space-y-4">
+        {goalSelector}
+        <EmptyState
+          icon={Inbox}
+          title="No inquiries yet"
+          description="When someone fills out a form or messages you on your website, their inquiry lands here — ready for you to reply in one click."
+          cta={{ label: "Preview your website", href: "/client/website" }}
+        />
+      </div>
     );
   }
 
   return (
     <div className="mt-6 space-y-4">
+      {goalSelector}
       {/* Filter chips + search */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1.5">
@@ -146,7 +272,7 @@ export function ClientInquiries({ inquiries }: { inquiries: InquiryRow[] }) {
       ) : (
         <div className="space-y-3">
           {visible.map((q) => (
-            <div key={q.id} className="anim-rise rounded-2xl border border-stone-200 bg-white p-5 transition hover:shadow-sm">
+            <div key={q.id} className="anim-rise rounded-2xl border border-stone-200 bg-white p-5 shadow-card transition hover:shadow-card-hover">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-amber-100 to-amber-50 text-sm font-bold text-amber-700">

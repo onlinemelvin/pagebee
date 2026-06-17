@@ -12,7 +12,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 export default async function Form1099StatementPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!(ws.caps.invoices && ws.choices.invoices)) redirect("/client");
+  if (!ws.caps.invoices) redirect("/client/invoices"); // off-plan → finance index shows the upgrade gate
 
   const { year: yearQ } = await searchParams;
   const now = new Date();
@@ -41,7 +41,7 @@ export default async function Form1099StatementPage({ searchParams }: { searchPa
       </div>
 
       {/* The statement */}
-      <article className="mx-auto mt-4 max-w-3xl rounded-2xl border border-stone-200 bg-white p-8 print:border-0 print:p-0">
+      <article className="mx-auto mt-4 max-w-3xl rounded-2xl border border-stone-200 bg-white p-8 shadow-card print:border-0 print:p-0 print:shadow-none">
         <header className="flex items-start justify-between gap-4 border-b border-stone-200 pb-4">
           <div>
             <p className="font-display text-2xl text-stone-900">1099-K Summary Statement</p>

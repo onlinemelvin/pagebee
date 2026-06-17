@@ -3,6 +3,13 @@ import type { LeadStatus, Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
 import { sendEmail, escapeHtml } from "@/lib/modules/email";
+import {
+  goalToLeadType,
+  goalToCtaLabel,
+  goalToFormBlurb,
+  goalToMessagePrompt,
+  type LeadFormMeta,
+} from "@/lib/site/lead-goals";
 import type { LeadInput, LeadUpdateInput } from "./schema";
 
 export interface CreateLeadParams {
@@ -41,6 +48,48 @@ export async function createLead({ clientId, input, ip }: CreateLeadParams) {
   return lead;
 }
 
+/**
+ * Whether the lead-capture form is live for a tenant. True only when the plan includes `contactForm`
+ * AND the owner hasn't turned it off via the feature card. Default-on: with no override row, an
+ * on-plan client is enabled (matches the feature catalog's `defaultOn: true` for "forms"). Used by
+ * the public form-status feed (live show/hide on the site) and to gate public submissions.
+ */
+export async function leadCaptureEnabled(clientId: string): Promise<boolean> {
+  const [client, override] = await Promise.all([
+    prisma.client.findUnique({
+      where: { id: clientId },
+      select: { subscription: { select: { plan: { select: { featureFlags: true } } } } },
+    }),
+    prisma.featureFlag.findUnique({
+      where: { clientId_key: { clientId, key: "contactForm" } },
+      select: { enabled: true },
+    }),
+  ]);
+  const planFlags = (client?.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
+  if (!planFlags.contactForm) return false; // not on this plan
+  return override?.enabled !== false; // default-on unless explicitly disabled
+}
+
+/**
+ * The goal-derived lead-form state for a tenant: whether the form is live, plus the CTA label, lead
+ * type, and form copy implied by the owner's chosen goal (Website.leadFormGoal). Shared by the public
+ * lead-form endpoint (reconcile) and the serve pipeline (inlined for flicker-free first paint).
+ */
+export async function getLeadFormMeta(clientId: string): Promise<LeadFormMeta> {
+  const [web, enabled] = await Promise.all([
+    prisma.website.findFirst({ where: { clientId }, select: { leadFormGoal: true } }),
+    leadCaptureEnabled(clientId),
+  ]);
+  const goal = web?.leadFormGoal;
+  return {
+    enabled,
+    ctaLabel: goalToCtaLabel(goal),
+    leadType: goalToLeadType(goal),
+    formBlurb: goalToFormBlurb(goal),
+    messagePrompt: goalToMessagePrompt(goal),
+  };
+}
+
 /** List leads, optionally scoped to a tenant and/or filtered by status (admin/client dashboards). */
 export async function listLeads(opts: { clientId?: string; status?: LeadStatus } = {}) {
   return prisma.lead.findMany({
@@ -53,12 +102,18 @@ export async function listLeads(opts: { clientId?: string; status?: LeadStatus }
   });
 }
 
-/** Update a lead's status / assignment, with an audit entry. */
+/** Update a lead's status / assignment, with an audit entry. Pass `clientId` from a tenant context
+ *  to scope the update to that tenant (IDOR backstop); omit it for cross-tenant admin updates. */
 export async function updateLead(
   id: string,
   data: LeadUpdateInput,
   actor?: { userId?: string },
+  clientId?: string,
 ) {
+  if (clientId !== undefined) {
+    const owned = await prisma.lead.findFirst({ where: { id, clientId }, select: { id: true } });
+    if (!owned) throw new Error("lead_not_found"); // fail-closed: never update another tenant's lead
+  }
   const lead = await prisma.lead.update({
     where: { id },
     data: {

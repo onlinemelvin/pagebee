@@ -10,7 +10,7 @@ import type { PreviewInfo } from "@/lib/modules/client";
 export function PreviewPanel({ preview }: { preview: PreviewInfo }) {
   if (preview.awaitingPayment) {
     return (
-      <section className="rounded-2xl border border-amber-400 bg-amber-50 p-6">
+      <section className="rounded-2xl border border-amber-400 bg-amber-50 p-6 shadow-card">
         <h2 className="font-display text-xl text-stone-900">You approved your preview 🎉</h2>
         <p className="mt-1 text-stone-600">
           Pay the one-time setup fee to launch your site, connect your domain, and activate your
@@ -29,7 +29,7 @@ export function PreviewPanel({ preview }: { preview: PreviewInfo }) {
     (preview.status === "PREVIEW_GENERATING" || preview.status === "REVISION_REQUESTED")
   ) {
     return (
-      <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center">
+      <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center shadow-card">
         <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-amber-300 border-t-amber-600" />
         <p className="font-medium text-stone-900">Building your preview…</p>
         <p className="mt-1 text-sm text-stone-600">This takes a minute. You can leave and come back.</p>
@@ -41,7 +41,7 @@ export function PreviewPanel({ preview }: { preview: PreviewInfo }) {
   if (!preview.viewable && !preview.ready) return null;
 
   return (
-    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
+    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-xl text-stone-900">
           {preview.reviewing ? "Your changes are being reviewed" : "Your free preview is ready"}

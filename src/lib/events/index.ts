@@ -11,7 +11,10 @@ export type DomainEvent =
   | "quote.created"
   | "website.generated"
   | "website.preview_released"
-  | "website.published";
+  | "website.published"
+  | "domain.requested"
+  | "domain.approved"
+  | "domain.active";
 
 type Handler = (payload: unknown) => void | Promise<void>;
 

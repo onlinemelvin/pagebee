@@ -5,12 +5,18 @@ const resend = apiKey ? new Resend(apiKey) : null;
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL ?? "PageBee <noreply@pagebee.com>";
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer; // raw bytes; forwarded to Resend as base64
+}
+
 export interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
   from?: string;
   replyTo?: string;
+  attachments?: EmailAttachment[];
 }
 
 /** Escape user-controlled values before interpolating them into email HTML bodies. */
@@ -31,8 +37,9 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string |
   const from = params.from ?? DEFAULT_FROM;
 
   if (!resend) {
+    const att = params.attachments?.length ? ` attachments=${params.attachments.map((a) => a.filename).join(",")}` : "";
     console.log(
-      `[email:stub] to=${params.to} from="${from}"${params.replyTo ? ` replyTo=${params.replyTo}` : ""} subject="${params.subject}"`,
+      `[email:stub] to=${params.to} from="${from}"${params.replyTo ? ` replyTo=${params.replyTo}` : ""} subject="${params.subject}"${att}`,
     );
     return { id: null, stubbed: true };
   }
@@ -43,6 +50,9 @@ export async function sendEmail(params: SendEmailParams): Promise<{ id: string |
     subject: params.subject,
     html: params.html,
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    ...(params.attachments?.length
+      ? { attachments: params.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+      : {}),
   });
   if (error) {
     console.error("[email] send failed", error);

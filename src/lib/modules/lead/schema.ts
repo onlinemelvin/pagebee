@@ -4,7 +4,7 @@ export const leadInputSchema = z.object({
   type: z.enum(["CONTACT_FORM", "QUOTE_REQUEST", "SERVICE_INQUIRY"]).default("CONTACT_FORM"),
   name: z.string().trim().min(1, "Name is required").max(120),
   email: z.string().trim().email("Enter a valid email").max(200),
-  phone: z.string().trim().max(40).optional(),
+  phone: z.string().trim().min(1, "Phone is required").max(40),
   message: z.string().trim().max(2000).optional(),
   source: z.string().trim().max(200).optional(),
 });

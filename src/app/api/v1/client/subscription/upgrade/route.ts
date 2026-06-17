@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   let client;
   try {
-    ({ client } = await requireOwner());
+    // allowInactive: a suspended/cancelled tenant must still be able to upgrade to reactivate.
+    ({ client } = await requireOwner({ allowInactive: true }));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

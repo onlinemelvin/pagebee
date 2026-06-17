@@ -337,11 +337,22 @@ Postgres, Auth, and Storage.
   `Host` header, resolves the `Website` by `subdomain`, and renders the published
   version. This is the only web address for **Launch**.
 - **Custom domain (Connect & Automate).** Higher tiers may map a custom domain
-  (e.g. `acmecleaning.com`). PageBee adds it to the Vercel project via the
-  **Vercel Domains API**, returns the DNS records for the client to set, and polls
-  verification; `Website.domain` / `domainStatus` track state
-  (`pending → verifying → verified → active`). Once active, middleware resolves the
-  tenant by custom domain too. Gated by the `customDomain` feature flag.
+  (e.g. `acmecleaning.com`). Flow (see `src/lib/modules/website/domain.ts`):
+  1. The owner submits a domain in their website settings (gated by the
+     `customDomain` feature flag) → `domainStatus = requested`. **Nothing touches
+     Vercel yet** — an unvetted/typo'd/abusive domain is held for review.
+  2. An admin **approves** it (same `website:review` permission as the draft queue).
+     Only then does PageBee add it to the Vercel project via the **Vercel Domains
+     API**, store the DNS records (A/CNAME + any TXT challenge) on
+     `Website.domainVerification`, and flip to `verifying`.
+  3. The owner sets those DNS records at their registrar. A **cron**
+     (`/api/v1/cron/domains/verify`, scheduled in `vercel.json`) sweeps `verifying`
+     sites, asks Vercel to verify, and flips to `active` once DNS resolves (SSL is
+     auto-issued). `Website.domain` / `domainStatus` track state
+     (`requested → verifying → active`; `rejected`/`error` on decline/failure).
+  Once active, middleware resolves the tenant by custom domain too. When Vercel
+  isn't configured (`VERCEL_TOKEN`/`VERCEL_PROJECT_ID` unset, e.g. local dev) the
+  flow still records DNS records on approval but verification is manual.
 
 The public API's `Origin` check (§5) validates against **both** the site's
 `{subdomain}.pagebee.com` and any active custom domain.
