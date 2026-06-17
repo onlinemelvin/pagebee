@@ -374,12 +374,3 @@ export async function pollDomainVerification(limit = 100): Promise<{ checked: nu
   }
   return { checked: pending.length, activated };
 }
-
-/** Resolve a published site by an ACTIVE custom-domain host (for the public renderer). */
-export async function websiteIdByActiveHost(host: string): Promise<string | null> {
-  const row = await prisma.websiteDomain.findFirst({
-    where: { host, status: "active" },
-    select: { websiteId: true },
-  });
-  return row?.websiteId ?? null;
-}
