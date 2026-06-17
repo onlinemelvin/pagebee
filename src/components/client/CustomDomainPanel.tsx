@@ -19,21 +19,28 @@ export function CustomDomainPanel({ initial }: { initial: DomainState | null }) 
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const [checking, setChecking] = React.useState(false);
   const status = state?.status ?? null;
 
-  // While DNS is propagating, quietly re-check the server every 30s so the panel flips to
-  // "Connected" without the owner reloading. Stops once active (or no longer verifying).
+  /** Trigger a live Vercel verification of this site's pending hosts and update the panel. */
+  const runCheck = React.useCallback(async () => {
+    const res = await fetch("/api/v1/client/website/domain/verify", { method: "POST" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { domain: DomainState | null };
+    setState(data.domain);
+    return data.domain;
+  }, []);
+
+  // While DNS is propagating, actively re-verify every 30s so the panel flips to "Connected"
+  // on its own (no daily-cron wait). Stops once active (or no longer verifying).
   React.useEffect(() => {
     if (status !== "verifying") return;
     const id = setInterval(async () => {
-      const res = await fetch("/api/v1/client/website/domain", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = (await res.json()) as { domain: DomainState | null };
-      setState(data.domain);
-      if (data.domain?.status === "active") router.refresh();
+      const next = await runCheck();
+      if (next?.status === "active") router.refresh();
     }, 30_000);
     return () => clearInterval(id);
-  }, [status, router]);
+  }, [status, router, runCheck]);
 
   async function submit() {
     setBusy(true);
@@ -139,8 +146,21 @@ export function CustomDomainPanel({ initial }: { initial: DomainState | null }) 
           )}
           <DnsTable hosts={state.hosts} />
           <div className="mt-4 flex items-center gap-3">
-            <Button onClick={() => router.refresh()} variant="outline" size="sm" disabled={busy}>
-              Check status
+            <Button
+              onClick={async () => {
+                setChecking(true);
+                try {
+                  const next = await runCheck();
+                  if (next?.status === "active") router.refresh();
+                } finally {
+                  setChecking(false);
+                }
+              }}
+              variant="outline"
+              size="sm"
+              disabled={busy || checking}
+            >
+              {checking ? "Checking…" : "Check status"}
             </Button>
             <button onClick={remove} disabled={busy} className="text-sm text-stone-400 hover:text-stone-700">
               Remove

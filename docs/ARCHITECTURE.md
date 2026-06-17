@@ -350,11 +350,16 @@ Postgres, Auth, and Storage.
      Domains API** (the sibling as a 308 redirect to the primary), store the DNS
      records (A for apex / CNAME for www + any TXT challenge) on each row's
      `verification`, and flip them to `verifying`.
-  3. The owner sets those DNS records at their registrar. A **cron**
-     (`/api/v1/cron/domains/verify`, scheduled in `vercel.json`) sweeps `verifying`
-     hosts, asks Vercel to verify, and flips each to `active` once DNS resolves (SSL
-     is auto-issued). Per-host state runs `requested → verifying → active`
-     (`error` on failure); reject/remove deletes the rows.
+  3. The owner sets those DNS records at their registrar. Verification is
+     **on-demand first**: the owner's "Check status" button (and the open panel's
+     30s auto-poll) calls `POST /api/v1/client/website/domain/verify`, which asks
+     Vercel to verify that client's hosts and flips each to `active` once DNS
+     resolves (SSL auto-issued) — so a freshly-set record goes live in seconds. A
+     **daily cron backstop** (`/api/v1/cron/domains/verify`, scheduled in
+     `vercel.json` — daily because Vercel Hobby caps cron frequency at once/day)
+     catches owners who set DNS after closing the panel. Per-host state runs
+     `requested → verifying → active` (`error` on failure); reject/remove deletes
+     the rows.
   Once the primary host is active, middleware resolves the tenant by custom domain
   too (any active host → its `Website`). When Vercel isn't configured
   (`VERCEL_TOKEN`/`VERCEL_PROJECT_ID` unset, e.g. local dev) the flow still records

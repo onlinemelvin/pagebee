@@ -40,6 +40,7 @@ export {
   rejectDomainRequest,
   removeCustomDomain,
   pollDomainVerification,
+  verifyClientDomains,
 } from "./domain";
 export type { DomainState } from "./domain";
 export { websiteIntakeSchema } from "./schema";

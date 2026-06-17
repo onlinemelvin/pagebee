@@ -335,23 +335,21 @@ export async function removeCustomDomain(clientId: string): Promise<{ ok: boolea
   return { ok: true };
 }
 
-/**
- * Cron sweep: for every host awaiting DNS ("verifying"), ask Vercel to verify and flip it to
- * "active" once confirmed. When a site's PRIMARY host goes active we emit domain.active (the site
- * is now reachable on its canonical host). Idempotent and cheap; requires Vercel to be wired —
- * without it there's nothing to poll (verification is manual in that mode).
- */
-export async function pollDomainVerification(limit = 100): Promise<{ checked: number; activated: number }> {
-  if (!vercelConfigured()) return { checked: 0, activated: 0 };
-  const pending = await prisma.websiteDomain.findMany({
-    where: { status: "verifying" },
-    orderBy: { requestedAt: "asc" },
-    take: limit,
-    select: { id: true, host: true, isPrimary: true, websiteId: true, website: { select: { clientId: true } } },
-  });
+const verifyRowSelect = {
+  id: true,
+  host: true,
+  isPrimary: true,
+  websiteId: true,
+  website: { select: { clientId: true } },
+} satisfies Prisma.WebsiteDomainSelect;
 
+type VerifyRow = Prisma.WebsiteDomainGetPayload<{ select: typeof verifyRowSelect }>;
+
+/** Ask Vercel to verify each "verifying" host; flip the confirmed ones to "active". Returns how
+ *  many activated. Shared by the cron sweep and the owner's on-demand check. */
+async function verifyRows(rows: VerifyRow[]): Promise<number> {
   let activated = 0;
-  for (const row of pending) {
+  for (const row of rows) {
     try {
       const vd = await verifyProjectDomain(row.host);
       if (!vd.verified) continue;
@@ -368,9 +366,44 @@ export async function pollDomainVerification(limit = 100): Promise<{ checked: nu
         await emit("domain.active", { clientId: row.website.clientId, websiteId: row.websiteId, domain: row.host });
       }
     } catch (err) {
-      // Transient API error — leave it "verifying" and retry next sweep; don't fail the batch.
-      console.error("[domain] verify sweep error for", row.host, err);
+      // Transient API error — leave it "verifying" and retry next check; don't fail the batch.
+      console.error("[domain] verify error for", row.host, err);
     }
   }
+  return activated;
+}
+
+/**
+ * Cron sweep (daily BACKSTOP on Hobby; the owner's on-demand check is the primary path): verify
+ * every host awaiting DNS and flip the confirmed ones to "active". Idempotent and cheap; requires
+ * Vercel to be wired — without it there's nothing to poll (verification is manual in that mode).
+ */
+export async function pollDomainVerification(limit = 200): Promise<{ checked: number; activated: number }> {
+  if (!vercelConfigured()) return { checked: 0, activated: 0 };
+  const pending = await prisma.websiteDomain.findMany({
+    where: { status: "verifying" },
+    orderBy: { requestedAt: "asc" },
+    take: limit,
+    select: verifyRowSelect,
+  });
+  const activated = await verifyRows(pending);
   return { checked: pending.length, activated };
+}
+
+/**
+ * On-demand verification for a single client's hosts — runs when the owner clicks "Check status"
+ * (or the open panel auto-polls). This is what makes a freshly-set DNS record go live in seconds
+ * instead of waiting for the daily cron. Returns the refreshed connection state.
+ */
+export async function verifyClientDomains(clientId: string): Promise<DomainState | null> {
+  const websiteId = await siteIdForClient(clientId);
+  if (!websiteId) return null;
+  if (vercelConfigured()) {
+    const rows = await prisma.websiteDomain.findMany({
+      where: { websiteId, status: "verifying" },
+      select: verifyRowSelect,
+    });
+    await verifyRows(rows);
+  }
+  return getDomainState(clientId);
 }
