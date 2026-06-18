@@ -1247,6 +1247,13 @@ model WebsiteGenerationJob {
   inputIntake Json // the intake form data fed to the generator
   output      Json? // structured website config produced by the AI service
   promptLog   Json? // EVALUATION (temporary): exact LLM prompt(s) for this draft; safe to drop later
+  // Vercel-safe offload (see src/lib/modules/website/generation-offload.ts): the long HTML Claude
+  // call can't run on Vercel (60s cap), so the `prepare` phase builds the prompt here, a Supabase
+  // Edge Function runs the call and writes `llmResult`, and `finalize` assembles the version.
+  // `prepared` carries the phase-1 outputs (config, flags, images) that finalize needs.
+  llmPrompt   Json?           // { model, maxTokens, system: [...], user } built by prepare for the edge fn
+  llmResult   String?  @db.Text // raw HTML completion written back by the edge function
+  prepared    Json?           // phase-1 outputs finalize needs (config, enabledFeatures, apiIntegrations…)
   error       String?
   startedAt   DateTime?
   finishedAt  DateTime?

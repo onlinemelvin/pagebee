@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireClient, requireOwner, AuthError } from "@/lib/auth/session";
 import {
   startGeneration,
   claimAndRun,
+  prepareGeneration,
   gateRegenQuota,
   getLatestJobStatus,
   websiteIntakeSchema,
@@ -10,6 +11,9 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// On Vercel the `after()` callback runs prepare (config call + image prep + prompt build) past the
+// response — give it the full Hobby budget (default is 10s) so it isn't cut off mid-prepare.
+export const maxDuration = 60;
 
 /**
  * POST /api/v1/client/website/generate — enqueue a background generation.
@@ -37,12 +41,18 @@ export async function POST(req: Request) {
     if (!gate.ok) return NextResponse.json(gate, { status: 409 });
 
     const { jobId } = await startGeneration(client.id, parsed.data);
-    // Dev / single-node: process in-process (atomic claim). In production set
-    // GENERATION_WORKER=external (or on Vercel) so the durable worker handles it instead.
-    const useWorker = process.env.GENERATION_WORKER === "external" || Boolean(process.env.VERCEL);
-    if (!useWorker) {
+    if (process.env.VERCEL) {
+      // Vercel: the long HTML call can't run in a 60s function. `after` keeps this function alive
+      // past the 202 response to run prepare (config + image prep + prompt build), which then hands
+      // the long call off to the Supabase edge function. See modules/website/generation-offload.ts.
+      after(() =>
+        prepareGeneration(jobId).catch((e) => console.error("[generate] prepare failed", jobId, e)),
+      );
+    } else if (process.env.GENERATION_WORKER !== "external") {
+      // Local / single-node: process inline (atomic claim).
       void claimAndRun(jobId).catch((e) => console.error("[generate] inline job failed", jobId, e));
     }
+    // else: an external `npm run worker` process drains the queue.
     return NextResponse.json({ jobId, status: "queued" }, { status: 202 });
   } catch (err) {
     console.error("[POST /api/v1/client/website/generate]", err);

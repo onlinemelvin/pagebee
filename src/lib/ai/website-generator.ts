@@ -363,7 +363,7 @@ export async function generateSiteHtml(
  * serve-time gallery guard (src/lib/site/serve.ts) can hard-strip any orphan photo-grid the
  * model adds anyway. No-op when a Gallery page WAS chosen (the grid is intended there).
  */
-function markNoGallery(html: string, intake: WebsiteIntake): string {
+export function markNoGallery(html: string, intake: WebsiteIntake): string {
   // A gallery is intended when the owner chose a Gallery page OR provided gallery photos (inline
   // gallery). In both cases the platform mounts a live [data-pb-gallery] feed, so don't strip.
   const galleryChosen =
@@ -614,15 +614,22 @@ function buildImageQueries(intake: WebsiteIntake): string[] {
   return [...new Set(queries.map((q) => q.trim()).filter(Boolean))].slice(0, 4);
 }
 
-async function generateHtmlWithClaude(
+/** The exact HTML-generation request (no API call). Built on Node and either sent inline (worker)
+ *  or shipped to the Supabase Edge Function for the long call on Vercel. JSON-serializable. */
+export interface BuiltHtmlPrompt {
+  model: string;
+  maxTokens: number;
+  system: Anthropic.TextBlockParam[];
+  user: string;
+}
+
+/** Build the full HTML-generation prompt from intake/plan/refs/images — pure, no network call. */
+export function buildHtmlPrompt(
   intake: WebsiteIntake,
   limits: PlanLimits,
-  apiKey: string,
   refs: MagicRef[] = [],
   images: StockImage[] = [],
-): Promise<{ html: string; prompt: PromptDebug }> {
-  const client = new Anthropic({ apiKey });
-  const model = QUALITY_MODEL;
+): BuiltHtmlPrompt {
   // The big static guidance (design system + HTML rules) is identical on EVERY generation, so it
   // goes in its own system block with a cache breakpoint — repeated builds read it at ~0.1x input
   // cost instead of re-billing it each time. Everything plan/intake-specific stays in `parts`
@@ -751,31 +758,65 @@ async function generateHtmlWithClaude(
   const dynamicText = parts.join("\n");
   // Two system blocks: cached stable prefix + volatile suffix. Render order is system → messages,
   // so the breakpoint on the first block caches the prefix across all generations (5-min TTL).
-  const systemBlocks: Anthropic.TextBlockParam[] = [
+  const system: Anthropic.TextBlockParam[] = [
     { type: "text", text: stablePrefix, cache_control: { type: "ephemeral" } },
     { type: "text", text: dynamicText },
   ];
+  const user = JSON.stringify({ intake, maxPages: limits.maxPages });
+  return { model: QUALITY_MODEL, maxTokens: 32000, system, user };
+}
 
-  const userContent = JSON.stringify({ intake, maxPages: limits.maxPages });
+/** Flatten a built prompt to the PromptDebug shape (for the eval/admin prompt log). */
+export function htmlPromptDebug(built: BuiltHtmlPrompt): PromptDebug {
+  const system = built.system.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+  return { model: built.model, system, user: built.user };
+}
+
+/** Extract + validate the final HTML document from a raw Claude completion (strip code fences). */
+export function finalizeHtmlFromText(text: string): string {
+  const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i);
+  const html = (fenced ? fenced[1] : text).trim();
+  if (!/<html[\s>]/i.test(html)) throw new Error("model did not return an HTML document");
+  return html;
+}
+
+/** Vercel-safe prep: fetch + re-host stock images and build the HTML prompt — NO Magic (serverless
+ *  can't spawn the npx subprocess, so it degrades to pure Claude). Used by the offload prepare phase. */
+export async function prepareHtmlPrompt(
+  intake: WebsiteIntake,
+  limits: PlanLimits,
+  clientId?: string,
+): Promise<BuiltHtmlPrompt> {
+  const images = await fetchStockImages(buildImageQueries(intake));
+  const hosted = clientId ? await persistStockImages(clientId, images) : images;
+  return buildHtmlPrompt(intake, limits, [], hosted);
+}
+
+/** Inline HTML generation (worker / local path): build the prompt, stream the call, post-process.
+ *  On Vercel the SAME prompt is run by the edge function instead (see generation-offload.ts). */
+async function generateHtmlWithClaude(
+  intake: WebsiteIntake,
+  limits: PlanLimits,
+  apiKey: string,
+  refs: MagicRef[] = [],
+  images: StockImage[] = [],
+): Promise<{ html: string; prompt: PromptDebug }> {
+  const client = new Anthropic({ apiKey });
+  const built = buildHtmlPrompt(intake, limits, refs, images);
   const stream = client.messages.stream({
-    model,
-    max_tokens: 32000,
+    model: built.model,
+    max_tokens: built.maxTokens,
     thinking: { type: "disabled" },
-    system: systemBlocks,
-    messages: [{ role: "user", content: userContent }],
+    system: built.system,
+    messages: [{ role: "user", content: built.user }],
   });
   const message = await stream.finalMessage();
-
   const text = message.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("")
     .trim();
-
-  const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i);
-  const html = (fenced ? fenced[1] : text).trim();
-  if (!/<html[\s>]/i.test(html)) throw new Error("model did not return an HTML document");
-  return { html, prompt: { model, system: `${stablePrefix}\n${dynamicText}`, user: userContent } };
+  return { html: finalizeHtmlFromText(text), prompt: htmlPromptDebug(built) };
 }
 
 function escapeHtml(s: string): string {

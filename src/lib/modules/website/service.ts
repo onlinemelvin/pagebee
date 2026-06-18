@@ -33,7 +33,7 @@ function generateSiteToken(): string {
 }
 
 /** Turn the structured weekly hours into a readable line for the generator. */
-function formatBusinessHours(
+export function formatBusinessHours(
   hours?: { day: string; closed?: boolean; open?: string; close?: string }[],
 ): string | undefined {
   if (!hours?.length) return undefined;
@@ -43,7 +43,7 @@ function formatBusinessHours(
   return parts.join(", ");
 }
 
-function planLimits(flags: Record<string, unknown>, fallbackMaxPages: number): PlanLimits {
+export function planLimits(flags: Record<string, unknown>, fallbackMaxPages: number): PlanLimits {
   return {
     maxPages: Number(flags.maxPages ?? fallbackMaxPages),
     forms: Boolean(flags.contactForm),
@@ -55,7 +55,7 @@ function planLimits(flags: Record<string, unknown>, fallbackMaxPages: number): P
 }
 
 /** Build the ordered component list for the renderer from the config + enabled features. */
-function buildComponents(config: WebsiteConfig, limits: PlanLimits) {
+export function buildComponents(config: WebsiteConfig, limits: PlanLimits) {
   const components: Array<{ component: string; props?: Record<string, unknown> }> = [
     {
       component: "Hero",
