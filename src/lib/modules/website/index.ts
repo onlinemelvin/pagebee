@@ -32,6 +32,7 @@ export {
   getPreviewSiteForClient,
 } from "./service";
 export type { PublishedSite, ServeSite } from "./service";
+export { prepareGeneration, finalizeGeneration } from "./generation-offload";
 export {
   getDomainState,
   requestCustomDomain,
