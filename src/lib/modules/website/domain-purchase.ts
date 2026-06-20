@@ -25,6 +25,19 @@ async function siteIdFor(clientId: string): Promise<string | null> {
   return s?.id ?? null;
 }
 
+// Per-client test "dry-run" flag (a FeatureFlag row). Only a gated tester can SET it (the toggle
+// route checks isDomainDryRunEligible), so reading it here is safe — a real customer can never
+// have it on. Used by executePurchase and surfaced to the page for the toggle's current state.
+const DRY_RUN_KEY = "domainBuyDryRun";
+
+export async function isDomainBuyDryRun(clientId: string): Promise<boolean> {
+  const f = await prisma.featureFlag
+    .findUnique({ where: { clientId_key: { clientId, key: DRY_RUN_KEY } }, select: { enabled: true } })
+    .catch(() => null);
+  return f?.enabled === true;
+}
+const dryRunEnabledFor = isDomainBuyDryRun;
+
 // ── Availability + price lookup ───────────────────────────────────────────────
 export interface DomainLookup {
   domain: string;
@@ -212,6 +225,25 @@ export async function executePurchase(websiteId: string, reviewerId: string | nu
   const primary = rows.find((r) => r.isPrimary) ?? rows[0];
   if (!site || !primary) return { ok: false, error: "nothing_to_buy" };
   const clientId = site.clientId;
+
+  // TEST MODE (gated, see isDomainDryRunEligible): simulate a successful registration with NO
+  // registrar call, NO charge, NO real domain. Flips the hosts straight to "active" so the panel
+  // shows the full flow. The domain won't actually resolve — it's a UX/flow test only.
+  if (await dryRunEnabledFor(clientId)) {
+    await prisma.websiteDomain.updateMany({
+      where: { websiteId, source: "purchase" },
+      data: { status: "active", error: null },
+    });
+    await writeAudit({
+      action: "domain.purchased",
+      entityType: "Website",
+      entityId: websiteId,
+      clientId,
+      actorId: reviewerId,
+      metadata: { domain: primary.host, dryRun: true } as Prisma.InputJsonValue,
+    });
+    return { ok: true };
+  }
 
   await prisma.websiteDomain.updateMany({ where: { websiteId, source: "purchase" }, data: { status: "purchasing", error: null } });
 
