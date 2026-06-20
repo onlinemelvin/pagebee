@@ -28,16 +28,20 @@ const ROOT_DOMAIN = () => process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000
 
 // Host rows that represent an in-flight or live connection (i.e. block a new request / show in the
 // admin queue). A rejected/removed connection deletes its rows, so these are the only live states.
-const LIVE_STATES = ["requested", "verifying", "active", "error"];
+// Includes the purchase-path states (price_review = over the cap, awaiting admin; purchasing = buy
+// in flight) so a bought-domain in progress also blocks a new request and shows in the admin queue.
+export const LIVE_STATES = ["requested", "verifying", "active", "error", "price_review", "purchasing"];
 
 /** Per-host detail for the owner's domain panel and the admin queue. */
 export interface DomainHostState {
   host: string;
   kind: string; // apex | www | subdomain
   isPrimary: boolean;
-  status: string; // requested | verifying | active | error
+  status: string; // requested | verifying | active | error | price_review | purchasing
   verification: DomainVerification | null;
   error: string | null;
+  source: string; // "connect" | "purchase"
+  priceCents: number | null; // purchase price (primary host of a bought domain)
 }
 
 /** The whole custom-domain connection for a site (its host pair), aggregated for the UI. */
@@ -56,6 +60,8 @@ const hostSelect = {
   verification: true,
   error: true,
   requestedAt: true,
+  source: true,
+  priceCents: true,
 } satisfies Prisma.WebsiteDomainSelect;
 
 type HostRow = Prisma.WebsiteDomainGetPayload<{ select: typeof hostSelect }>;
@@ -68,6 +74,8 @@ function toHostState(r: HostRow): DomainHostState {
     status: r.status,
     verification: (r.verification as unknown as DomainVerification | null) ?? null,
     error: r.error,
+    source: r.source,
+    priceCents: r.priceCents,
   };
 }
 
@@ -78,6 +86,8 @@ function aggregate(rows: HostRow[]): DomainState {
   const statuses = rows.map((r) => r.status);
   let status: string;
   if (statuses.some((s) => s === "error")) status = "error";
+  else if (statuses.some((s) => s === "price_review")) status = "price_review"; // over cap → admin
+  else if (statuses.some((s) => s === "purchasing")) status = "purchasing"; // buy in flight
   else if (statuses.some((s) => s === "requested")) status = "requested";
   else if (primary.status === "active") status = "active"; // canonical live → site reachable
   else status = "verifying";
@@ -168,10 +178,12 @@ export async function requestCustomDomain(clientId: string, rawDomain: string): 
   }
 }
 
-/** Pending + in-flight custom-domain connections for the admin queue (oldest request first). */
+/** Pending + in-flight custom-domain connections for the admin queue (oldest request first).
+ *  Includes connect requests (requested/error) AND over-cap purchases (price_review) awaiting a
+ *  decision; surfaces `source` + `priceCents` so the admin can act on either. */
 export async function listDomainRequests() {
   const sites = await prisma.website.findMany({
-    where: { domains: { some: { status: { in: ["requested", "verifying", "error"] } } } },
+    where: { domains: { some: { status: { in: ["requested", "verifying", "error", "price_review"] } } } },
     select: {
       id: true,
       client: { select: { businessName: true, subscription: { select: { plan: { select: { name: true } } } } } },
@@ -179,12 +191,18 @@ export async function listDomainRequests() {
     },
   });
   return sites
-    .map((s) => ({
-      websiteId: s.id,
-      businessName: s.client.businessName,
-      planName: s.client.subscription?.plan.name ?? null,
-      ...aggregate(s.domains),
-    }))
+    .map((s) => {
+      const agg = aggregate(s.domains);
+      const primary = s.domains.find((d) => d.isPrimary) ?? s.domains[0];
+      return {
+        websiteId: s.id,
+        businessName: s.client.businessName,
+        planName: s.client.subscription?.plan.name ?? null,
+        source: primary?.source ?? "connect",
+        priceCents: primary?.priceCents ?? null,
+        ...agg,
+      };
+    })
     .sort((a, b) => (a.requestedAt?.getTime() ?? 0) - (b.requestedAt?.getTime() ?? 0));
 }
 
