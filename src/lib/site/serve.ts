@@ -3,6 +3,7 @@ import type { ServeSite } from "@/lib/modules/website";
 import type { LeadFormMeta } from "@/lib/site/lead-goals";
 import { withLeadFormFeed } from "@/lib/site/lead-form";
 import { withBookingFeed, type BookingMeta } from "@/lib/site/booking";
+import { extractAccentColor } from "@/lib/site/accent";
 
 // Generated tenant sites are served as the REAL HTML document (not an iframe) so
 // search engines get full content. Previews are served too, but in PREVIEW MODE:
@@ -200,6 +201,19 @@ function withServicesFeed(doc: string, token: string): string {
   return doc.includes("</body>") ? doc.replace("</body>", `${script}</body>`) : doc + script;
 }
 
+// Tint the PLATFORM-owned components (lead form + booking trigger/modal) with the site's REAL
+// accent color, so their buttons, focus rings, and selected chips match the generated page instead
+// of the amber default. The components style off var(--pb-lf-accent) / var(--pb-bk-accent); we set
+// those :root vars from the color the site actually uses (extracted from its HTML). No-op when no
+// brand color is found (keeps the amber fallback). `sourceHtml` is the original generated document
+// (the lead/booking sections are stripped out of it, but the hero/CTA colors remain to read from).
+function withThemeAccent(doc: string, sourceHtml: string): string {
+  const accent = extractAccentColor(sourceHtml);
+  if (!accent) return doc;
+  const style = `<style>:root{--pb-lf-accent:${accent};--pb-bk-accent:${accent}}</style>`;
+  return doc.includes("</head>") ? doc.replace("</head>", `${style}</head>`) : `${style}${doc}`;
+}
+
 function withMotionFailsafe(doc: string): string {
   let out = doc.includes("<head>")
     ? doc.replace("<head>", `<head>${PERF_HEAD}`)
@@ -344,6 +358,7 @@ export function serveReviewFrame(
   doc = withGalleryFeed(doc, siteToken);
   doc = withLeadFormFeed(doc, siteToken, leadForm);
   doc = withBookingFeed(doc, siteToken, booking);
+  doc = withThemeAccent(doc, html); // tint platform components to the site's accent
   doc = withClientRouter(doc, "hash"); // served at a single URL → hash routing
   doc = doc.includes("</head>") ? doc.replace("</head>", `${ANNOTATE_HEAD}</head>`) : `${ANNOTATE_HEAD}${doc}`;
   const bridge = annotateBridge();
@@ -384,6 +399,7 @@ export function serveTenant(site: ServeSite | null, req: Request, path?: string[
   doc = withGalleryFeed(doc, site.siteToken);
   doc = withLeadFormFeed(doc, site.siteToken, site.leadForm);
   doc = withBookingFeed(doc, site.siteToken, site.booking);
+  doc = withThemeAccent(doc, site.html); // tint platform components to the site's accent
   // Published sites live at the host root → real sub-page paths. Previews are served
   // at the single /preview URL → hash routing, which survives refresh without 404s.
   doc = withClientRouter(doc, site.kind === "preview" ? "hash" : "path");

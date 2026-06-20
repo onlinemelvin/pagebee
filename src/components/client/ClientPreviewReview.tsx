@@ -83,8 +83,42 @@ export function ClientPreviewReview({
   }
 
   async function approve() {
-    const ok = await post("/api/v1/client/preview/approve");
-    if (ok) router.refresh();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/client/preview/approve", { method: "POST" });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error((b?.error && ERR[b.error]) || b?.error || "Something went wrong");
+      }
+      const result = (await res.json().catch(() => ({}))) as { launched?: boolean; awaitingPayment?: boolean };
+
+      // Real accounts: approval moves to the setup-fee step — take them straight into Stripe Checkout
+      // (one-time setup fee + first month). The webhook launches the site once payment succeeds. This
+      // mirrors ApproveLaunchButton so the preview footer doesn't dead-end in a payment-pending state.
+      if (result.awaitingPayment) {
+        const co = await fetch("/api/v1/client/billing/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "setup" }),
+        });
+        const body = (await co.json().catch(() => null)) as { url?: string } | null;
+        if (co.ok && body?.url) {
+          window.location.href = body.url; // off to Stripe
+          return;
+        }
+        // Checkout couldn't start (e.g. Stripe not configured) — fall back to the billing page.
+        router.push("/client/billing");
+        return;
+      }
+
+      // Test accounts / setup fee disabled: launched immediately.
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const footerStart = (
