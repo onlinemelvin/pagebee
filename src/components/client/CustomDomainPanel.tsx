@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Globe, Check, Copy, Loader2, AlertTriangle, Clock, ShoppingCart, Sparkles, ArrowLeft } from "lucide-react";
+import { Globe, Check, Copy, Loader2, AlertTriangle, Clock, ShoppingCart, Sparkles, ArrowLeft, X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { knownRegistrars } from "@/lib/site/registrar-instructions";
 import type { DomainState, DomainLookup, DomainSuggestion, ConnectInstructions } from "@/lib/modules/website";
@@ -70,19 +70,23 @@ export function CustomDomainPanel({ initial }: { initial: DomainState | null }) 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <button
             onClick={() => setMode("connect")}
-            className="rounded-2xl border border-stone-200 p-5 text-left transition hover:border-amber-300 hover:bg-amber-50/40"
+            className="group rounded-2xl border border-stone-200 p-5 text-left transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-50/40 hover:shadow-card"
           >
-            <Globe size={20} className="text-stone-700" />
-            <p className="mt-2 font-semibold text-stone-900">I already have a domain</p>
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-amber-700 transition group-hover:scale-105">
+              <Globe size={20} />
+            </span>
+            <p className="mt-3 font-semibold text-stone-900">I already have a domain</p>
             <p className="mt-1 text-sm text-stone-500">Connect a domain you bought elsewhere. We&apos;ll guide the DNS setup.</p>
           </button>
           <button
             onClick={() => setMode("buy")}
-            className="rounded-2xl border border-stone-200 p-5 text-left transition hover:border-amber-300 hover:bg-amber-50/40"
+            className="group rounded-2xl border border-stone-200 p-5 text-left transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/40 hover:shadow-card"
           >
-            <ShoppingCart size={20} className="text-stone-700" />
-            <p className="mt-2 font-semibold text-stone-900">Buy a new domain</p>
-            <p className="mt-1 text-sm text-stone-500">Search names, see pricing, and we&apos;ll register &amp; set it up for you.</p>
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-100 text-emerald-700 transition group-hover:scale-105">
+              <ShoppingCart size={20} />
+            </span>
+            <p className="mt-3 font-semibold text-stone-900">Buy a new domain</p>
+            <p className="mt-1 text-sm text-stone-500">Search names and we&apos;ll register &amp; set it up for you.</p>
           </button>
         </div>
       )}
@@ -404,19 +408,25 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
             className="h-11 flex-1 rounded-xl border border-stone-300 px-4 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/40"
           />
           <Button onClick={suggest} disabled={suggesting || !tlds.length} variant="primary">
-            <Sparkles size={16} /> {suggesting ? "Finding…" : "Suggest names"}
+            {suggesting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {suggesting ? "Finding…" : "Suggest names"}
           </Button>
         </div>
       </div>
 
-      {suggestions && (
+      {/* Searching — animated skeletons so the wait feels alive (AI + live availability checks). */}
+      {suggesting && <SearchingRows label="Dreaming up available names…" />}
+
+      {!suggesting && suggestions && (
         <div className="mt-4">
           {suggestions.length === 0 ? (
-            <p className="text-sm text-stone-400">No available names found — try a different keyword or ending, or check one yourself below.</p>
+            <p className="rounded-xl bg-stone-50 p-3 text-sm text-stone-500">
+              No available names found — try a different keyword or ending, or check one yourself below.
+            </p>
           ) : (
             <ul className="space-y-2">
-              {suggestions.map((s) => (
-                <BuyRow key={s.domain} domain={s.domain} buying={buying === s.domain} onBuy={() => buy(s.domain)} />
+              {suggestions.map((s, i) => (
+                <BuyRow key={s.domain} domain={s.domain} index={i} buying={buying === s.domain} onBuy={() => buy(s.domain)} />
               ))}
             </ul>
           )}
@@ -434,17 +444,22 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
             className="h-11 flex-1 rounded-xl border border-stone-300 px-4 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/40"
           />
           <Button onClick={check} disabled={checking || !manual.trim()} variant="outline">
+            {checking ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
             {checking ? "Checking…" : "Check"}
           </Button>
         </div>
-        {lookup && (
+        {checking && <div className="skeleton mt-3 h-16 rounded-xl" />}
+        {!checking && lookup && (
           <div className="mt-3">
             {lookup.available && lookup.affordable ? (
               <BuyRow domain={lookup.domain} buying={buying === lookup.domain} onBuy={() => buy(lookup.domain)} />
             ) : (
-              <p className="rounded-xl bg-stone-50 p-3 text-sm text-stone-600">
-                <span className="font-mono font-medium">{lookup.domain}</span>{" "}
-                isn&apos;t available — try another.
+              <p className="anim-rise flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-sm text-stone-600">
+                <X size={15} className="shrink-0 text-rose-400" />
+                <span>
+                  <span className="font-mono font-medium text-stone-800">{lookup.domain}</span>{" "}
+                  isn&apos;t available — try another.
+                </span>
               </p>
             )}
           </div>
@@ -456,14 +471,44 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
   );
 }
 
-function BuyRow({ domain, buying, onBuy }: { domain: string; buying: boolean; onBuy: () => void }) {
+function BuyRow({ domain, index = 0, buying, onBuy }: { domain: string; index?: number; buying: boolean; onBuy: () => void }) {
   return (
-    <li className="flex items-center justify-between gap-3 rounded-xl border border-stone-200 p-3">
-      <p className="min-w-0 truncate font-mono font-medium text-stone-800">{domain}</p>
+    <li
+      className="anim-rise flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 transition hover:border-emerald-300 hover:bg-emerald-50"
+      style={{ "--d": `${index * 70}ms` } as React.CSSProperties}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+          <Check size={14} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-mono font-medium text-stone-800">{domain}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Available</p>
+        </div>
+      </div>
       <Button onClick={onBuy} disabled={buying} variant="primary" size="sm">
-        {buying ? "Starting…" : "Get this"}
+        {buying ? <><Loader2 size={14} className="animate-spin" /> Starting…</> : "Get this"}
       </Button>
     </li>
+  );
+}
+
+/** Animated shimmer rows shown while we search (AI ideas + live availability/price checks). */
+function SearchingRows({ label }: { label: string }) {
+  return (
+    <div className="mt-4">
+      <p className="flex items-center gap-2 text-sm font-medium text-amber-600">
+        <Loader2 size={14} className="animate-spin" /> {label}
+      </p>
+      <div className="mt-2 space-y-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton flex items-center gap-2.5 rounded-xl border border-stone-100 p-3">
+            <span className="h-7 w-7 shrink-0 rounded-full bg-white/60" />
+            <span className="h-3.5 w-40 rounded bg-white/60" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
