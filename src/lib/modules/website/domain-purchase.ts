@@ -133,8 +133,9 @@ async function aiDomainIdeas(
 
 // ── Purchase flow ─────────────────────────────────────────────────────────────
 /**
- * Owner asks to buy a specific domain. Validates + re-checks availability/price, then either
- * auto-buys (at/under cap) or parks it as `price_review` for an admin. One domain per site at a
+ * Owner asks to buy a specific domain. Validates + re-checks availability/price, then buys it
+ * immediately — NO admin review. Only names within the cap are buyable (the UI never offers
+ * over-cap names); an over-cap domain is rejected here as a backstop. One domain per site at a
  * time (must remove an existing connection/purchase first).
  */
 export async function requestPurchaseDomain(
@@ -151,8 +152,11 @@ export async function requestPurchaseDomain(
   if (!look.ok) return { ok: false, reason: look.reason };
   if (!look.result.available) return { ok: false, reason: "unavailable" };
   if (look.result.priceCents == null) return { ok: false, reason: "price_unavailable" };
+  // Backstop: over the cap is not buyable (we never charge over the cap without review, and there
+  // is no review). The UI already filters these out, so the owner should never hit this.
+  if (!look.result.affordable) return { ok: false, reason: "unavailable" };
 
-  const { domain, priceCents, affordable } = look.result;
+  const { domain, priceCents } = look.result;
   const planned = planHosts(domain);
 
   const clash = await prisma.websiteDomain.findFirst({
@@ -161,7 +165,6 @@ export async function requestPurchaseDomain(
   });
   if (clash) return { ok: false, reason: "taken" };
 
-  const status = affordable ? "purchasing" : "price_review";
   try {
     await prisma.websiteDomain.createMany({
       data: planned.map((p) => ({
@@ -171,7 +174,7 @@ export async function requestPurchaseDomain(
         isPrimary: p.isPrimary,
         source: "purchase",
         priceCents: p.isPrimary ? priceCents : null,
-        status,
+        status: "purchasing",
       })),
     });
   } catch (err) {
@@ -184,26 +187,25 @@ export async function requestPurchaseDomain(
     entityType: "Website",
     entityId: websiteId,
     clientId,
-    metadata: { domain, priceCents, affordable } as Prisma.InputJsonValue,
+    metadata: { domain, priceCents } as Prisma.InputJsonValue,
   });
   await emit("domain.requested", { clientId, websiteId, domain });
 
-  // Affordable → buy right now. Over the cap → wait for an admin to approve the price.
-  if (affordable) await executePurchase(websiteId, null);
+  await executePurchase(websiteId, null); // buy now — no admin gate
 
   const state = await getDomainState(clientId);
   return { ok: true, state: state! };
 }
 
 /**
- * Actually register the domain via the Vercel registrar (re-quoting to guard the price), then
- * attach the apex + www to the project. Called inline for affordable buys and by the admin's
- * approve action for over-cap ones. Parks the rows in `error` on any failure.
+ * Register the domain via the Vercel registrar (re-quoting to guard the price), then attach the
+ * apex + www to the project. Called inline from requestPurchaseDomain (no admin gate). Parks the
+ * rows in `error` on any failure.
  */
 export async function executePurchase(websiteId: string, reviewerId: string | null): Promise<{ ok: boolean; error?: string }> {
   const site = await prisma.website.findUnique({ where: { id: websiteId }, select: { clientId: true } });
   const rows = await prisma.websiteDomain.findMany({
-    where: { websiteId, source: "purchase", status: { in: ["purchasing", "price_review"] } },
+    where: { websiteId, source: "purchase", status: "purchasing" },
     orderBy: { isPrimary: "desc" },
     select: { id: true, host: true, isPrimary: true },
   });
@@ -256,11 +258,6 @@ export async function executePurchase(websiteId: string, reviewerId: string | nu
     console.error("[domain-purchase] buy failed", primary.host, err);
     return { ok: false, error: message };
   }
-}
-
-/** Admin approves an over-cap purchase (price_review) → buy it. */
-export async function approveDomainPurchase(websiteId: string, reviewerId: string | null): Promise<{ ok: boolean; error?: string }> {
-  return executePurchase(websiteId, reviewerId);
 }
 
 // ── Connect-path DNS instructions ─────────────────────────────────────────────

@@ -340,17 +340,23 @@ Postgres, Auth, and Storage.
   (e.g. `acmecleaning.com`). Each connected host is a **`WebsiteDomain`** row
   (one-to-many off `Website`); a single connection provisions a **pair** — the apex
   (`acme.com`) and its `www` — one marked `isPrimary` (canonical), the other set to
-  redirect to it. Flow (see `src/lib/modules/website/domain.ts`):
-  1. The owner submits a domain in their website settings (gated by the
-     `customDomain` feature flag). We expand it into the apex+www host pair and park
-     both as `requested`. **Nothing touches Vercel yet** — an unvetted/typo'd/abusive
-     domain is held for review.
-  2. An admin **approves** it (same `website:review` permission as the draft queue).
-     Only then does PageBee add each host to the Vercel project via the **Vercel
-     Domains API** (the sibling as a 308 redirect to the primary), store the DNS
-     records (A for apex / CNAME for www + any TXT challenge) on each row's
-     `verification`, and flip them to `verifying`.
-  3. The owner sets those DNS records at their registrar. Verification is
+  redirect to it. **No admin review** — connecting a domain the owner already
+  controls costs PageBee nothing, so it's provisioned immediately. Two ways in:
+  - **Connect** ("I already have a domain"): the owner submits a domain (gated by the
+    `customDomain` flag); we expand it into the apex+www pair and add each host to the
+    Vercel project via the **Vercel Domains API** (the sibling as a 308 redirect to the
+    primary), storing the DNS records (A for apex / CNAME for www + any TXT challenge)
+    on each row's `verification`, straight to `verifying`. The panel then shows
+    registrar-specific DNS setup steps.
+  - **Buy** ("Buy a new domain"): AI suggests names; only names within
+    `DOMAIN_PRICE_CAP_CENTS` are offered (price is never shown to the owner). On "Get
+    this" PageBee **registers** it through the Vercel **registrar** API (PageBee absorbs
+    the cost, under the platform's `REGISTRANT_*` WHOIS contact) and attaches it →
+    `purchasing → verifying`.
+
+  Flow (see `src/lib/modules/website/domain.ts` + `domain-purchase.ts`):
+  - The owner sets those DNS records at their registrar (connect) — a bought domain's
+    DNS is managed by Vercel automatically. Verification is
      **on-demand first**: the owner's "Check status" button (and the open panel's
      30s auto-poll) calls `POST /api/v1/client/website/domain/verify`, which asks
      Vercel to verify that client's hosts and flips each to `active` once DNS
@@ -358,8 +364,8 @@ Postgres, Auth, and Storage.
      **daily cron backstop** (`/api/v1/cron/domains/verify`, scheduled in
      `vercel.json` — daily because Vercel Hobby caps cron frequency at once/day)
      catches owners who set DNS after closing the panel. Per-host state runs
-     `requested → verifying → active` (`error` on failure); reject/remove deletes
-     the rows.
+     `verifying → active` (`error` on failure; `purchasing` precedes `verifying` for a
+     bought domain); the owner can remove a domain any time, which detaches + deletes the rows.
   Once the primary host is active, middleware resolves the tenant by custom domain
   too (any active host → its `Website`). When Vercel isn't configured
   (`VERCEL_TOKEN`/`VERCEL_PROJECT_ID` unset, e.g. local dev) the flow still records

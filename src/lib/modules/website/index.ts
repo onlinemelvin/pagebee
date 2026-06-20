@@ -38,9 +38,6 @@ export type { GenAnalytics, GenDuration } from "./analytics";
 export {
   getDomainState,
   requestCustomDomain,
-  listDomainRequests,
-  approveDomainRequest,
-  rejectDomainRequest,
   removeCustomDomain,
   pollDomainVerification,
   verifyClientDomains,
@@ -51,7 +48,6 @@ export {
   suggestDomainNames,
   requestPurchaseDomain,
   executePurchase,
-  approveDomainPurchase,
   getConnectInstructions,
 } from "./domain-purchase";
 export type { DomainLookup, DomainSuggestion, ConnectInstructions } from "./domain-purchase";
