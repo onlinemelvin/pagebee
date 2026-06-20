@@ -82,7 +82,9 @@ export async function suggestDomainNames(
       const { available, price } = await registrarLookup(domain);
       if (!available) continue;
       const priceCents = price?.priceCents ?? null;
-      out.push({ domain, priceCents, affordable: priceCents != null && priceCents <= PRICE_CAP_CENTS() });
+      // Only surface names within the auto-buy cap — the end user never sees price or "needs review".
+      if (priceCents == null || priceCents > PRICE_CAP_CENTS()) continue;
+      out.push({ domain, priceCents, affordable: true });
     } catch {
       /* skip a failed lookup */
     }

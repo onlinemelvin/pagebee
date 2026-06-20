@@ -416,7 +416,7 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
           ) : (
             <ul className="space-y-2">
               {suggestions.map((s) => (
-                <BuyRow key={s.domain} domain={s.domain} priceCents={s.priceCents} affordable={s.affordable} buying={buying === s.domain} onBuy={() => buy(s.domain)} />
+                <BuyRow key={s.domain} domain={s.domain} buying={buying === s.domain} onBuy={() => buy(s.domain)} />
               ))}
             </ul>
           )}
@@ -439,37 +439,28 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
         </div>
         {lookup && (
           <div className="mt-3">
-            {lookup.available ? (
-              <BuyRow domain={lookup.domain} priceCents={lookup.priceCents} affordable={lookup.affordable} buying={buying === lookup.domain} onBuy={() => buy(lookup.domain)} />
+            {lookup.available && lookup.affordable ? (
+              <BuyRow domain={lookup.domain} buying={buying === lookup.domain} onBuy={() => buy(lookup.domain)} />
             ) : (
               <p className="rounded-xl bg-stone-50 p-3 text-sm text-stone-600">
-                <span className="font-mono font-medium">{lookup.domain}</span> is already taken. Try another.
+                <span className="font-mono font-medium">{lookup.domain}</span> isn&apos;t available — try another.
               </p>
             )}
           </div>
         )}
       </div>
 
-      <p className="mt-4 text-xs text-stone-400">
-        PageBee registers and sets up the domain for you. Pricier (premium) names may need a quick review by our team before they&apos;re bought.
-      </p>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>
   );
 }
 
-function BuyRow({ domain, priceCents, affordable, buying, onBuy }: { domain: string; priceCents: number | null; affordable: boolean; buying: boolean; onBuy: () => void }) {
+function BuyRow({ domain, buying, onBuy }: { domain: string; buying: boolean; onBuy: () => void }) {
   return (
     <li className="flex items-center justify-between gap-3 rounded-xl border border-stone-200 p-3">
-      <div className="min-w-0">
-        <p className="truncate font-mono font-medium text-stone-800">{domain}</p>
-        <p className="text-xs text-stone-500">
-          {priceCents != null ? `$${(priceCents / 100).toFixed(2)}/yr` : "price unavailable"}
-          {priceCents != null && !affordable && <span className="ml-1 text-amber-600">· needs review</span>}
-        </p>
-      </div>
+      <p className="min-w-0 truncate font-mono font-medium text-stone-800">{domain}</p>
       <Button onClick={onBuy} disabled={buying} variant="primary" size="sm">
-        {buying ? "Starting…" : affordable ? "Get this" : "Request"}
+        {buying ? "Starting…" : "Get this"}
       </Button>
     </li>
   );
