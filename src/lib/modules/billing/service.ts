@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getStripe, appBaseUrl } from "@/lib/stripe/client";
-import { planByName, type PlanDef, type PlanName } from "@/lib/plans";
+import { planByName, planRank, type PlanDef, type PlanName } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { launchPreview } from "@/lib/modules/preview";
 
@@ -106,6 +106,65 @@ export async function createBillingCheckout(
   if (!session.url) throw new BillingError(502, "checkout_failed");
   await writeAudit({ action: `billing.checkout_${kind}`, entityType: "Subscription", entityId: sub.id, clientId, metadata: { toPlan: planName } });
   return { url: session.url };
+}
+
+/** A Stripe subscription that can be modified in place (vs. canceled/expired). */
+function isModifiable(status: Stripe.Subscription.Status): boolean {
+  return status === "active" || status === "trialing" || status === "past_due";
+}
+
+/**
+ * Upgrade an existing subscriber to a higher tier. When the client already has a live Stripe
+ * subscription, we swap the recurring price IN PLACE (prorated, invoiced immediately) instead of
+ * creating a second subscription — so the customer is never double-billed — and switch the plan +
+ * write the `subscription.upgraded` audit synchronously (queryable trail of when it changed).
+ * Falls back to Checkout when there's no usable subscription yet (collects a payment method).
+ * Returns `{ applied: true }` for an in-place upgrade, or `{ url }` to redirect to Checkout.
+ */
+export async function upgradeSubscription(
+  clientId: string,
+  toPlanName: string,
+): Promise<{ applied: true } | { url: string }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, include: { plan: true } });
+  if (!sub) throw new BillingError(404, "no_subscription");
+
+  const target = planByName(toPlanName);
+  if (!target) throw new BillingError(400, "invalid_plan");
+  if (planRank(target.name) <= planRank(sub.plan.name)) throw new BillingError(400, "not_an_upgrade");
+
+  // No live Stripe subscription yet (e.g. setup fee unpaid) → Checkout collects payment + subscribes.
+  if (!sub.stripeSubscriptionId) return createBillingCheckout(clientId, "upgrade", toPlanName);
+
+  let stripeSub: Stripe.Subscription;
+  try {
+    stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+  } catch {
+    return createBillingCheckout(clientId, "upgrade", toPlanName); // sub vanished on Stripe → re-subscribe
+  }
+  if (!isModifiable(stripeSub.status)) return createBillingCheckout(clientId, "upgrade", toPlanName);
+
+  const itemId = stripeSub.items.data[0]?.id;
+  if (!itemId) return createBillingCheckout(clientId, "upgrade", toPlanName);
+
+  const prices = await ensurePrices(stripe, target);
+  // Swap the recurring price in place; invoice the prorated difference now so the upgrade is paid for.
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+    items: [{ id: itemId, price: prices.monthly }],
+    proration_behavior: "always_invoice",
+    metadata: { clientId },
+  });
+
+  const fromPlan = sub.plan.name;
+  await switchPlan(clientId, target.name);
+  await writeAudit({
+    action: "subscription.upgraded",
+    entityType: "Subscription",
+    entityId: sub.id,
+    clientId,
+    metadata: { fromPlan, toPlan: target.name, via: "stripe", inPlace: true },
+  });
+  return { applied: true };
 }
 
 function mapStatus(s: Stripe.Subscription.Status): "ACTIVE" | "PAST_DUE" | "CANCELLED" | "TRIAL" | "PAYMENT_FAILED" {

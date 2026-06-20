@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOwner, AuthError } from "@/lib/auth/session";
 import { requestUpgrade, SubscriptionError } from "@/lib/modules/subscription";
-import { createBillingCheckout, BillingError } from "@/lib/modules/billing";
+import { upgradeSubscription, BillingError } from "@/lib/modules/billing";
 import { stripeConfigured } from "@/lib/stripe/client";
 
 export const runtime = "nodejs";
@@ -28,11 +28,14 @@ export async function POST(req: Request) {
   if (!toPlan) return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
 
   try {
-    // Real accounts with Stripe configured pay by card; test accounts apply instantly,
-    // and without Stripe we fall back to the admin upgrade request.
+    // Real accounts with Stripe configured pay by card; existing subscribers upgrade IN PLACE
+    // (prorated, no duplicate subscription) and apply instantly, while not-yet-subscribed accounts
+    // are sent to Checkout to collect a payment method. Test accounts apply instantly, and without
+    // Stripe we fall back to the admin upgrade request.
     if (!client.isTest && stripeConfigured()) {
-      const { url } = await createBillingCheckout(client.id, "upgrade", toPlan);
-      return NextResponse.json({ ok: true, checkoutUrl: url });
+      const result = await upgradeSubscription(client.id, toPlan);
+      if ("url" in result) return NextResponse.json({ ok: true, checkoutUrl: result.url });
+      return NextResponse.json({ ok: true, applied: true });
     }
     const result = await requestUpgrade(client.id, toPlan, reason);
     return NextResponse.json({ ok: true, ...result });
