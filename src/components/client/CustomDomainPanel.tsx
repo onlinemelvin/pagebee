@@ -443,7 +443,8 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
               <BuyRow domain={lookup.domain} buying={buying === lookup.domain} onBuy={() => buy(lookup.domain)} />
             ) : (
               <p className="rounded-xl bg-stone-50 p-3 text-sm text-stone-600">
-                <span className="font-mono font-medium">{lookup.domain}</span> isn&apos;t available — try another.
+                <span className="font-mono font-medium">{lookup.domain}</span>{" "}
+                isn&apos;t available — try another.
               </p>
             )}
           </div>
