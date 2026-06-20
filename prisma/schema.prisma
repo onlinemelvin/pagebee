@@ -1105,8 +1105,22 @@ model WebsiteDomain {
   kind      String // "apex" | "www" | "subdomain"
   isPrimary Boolean @default(false) // the canonical host; its sibling redirects here
 
-  // requested → owner submitted, awaiting admin approval (NOT yet on Vercel)
-  // verifying → on the Vercel project, DNS not yet resolving · active → verified + SSL · error
+  // How this host came to be:
+  //   "connect"  → the client already owns the domain elsewhere and points DNS at us (default)
+  //   "purchase" → PageBee bought it through the Vercel registrar on the client's behalf
+  source String @default("connect")
+
+  // Buy path only: the registration price (integer cents) PageBee paid / would pay, for the
+  // admin price-review gate and record-keeping. Null for the connect path.
+  priceCents Int?
+  // Connect path only: the client's detected/declared registrar (godaddy/namecheap/…), used to
+  // tailor the DNS setup instructions. Null when unknown (we fall back to AI-written steps).
+  registrar String?
+
+  // status lifecycle:
+  //   connect:  requested → verifying → active   (error on failure; rejected on admin decline)
+  //   purchase: price_review (over the cap, awaiting admin) | purchasing (buy in flight)
+  //             → verifying → active
   status       String
   verification Json? // DNS records to set: { records: [{type,name,value}], txt?: [...] }
   error        String? // last failure reason for this host

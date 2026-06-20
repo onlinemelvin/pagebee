@@ -38,14 +38,19 @@ export type { GenAnalytics, GenDuration } from "./analytics";
 export {
   getDomainState,
   requestCustomDomain,
-  listDomainRequests,
-  approveDomainRequest,
-  rejectDomainRequest,
   removeCustomDomain,
   pollDomainVerification,
   verifyClientDomains,
 } from "./domain";
-export type { DomainState } from "./domain";
+export type { DomainState, DomainHostState } from "./domain";
+export {
+  lookupDomain,
+  suggestDomainNames,
+  requestPurchaseDomain,
+  executePurchase,
+  getConnectInstructions,
+} from "./domain-purchase";
+export type { DomainLookup, DomainSuggestion, ConnectInstructions } from "./domain-purchase";
 export { websiteIntakeSchema } from "./schema";
 export type { WebsiteIntakeForm } from "./schema";
 export type { GenerationForm } from "./service";

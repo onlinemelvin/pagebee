@@ -13,31 +13,33 @@ import {
 
 /**
  * Custom domains for Connect/Automate sites. A "connection" provisions a host PAIR — the apex and
- * its www (or a lone subdomain) — as rows in WebsiteDomain. Flow (see ARCHITECTURE §11):
- *   1. Owner submits a domain  → requestCustomDomain   → host rows "requested" (NOT on Vercel yet)
- *   2. Admin approves          → approveDomainRequest  → each host added to Vercel, "verifying"
- *   3. Owner sets the DNS      → cron pollDomainVerification → "active" per host as DNS resolves
+ * its www (or a lone subdomain) — as rows in WebsiteDomain. NO admin review: connecting a domain
+ * the owner already controls costs PageBee nothing, so it's provisioned immediately. Flow:
+ *   1. Owner submits a domain  → requestCustomDomain → hosts added to Vercel, "verifying"
+ *   2. Owner sets the DNS       → panel poll + cron pollDomainVerification → "active" as DNS resolves
  *
- * Approving BEFORE the Vercel add is deliberate: an unvetted / typo'd / abusive domain never
- * touches the project. The plan/feature gate (assertFeature "customDomain") is enforced at the
- * route; this layer assumes the caller is allowed to manage domains. One connection per site at a
- * time — to change it, remove the current one first.
+ * The plan/feature gate (assertFeature "customDomain") is enforced at the route; this layer assumes
+ * the caller may manage domains. One connection per site at a time — remove the current one to change it.
  */
 
 const ROOT_DOMAIN = () => process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
 
 // Host rows that represent an in-flight or live connection (i.e. block a new request / show in the
 // admin queue). A rejected/removed connection deletes its rows, so these are the only live states.
-const LIVE_STATES = ["requested", "verifying", "active", "error"];
+// Includes the purchase-path states (price_review = over the cap, awaiting admin; purchasing = buy
+// in flight) so a bought-domain in progress also blocks a new request and shows in the admin queue.
+export const LIVE_STATES = ["requested", "verifying", "active", "error", "price_review", "purchasing"];
 
 /** Per-host detail for the owner's domain panel and the admin queue. */
 export interface DomainHostState {
   host: string;
   kind: string; // apex | www | subdomain
   isPrimary: boolean;
-  status: string; // requested | verifying | active | error
+  status: string; // requested | verifying | active | error | price_review | purchasing
   verification: DomainVerification | null;
   error: string | null;
+  source: string; // "connect" | "purchase"
+  priceCents: number | null; // purchase price (primary host of a bought domain)
 }
 
 /** The whole custom-domain connection for a site (its host pair), aggregated for the UI. */
@@ -56,6 +58,8 @@ const hostSelect = {
   verification: true,
   error: true,
   requestedAt: true,
+  source: true,
+  priceCents: true,
 } satisfies Prisma.WebsiteDomainSelect;
 
 type HostRow = Prisma.WebsiteDomainGetPayload<{ select: typeof hostSelect }>;
@@ -68,6 +72,8 @@ function toHostState(r: HostRow): DomainHostState {
     status: r.status,
     verification: (r.verification as unknown as DomainVerification | null) ?? null,
     error: r.error,
+    source: r.source,
+    priceCents: r.priceCents,
   };
 }
 
@@ -78,6 +84,8 @@ function aggregate(rows: HostRow[]): DomainState {
   const statuses = rows.map((r) => r.status);
   let status: string;
   if (statuses.some((s) => s === "error")) status = "error";
+  else if (statuses.some((s) => s === "price_review")) status = "price_review"; // over cap → admin
+  else if (statuses.some((s) => s === "purchasing")) status = "purchasing"; // buy in flight
   else if (statuses.some((s) => s === "requested")) status = "requested";
   else if (primary.status === "active") status = "active"; // canonical live → site reachable
   else status = "verifying";
@@ -111,9 +119,12 @@ export type RequestResult =
   | { ok: false; reason: "no_site" | "empty" | "invalid" | "platform_domain" | "taken" | "in_progress" };
 
 /**
- * Owner submits a domain to connect. Validates + normalizes, expands it into a host pair (apex +
- * www), ensures none of those hosts are claimed by another tenant, and parks them as "requested"
- * for admin review. A site with an existing connection must remove it first (one at a time).
+ * Owner connects a domain they already own. NO admin review — connecting costs PageBee nothing, so
+ * if the owner can point DNS at us, that's enough. We validate, expand into the apex+www pair, and
+ * provision on Vercel immediately: each host is added to the project (the sibling redirecting to the
+ * primary), the DNS records to set are stored, and the hosts go to "verifying". The owner sets DNS
+ * and the panel + cron poll until "active". A host Vercel rejects is parked in "error" (the owner
+ * can remove + retry). One connection per site (remove the current one to change it).
  */
 export async function requestCustomDomain(clientId: string, rawDomain: string): Promise<RequestResult> {
   const websiteId = await siteIdForClient(clientId);
@@ -122,16 +133,13 @@ export async function requestCustomDomain(clientId: string, rawDomain: string): 
   const check = checkCustomDomain(rawDomain, ROOT_DOMAIN());
   if (!check.ok) return { ok: false, reason: check.reason };
 
-  // One connection per site — block a new request while any host rows are still live.
   const existing = await prisma.websiteDomain.count({ where: { websiteId, status: { in: LIVE_STATES } } });
   if (existing > 0) return { ok: false, reason: "in_progress" };
 
   const planned = planHosts(check.domain);
-  const hosts = planned.map((p) => p.host);
-
   // Globally unique across tenants (also enforced by the @unique column — this gives a clean error).
   const clash = await prisma.websiteDomain.findFirst({
-    where: { host: { in: hosts }, websiteId: { not: websiteId } },
+    where: { host: { in: planned.map((p) => p.host) }, websiteId: { not: websiteId } },
     select: { id: true },
   });
   if (clash) return { ok: false, reason: "taken" };
@@ -143,92 +151,30 @@ export async function requestCustomDomain(clientId: string, rawDomain: string): 
         host: p.host,
         kind: p.kind,
         isPrimary: p.isPrimary,
-        status: "requested",
-        // Records are deterministic from the host — store them now so approval only has to add the
-        // (optional) Vercel TXT challenge. Not shown to the owner until the connection is approved.
+        source: "connect",
+        status: "verifying",
         verification: { records: p.records } as unknown as Prisma.InputJsonValue,
       })),
     });
-    await writeAudit({
-      action: "domain.requested",
-      entityType: "Website",
-      entityId: websiteId,
-      clientId,
-      metadata: { domain: check.domain, hosts } as Prisma.InputJsonValue,
-    });
-    await emit("domain.requested", { clientId, websiteId, domain: check.domain, hosts });
-    const state = await getDomainState(clientId);
-    return { ok: true, state: state! };
   } catch (err) {
-    // Unique-constraint race (two tenants submit the same host at once) → report as taken.
-    if (typeof err === "object" && err && (err as { code?: string }).code === "P2002") {
-      return { ok: false, reason: "taken" };
-    }
+    if (typeof err === "object" && err && (err as { code?: string }).code === "P2002") return { ok: false, reason: "taken" };
     throw err;
   }
-}
 
-/** Pending + in-flight custom-domain connections for the admin queue (oldest request first). */
-export async function listDomainRequests() {
-  const sites = await prisma.website.findMany({
-    where: { domains: { some: { status: { in: ["requested", "verifying", "error"] } } } },
-    select: {
-      id: true,
-      client: { select: { businessName: true, subscription: { select: { plan: { select: { name: true } } } } } },
-      domains: { where: { status: { in: LIVE_STATES } }, orderBy: { isPrimary: "desc" }, select: hostSelect },
-    },
-  });
-  return sites
-    .map((s) => ({
-      websiteId: s.id,
-      businessName: s.client.businessName,
-      planName: s.client.subscription?.plan.name ?? null,
-      ...aggregate(s.domains),
-    }))
-    .sort((a, b) => (a.requestedAt?.getTime() ?? 0) - (b.requestedAt?.getTime() ?? 0));
-}
-
-export type ApproveResult =
-  | { ok: true; state: DomainState }
-  | { ok: false; reason: "not_found" | "not_requested" | "vercel_rejected"; message?: string };
-
-/**
- * Admin approves a requested connection: add every host to the Vercel project (the non-canonical
- * host as a 308 redirect to the primary), store the DNS records the owner must set, and flip each
- * host to "verifying". When Vercel isn't configured it still records the computed records so the
- * flow is testable (verification then has to be confirmed manually). A Vercel rejection parks that
- * host in "error"; the result is failure only if the PRIMARY host couldn't be added.
- */
-export async function approveDomainRequest(
-  websiteId: string,
-  reviewerId: string | null,
-): Promise<ApproveResult> {
-  const site = await prisma.website.findUnique({
-    where: { id: websiteId },
-    select: { id: true, clientId: true },
-  });
-  if (!site) return { ok: false, reason: "not_found" };
-
+  // Provision on Vercel right away (no approval gate). The sibling host redirects to the primary;
+  // merge any TXT challenge into the stored records; a host Vercel rejects is parked in "error".
   const rows = await prisma.websiteDomain.findMany({
-    where: { websiteId, status: { in: ["requested", "error"] } },
+    where: { websiteId, status: "verifying" },
     orderBy: { isPrimary: "desc" },
     select: { id: true, host: true, isPrimary: true, verification: true },
   });
-  if (!rows.length) return { ok: false, reason: "not_requested" };
-
   const primary = rows.find((r) => r.isPrimary) ?? rows[0];
-  let primaryOk = true;
-  let firstError: string | undefined;
-
   for (const row of rows) {
     const base = (row.verification as unknown as DomainVerification | null) ?? { records: [] };
     const verification: DomainVerification = { records: base.records ?? [] };
-
     if (vercelConfigured()) {
       try {
-        const vd = await addProjectDomain(row.host, {
-          redirect: row.isPrimary ? undefined : primary.host,
-        });
+        const vd = await addProjectDomain(row.host, { redirect: row.isPrimary ? undefined : primary.host });
         if (vd.verification?.length) {
           verification.txt = vd.verification
             .filter((v) => v.type === "TXT")
@@ -236,48 +182,28 @@ export async function approveDomainRequest(
         }
       } catch (err) {
         const message = err instanceof VercelError ? `${err.code}: ${err.message}` : String(err);
-        firstError ??= message;
-        if (row.isPrimary) primaryOk = false;
-        await prisma.websiteDomain.update({
-          where: { id: row.id },
-          data: { status: "error", error: message.slice(0, 500) },
-        });
+        await prisma.websiteDomain.update({ where: { id: row.id }, data: { status: "error", error: message.slice(0, 500) } });
         continue;
       }
     }
-
     await prisma.websiteDomain.update({
       where: { id: row.id },
-      data: {
-        status: "verifying",
-        verification: verification as unknown as Prisma.InputJsonValue,
-        error: null,
-      },
+      data: { status: "verifying", verification: verification as unknown as Prisma.InputJsonValue, error: null },
     });
-  }
-
-  if (!primaryOk) {
-    await writeAudit({
-      action: "domain.approve_failed",
-      entityType: "Website",
-      entityId: websiteId,
-      clientId: site.clientId,
-      actorId: reviewerId,
-      metadata: { host: primary.host, error: firstError ?? null } as Prisma.InputJsonValue,
-    });
-    return { ok: false, reason: "vercel_rejected", message: firstError };
   }
 
   await writeAudit({
-    action: "domain.approved",
+    action: "domain.connected",
     entityType: "Website",
     entityId: websiteId,
-    clientId: site.clientId,
-    actorId: reviewerId,
+    clientId,
     metadata: { domain: primary.host, hosts: rows.map((r) => r.host), vercel: vercelConfigured() } as Prisma.InputJsonValue,
   });
-  await emit("domain.approved", { clientId: site.clientId, websiteId, domain: primary.host });
-  const state = await getDomainState(site.clientId);
+  await emit("domain.requested", { clientId, websiteId, domain: primary.host });
+
+  // Return the resulting state (verifying, or error if Vercel rejected the primary) — the panel
+  // renders DNS records / instructions or the error accordingly.
+  const state = await getDomainState(clientId);
   return { ok: true, state: state! };
 }
 
@@ -296,27 +222,6 @@ async function teardownHosts(websiteId: string): Promise<string[]> {
   }
   await prisma.websiteDomain.deleteMany({ where: { websiteId } });
   return rows.map((r) => r.host);
-}
-
-/** Admin declines a connection: detach + clear it so the owner can submit a different domain. */
-export async function rejectDomainRequest(
-  websiteId: string,
-  reviewerId: string | null,
-  reason?: string,
-): Promise<{ ok: boolean }> {
-  const site = await prisma.website.findUnique({ where: { id: websiteId }, select: { clientId: true } });
-  if (!site) return { ok: false };
-  const hosts = await teardownHosts(websiteId);
-  if (!hosts.length) return { ok: false };
-  await writeAudit({
-    action: "domain.rejected",
-    entityType: "Website",
-    entityId: websiteId,
-    clientId: site.clientId,
-    actorId: reviewerId,
-    metadata: { hosts, reason: reason ?? null } as Prisma.InputJsonValue,
-  });
-  return { ok: true };
 }
 
 /** Owner removes their custom domain (any state): detach all hosts from Vercel and clear the rows. */

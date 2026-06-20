@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { Globe, CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
-import { listReviewQueue, listGenerationActivity, listDomainRequests } from "@/lib/modules/website";
+import { listReviewQueue, listGenerationActivity } from "@/lib/modules/website";
 import { openChangeRequestCounts } from "@/lib/modules/review";
 import { AutoRefresh } from "@/components/admin/AutoRefresh";
 import { RetryJobButton } from "@/components/admin/RetryJobButton";
-import { DomainApprovalActions } from "@/components/admin/DomainApprovalActions";
 import { StatCard } from "@/components/client/ui/StatCard";
 import { EmptyState } from "@/components/client/ui/EmptyState";
 import { cn } from "@/lib/utils";
@@ -121,59 +120,10 @@ function Table({
   );
 }
 
-const DOMAIN_BADGE: Record<string, string> = {
-  requested: "bg-amber-100 text-amber-800",
-  verifying: "bg-violet-100 text-violet-800",
-  error: "bg-red-100 text-red-800",
-};
-
-const DOMAIN_LABEL: Record<string, string> = {
-  requested: "Awaiting approval",
-  verifying: "Approved — awaiting DNS",
-  error: "Error",
-};
-
-type DomainRequest = Awaited<ReturnType<typeof listDomainRequests>>[number];
-
-function DomainRow({ d }: { d: DomainRequest }) {
-  const errorHost = d.hosts.find((h) => h.error);
-  return (
-    <tr>
-      <td className="px-4 py-3 font-medium text-stone-900">{d.businessName}</td>
-      <td className="px-4 py-3">
-        <div className="font-mono text-stone-700">{d.domain}</div>
-        {/* The full host set (apex + www) with each one's individual state. */}
-        <div className="mt-1 flex flex-wrap gap-1">
-          {d.hosts.map((h) => (
-            <span key={h.host} className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-500">
-              {h.host}
-              {h.kind !== "subdomain" && <span className="text-stone-400"> · {h.kind}</span>}
-            </span>
-          ))}
-        </div>
-      </td>
-      <td className="px-4 py-3 text-stone-500">{d.planName ?? "—"}</td>
-      <td className="px-4 py-3">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${DOMAIN_BADGE[d.status ?? ""] ?? "bg-stone-100 text-stone-600"}`}>
-          {DOMAIN_LABEL[d.status ?? ""] ?? d.status}
-        </span>
-        {d.status === "error" && errorHost?.error && (
-          <p className="mt-1 max-w-xs break-words font-mono text-[11px] text-red-600">{errorHost.error}</p>
-        )}
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-stone-500">{d.requestedAt?.toLocaleString() ?? "—"}</td>
-      <td className="px-4 py-3">
-        <DomainApprovalActions websiteId={d.websiteId} status={d.status} />
-      </td>
-    </tr>
-  );
-}
-
 export default async function AdminWebsitesPage() {
-  const [queue, activity, domainRequests] = await Promise.all([
+  const [queue, activity] = await Promise.all([
     listReviewQueue(),
     listGenerationActivity(),
-    listDomainRequests(),
   ]);
   const counts = await openChangeRequestCounts(queue.map((v) => v.id));
 
@@ -243,35 +193,6 @@ export default async function AdminWebsitesPage() {
           </p>
           <div className="mt-3">
             <Table items={released} counts={counts} empty="" />
-          </div>
-        </div>
-      )}
-
-      {domainRequests.length > 0 && (
-        <div className="mt-10">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">Custom domain requests</h2>
-          <p className="mt-1 text-sm text-stone-400">
-            Approve to add the domain to Vercel and send the client their DNS records. Approved domains go live
-            automatically once DNS verifies.
-          </p>
-          <div className="mt-3 overflow-x-auto rounded-2xl border border-stone-200 bg-white">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="border-b border-stone-200 bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Business</th>
-                  <th className="px-4 py-3 font-medium">Domain</th>
-                  <th className="px-4 py-3 font-medium">Plan</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Requested</th>
-                  <th className="px-4 py-3 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {domainRequests.map((d) => (
-                  <DomainRow key={d.websiteId} d={d} />
-                ))}
-              </tbody>
-            </table>
           </div>
         </div>
       )}
