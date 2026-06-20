@@ -33,6 +33,8 @@ export {
 } from "./service";
 export type { PublishedSite, ServeSite } from "./service";
 export { prepareGeneration, finalizeGeneration } from "./generation-offload";
+export { getGenerationAnalytics } from "./analytics";
+export type { GenAnalytics, GenDuration } from "./analytics";
 export {
   getDomainState,
   requestCustomDomain,
