@@ -125,13 +125,21 @@ const DOMAIN_BADGE: Record<string, string> = {
   requested: "bg-amber-100 text-amber-800",
   verifying: "bg-violet-100 text-violet-800",
   error: "bg-red-100 text-red-800",
+  price_review: "bg-orange-100 text-orange-800",
+  purchasing: "bg-violet-100 text-violet-800",
 };
 
 const DOMAIN_LABEL: Record<string, string> = {
   requested: "Awaiting approval",
   verifying: "Approved — awaiting DNS",
   error: "Error",
+  price_review: "Buy — price review",
+  purchasing: "Buying…",
 };
+
+function fmtUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
 
 type DomainRequest = Awaited<ReturnType<typeof listDomainRequests>>[number];
 
@@ -141,7 +149,12 @@ function DomainRow({ d }: { d: DomainRequest }) {
     <tr>
       <td className="px-4 py-3 font-medium text-stone-900">{d.businessName}</td>
       <td className="px-4 py-3">
-        <div className="font-mono text-stone-700">{d.domain}</div>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-stone-700">{d.domain}</span>
+          {d.source === "purchase" && (
+            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Buy</span>
+          )}
+        </div>
         {/* The full host set (apex + www) with each one's individual state. */}
         <div className="mt-1 flex flex-wrap gap-1">
           {d.hosts.map((h) => (
@@ -157,6 +170,9 @@ function DomainRow({ d }: { d: DomainRequest }) {
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${DOMAIN_BADGE[d.status ?? ""] ?? "bg-stone-100 text-stone-600"}`}>
           {DOMAIN_LABEL[d.status ?? ""] ?? d.status}
         </span>
+        {d.source === "purchase" && d.priceCents != null && (
+          <p className="mt-1 text-xs font-semibold text-stone-700">{fmtUsd(d.priceCents)}/yr</p>
+        )}
         {d.status === "error" && errorHost?.error && (
           <p className="mt-1 max-w-xs break-words font-mono text-[11px] text-red-600">{errorHost.error}</p>
         )}

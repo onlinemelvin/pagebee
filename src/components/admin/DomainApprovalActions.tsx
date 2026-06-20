@@ -48,9 +48,9 @@ export function DomainApprovalActions({ websiteId, status }: { websiteId: string
     }
   }
 
-  // Once approved (verifying) or live, there's nothing to approve — the cron handles activation.
-  // Keep a reject/detach path available for verifying (e.g. a domain that should never have passed).
-  const canApprove = status === "requested" || status === "error";
+  // Connect requests (requested/error) and over-cap purchases (price_review) can be approved; once
+  // verifying/purchasing/active the cron/registrar handles it. Reject stays available as a detach path.
+  const canApprove = status === "requested" || status === "error" || status === "price_review";
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
