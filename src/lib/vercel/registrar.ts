@@ -69,12 +69,13 @@ export interface DomainPrice {
   years: number;
 }
 
-/** Registration price for a domain (Vercel returns dollars; we convert to cents). */
+/** Registration price for a domain (Vercel returns dollars in `purchasePrice`, number or string). */
 export async function getPrice(domain: string, years = 1): Promise<DomainPrice> {
   const res = await call("GET", `/v1/registrar/domains/${encodeURIComponent(domain)}/price${qs(teamParam(), `years=${years}`)}`);
   if (!res.ok) throw await parseError(res);
-  const d = (await res.json()) as { price?: number; period?: number };
-  return { priceCents: Math.round((d.price ?? 0) * 100), years: d.period ?? years };
+  const d = (await res.json()) as { years?: number; purchasePrice?: number | string };
+  const dollars = typeof d.purchasePrice === "string" ? parseFloat(d.purchasePrice) : d.purchasePrice ?? 0;
+  return { priceCents: Math.round((Number.isFinite(dollars) ? dollars : 0) * 100), years: d.years ?? years };
 }
 
 /** Availability + price in one shot (price only fetched when available). */
