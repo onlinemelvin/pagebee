@@ -6,6 +6,9 @@ import { isMarketing } from "./categories";
 import { isSuppressed, unsubscribeUrlFor } from "./preferences";
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL ?? "PageBee <noreply@pagebee.com>";
+// Optional global reply-to (e.g. a real inbox while the sending domain is a
+// placeholder). Per-send `replyTo` still overrides it.
+const DEFAULT_REPLY_TO = process.env.RESEND_REPLY_TO || undefined;
 
 export interface DispatchParams {
   to: string;
@@ -102,7 +105,7 @@ export async function dispatch(params: DispatchParams): Promise<DispatchResult> 
       to,
       subject: params.subject,
       html,
-      replyTo: params.replyTo,
+      replyTo: params.replyTo ?? DEFAULT_REPLY_TO,
       attachments: params.attachments,
       listUnsubscribeUrl: oneClickUrl,
       headers: { "X-Entity-Ref-ID": log.id },
