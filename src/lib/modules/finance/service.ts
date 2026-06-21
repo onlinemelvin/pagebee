@@ -716,6 +716,25 @@ export async function generateStatement(clientId: string, customerId: string, pe
   return { id: statement.id, ...data, periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString() };
 }
 
+/** List a client's generated statements (newest first), optionally for one customer. */
+export async function listStatements(clientId: string, customerId?: string) {
+  return prisma.statement.findMany({
+    where: { clientId, ...(customerId ? { customerId } : {}) },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      customerId: true,
+      periodStart: true,
+      periodEnd: true,
+      data: true,
+      pdfUrl: true,
+      createdAt: true,
+      customer: { select: { name: true } },
+    },
+  });
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export interface FinanceDashboard {

@@ -164,6 +164,46 @@ export async function createInvoiceCheckout(token: string, opts: { deposit?: boo
   return session.url;
 }
 
+/**
+ * Owner-initiated standalone payment link for an ad-hoc amount (not tied to an
+ * invoice) — e.g. a deposit or quick charge the owner texts/emails a customer.
+ * A Connect destination charge with the platform fee, same as invoice checkout.
+ * Owner-gated at the route (deliberately NOT a public endpoint — a login-less
+ * "mint an arbitrary charge URL" surface would be an abuse vector).
+ */
+export async function createPaymentLink(
+  clientId: string,
+  input: { amountCents: number; description: string; currency?: string; customerEmail?: string },
+): Promise<{ url: string }> {
+  if (!stripeConfigured()) throw new PaymentError(503, "stripe_not_configured");
+  const amount = Math.round(input.amountCents);
+  if (!Number.isInteger(amount) || amount < 50) throw new PaymentError(400, "invalid_amount");
+
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { stripeConnectAccountId: true, paymentsEnabled: true } });
+  const account = client?.stripeConnectAccountId;
+  if (!account || !client.paymentsEnabled) throw new PaymentError(409, "payments_unavailable");
+
+  const currency = (input.currency ?? "usd").toLowerCase();
+  const base = appBaseUrl();
+  const session = await getStripe().checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      { price_data: { currency, product_data: { name: input.description.slice(0, 200) }, unit_amount: amount }, quantity: 1 },
+    ],
+    payment_intent_data: {
+      application_fee_amount: applicationFee(amount),
+      transfer_data: { destination: account },
+    },
+    customer_email: input.customerEmail || undefined,
+    success_url: `${base}/?payment=success`,
+    cancel_url: `${base}/?payment=cancelled`,
+    metadata: { clientId, kind: "payment_link" },
+  });
+  if (!session.url) throw new PaymentError(502, "checkout_failed");
+  await writeAudit({ action: "payments.payment_link_created", entityType: "Client", entityId: clientId, clientId, metadata: { amount, currency } });
+  return { url: session.url };
+}
+
 /** Apply a successful charge to an invoice (idempotent on the payment intent). */
 async function applyPayment(invoiceId: string, amount: number, refs: { paymentIntentId?: string | null; chargeId?: string | null; receiptUrl?: string | null }) {
   const inv = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true, clientId: true, customerId: true, total: true, amountPaid: true, currency: true, number: true, taxCalculationId: true } });
