@@ -27,4 +27,9 @@ export const CATEGORY_LABELS: Record<EmailCategory, string> = {
   TIPS: "Tips & how-tos",
   ANNOUNCEMENT: "Product announcements",
   PROMOTION: "Offers & promotions",
+  CUSTOMER_INQUIRY: "Customer · inquiry reply",
+  CUSTOMER_APPOINTMENT: "Customer · appointments",
+  CUSTOMER_BILLING: "Customer · billing",
+  CUSTOMER_REVIEW: "Customer · review request",
+  CUSTOMER_MARKETING: "Customer · marketing",
 };

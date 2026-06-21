@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma, Invoice, InvoiceLineItem, FinanceDocType, InvoiceStatus } from "@prisma/client";
 import { writeAudit } from "@/lib/modules/audit";
-import { sendEmail, escapeHtml } from "@/lib/modules/email";
+import * as customerNotify from "@/lib/modules/email/customer-notifications";
 import { requireWithinLimit, UsageError } from "@/lib/modules/usage";
 import { computeTotals, type LineInput } from "./money";
 import { renderDocumentPdf, pdfFilename, type PdfBusiness } from "./pdf";
@@ -484,8 +484,6 @@ export async function sendDocument(clientId: string, id: string): Promise<Docume
   });
 
   if (inv.customer?.email) {
-    const client = await prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true, ownerEmail: true } });
-    const label = inv.docType.charAt(0) + inv.docType.slice(1).toLowerCase();
     const dto = documentDTO(updated);
     // Attach a PDF copy so the customer keeps a record even without opening the hosted link. Best-
     // effort: if PDF generation fails for any reason, still send the email with the link.
@@ -496,13 +494,14 @@ export async function sendDocument(clientId: string, id: string): Promise<Docume
     } catch (err) {
       console.error("[finance] PDF attach failed; sending without it", err);
     }
-    await sendEmail({
-      to: inv.customer.email,
-      subject: `${label} ${inv.number} from ${client?.businessName ?? "your provider"}`,
-      html: `<p>Hi ${escapeHtml(inv.customer.name ?? "there")},</p><p>Your ${label.toLowerCase()} <strong>${escapeHtml(inv.number)}</strong> is ready to view${attachments ? " (a PDF copy is attached)" : ""}.</p><p><a href="${APP_URL}/d/${token}">View ${label.toLowerCase()} →</a></p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
-      replyTo: client?.ownerEmail ?? undefined,
-      attachments,
-    });
+    const viewUrl = `${APP_URL}/d/${token}`;
+    const dueOn = updated.dueDate ? updated.dueDate.toLocaleDateString("en-US", { dateStyle: "long" }) : undefined;
+    const common = { to: inv.customer.email, customerId: inv.customerId, customerName: inv.customer.name, number: inv.number, amountCents: updated.total, viewUrl, attachments };
+    if (inv.docType === "INVOICE") {
+      await customerNotify.sendInvoiceSent(clientId, { ...common, dueOn });
+    } else {
+      await customerNotify.sendEstimateSent(clientId, { ...common, expiresOn: dueOn });
+    }
   }
   await writeAudit({ action: "finance.document_sent", entityType: "Invoice", entityId: id, clientId });
   return documentDTO(updated);

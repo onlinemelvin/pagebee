@@ -29,6 +29,7 @@ async function main() {
   const { sweepBookingReminders } = await import("@/lib/modules/booking");
   const { sweepInvoiceReminders, sweepRecurringPlans } = await import("@/lib/modules/finance");
   const { sweepScheduledCampaigns, sweepEmailReminders } = await import("@/lib/modules/email/sweep");
+  const { sweepSendingDomains } = await import("@/lib/modules/email/sending-domains");
 
   console.log("[worker] PageBee generation worker started");
   const recovered = await requeueStaleJobs();
@@ -52,6 +53,8 @@ async function main() {
         if (ec.sent) console.log(`[worker] scheduled email campaigns sent: ${ec.sent}`);
         const er = await sweepEmailReminders();
         if (er.setupReminders) console.log(`[worker] setup-fee reminders sent: ${er.setupReminders}`);
+        const sd = await sweepSendingDomains();
+        if (sd.verified) console.log(`[worker] sending domains verified: ${sd.verified}`);
       }
 
       const id = await claimNextQueuedJob();

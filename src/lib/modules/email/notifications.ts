@@ -72,42 +72,42 @@ export const sendWelcome = (clientId: string) =>
 
 // — Billing -------------------------------------------------------------------
 export const sendPaymentReceipt = (clientId: string, args: { amountCents: number; description: string; when: string; invoiceUrl?: string }) =>
-  toClient(clientId, (r) => t.paymentReceiptEmail({ businessName: r.businessName, ...args }));
+  toClient(clientId, (r) => t.paymentReceiptEmail({ businessName: r.businessName, ownerName: r.ownerName, ...args }));
 
 export const sendPaymentFailed = (clientId: string, args: { amountCents: number; attempt: number }) =>
-  toClient(clientId, (r) => t.paymentFailedEmail({ businessName: r.businessName, updatePaymentUrl: billingUrl(), ...args }));
+  toClient(clientId, (r) => t.paymentFailedEmail({ businessName: r.businessName, ownerName: r.ownerName, updatePaymentUrl: billingUrl(), ...args }));
 
 export const sendRenewalNotice = (clientId: string, args: { amountCents: number; renewsOn: string }) =>
-  toClient(clientId, (r) => t.renewalNoticeEmail({ businessName: r.businessName, manageUrl: billingUrl(), ...args }));
+  toClient(clientId, (r) => t.renewalNoticeEmail({ businessName: r.businessName, ownerName: r.ownerName, manageUrl: billingUrl(), ...args }));
 
 export const sendSubscriptionCancelled = (clientId: string, args: { accessUntil?: string } = {}) =>
-  toClient(clientId, (r) => t.subscriptionCancelledEmail({ businessName: r.businessName, reactivateUrl: billingUrl(), ...args }));
+  toClient(clientId, (r) => t.subscriptionCancelledEmail({ businessName: r.businessName, ownerName: r.ownerName, reactivateUrl: billingUrl(), ...args }));
 
 export const sendPlanChanged = (clientId: string, args: { fromPlan: string; toPlan: string }) =>
-  toClient(clientId, (r) => t.planChangedEmail({ businessName: r.businessName, dashboardUrl: billingUrl(), ...args }));
+  toClient(clientId, (r) => t.planChangedEmail({ businessName: r.businessName, ownerName: r.ownerName, dashboardUrl: billingUrl(), ...args }));
 
 // — Website lifecycle ---------------------------------------------------------
 export const sendPreviewReady = (clientId: string) =>
-  toClient(clientId, (r) => t.previewReadyEmail({ businessName: r.businessName, reviewUrl: reviewUrl() }));
+  toClient(clientId, (r) => t.previewReadyEmail({ businessName: r.businessName, ownerName: r.ownerName, reviewUrl: reviewUrl() }));
 
 export const sendSitePublished = (clientId: string, siteUrl: string) =>
-  toClient(clientId, (r) => t.sitePublishedEmail({ businessName: r.businessName, siteUrl }));
+  toClient(clientId, (r) => t.sitePublishedEmail({ businessName: r.businessName, ownerName: r.ownerName, siteUrl }));
 
 export const sendUpdateApproved = (clientId: string, siteUrl: string) =>
-  toClient(clientId, (r) => t.updateApprovedEmail({ businessName: r.businessName, siteUrl }));
+  toClient(clientId, (r) => t.updateApprovedEmail({ businessName: r.businessName, ownerName: r.ownerName, siteUrl }));
 
 export const sendUpdateRejected = (clientId: string, reason?: string) =>
-  toClient(clientId, (r) => t.updateRejectedEmail({ businessName: r.businessName, reason, dashboardUrl: dashboardUrl() }));
+  toClient(clientId, (r) => t.updateRejectedEmail({ businessName: r.businessName, ownerName: r.ownerName, reason, dashboardUrl: dashboardUrl() }));
 
 // — Usage / reminders ---------------------------------------------------------
 export const sendQuotaWarning = (clientId: string, args: { metric: string; used: number; limit: number }) =>
-  toClient(clientId, (r) => t.quotaWarningEmail({ businessName: r.businessName, upgradeUrl: upgradeUrl(), ...args }));
+  toClient(clientId, (r) => t.quotaWarningEmail({ businessName: r.businessName, ownerName: r.ownerName, upgradeUrl: upgradeUrl(), ...args }));
 
 export const sendSetupFeePending = (clientId: string) =>
-  toClient(clientId, (r) => t.setupFeePendingEmail({ businessName: r.businessName, payUrl: billingUrl() }));
+  toClient(clientId, (r) => t.setupFeePendingEmail({ businessName: r.businessName, ownerName: r.ownerName, payUrl: billingUrl() }));
 
 export const sendPreviewAutoReleaseReminder = (clientId: string, hoursLeft: number) =>
-  toClient(clientId, (r) => t.previewAutoReleaseReminderEmail({ businessName: r.businessName, reviewUrl: reviewUrl(), hoursLeft }));
+  toClient(clientId, (r) => t.previewAutoReleaseReminderEmail({ businessName: r.businessName, ownerName: r.ownerName, reviewUrl: reviewUrl(), hoursLeft }));
 
 // — Account security (addressed to a specific user/email) ---------------------
 async function toEmail(args: {

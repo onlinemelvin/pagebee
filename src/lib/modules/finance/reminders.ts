@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/db";
-import { sendEmail, escapeHtml } from "@/lib/modules/email";
-import { formatMoney } from "./money";
+import * as customerNotify from "@/lib/modules/email/customer-notifications";
 import { getFinanceSettings } from "./service";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -28,7 +27,6 @@ export async function sweepInvoiceReminders(): Promise<{ sent: number }> {
   });
 
   const settingsCache = new Map<string, Awaited<ReturnType<typeof getFinanceSettings>>>();
-  const clientCache = new Map<string, { businessName: string; ownerEmail: string | null } | null>();
   let sent = 0;
 
   for (const inv of invoices) {
@@ -59,17 +57,14 @@ export async function sweepInvoiceReminders(): Promise<{ sent: number }> {
       (daysPastDue > 0 && rem.afterDueDays.includes(daysPastDue));
     if (!dueToday) continue;
 
-    let client = clientCache.get(inv.clientId);
-    if (client === undefined) {
-      client = await prisma.client.findUnique({ where: { id: inv.clientId }, select: { businessName: true, ownerEmail: true } });
-      clientCache.set(inv.clientId, client);
-    }
-    const overdue = daysPastDue > 0;
-    await sendEmail({
+    await customerNotify.sendInvoiceOverdue(inv.clientId, {
       to: inv.customer.email,
-      subject: `${overdue ? "Overdue" : "Reminder"}: invoice ${inv.number} from ${client?.businessName ?? "your provider"}`,
-      html: `<p>Hi ${escapeHtml(inv.customer.name ?? "there")},</p><p>A quick reminder that invoice <strong>${escapeHtml(inv.number)}</strong> for ${formatMoney(balance, inv.currency)} is ${overdue ? "now overdue" : "due soon"}.</p><p><a href="${APP_URL}/d/${inv.publicToken}">View &amp; pay →</a></p><p>— ${escapeHtml(client?.businessName ?? "")}</p>`,
-      replyTo: client?.ownerEmail ?? undefined,
+      customerId: inv.customerId,
+      customerName: inv.customer.name,
+      number: inv.number,
+      amountCents: balance,
+      dueOn: inv.dueDate.toLocaleDateString("en-US", { dateStyle: "long" }),
+      viewUrl: `${APP_URL}/d/${inv.publicToken}`,
     });
     await prisma.invoice.update({ where: { id: inv.id }, data: { lastReminderAt: now, reminderCount: { increment: 1 } } });
     sent++;

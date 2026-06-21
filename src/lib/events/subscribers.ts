@@ -1,6 +1,7 @@
 import { on } from "@/lib/events";
 import { sendEmail } from "@/lib/modules/email";
 import * as notify from "@/lib/modules/email/notifications";
+import * as customerNotify from "@/lib/modules/email/customer-notifications";
 import { upsertCustomerFromLead } from "@/lib/modules/customer";
 import type { Lead, Booking } from "@prisma/client";
 
@@ -15,10 +16,21 @@ if (!globalForSubs.__pagebeeSubscribers) {
 
     // Auto-add the lead to the CRM: link to an existing contact (by email/phone) or create one. Fail-
     // soft — a CRM hiccup must never block lead capture or the owner notification below.
+    let customerId: string | null = null;
     try {
-      await upsertCustomerFromLead(lead);
+      customerId = await upsertCustomerFromLead(lead);
     } catch (err) {
       console.error("[event:lead.created] customer upsert failed", err);
+    }
+
+    // Auto-reply to the customer from the client business ("we received your inquiry").
+    if (lead.email) {
+      await customerNotify.sendInquiryAck(lead.clientId, {
+        to: lead.email,
+        customerId,
+        customerName: lead.name,
+        message: lead.message,
+      });
     }
 
     // TODO: look up the client owner's email; for now notify the platform inbox.
