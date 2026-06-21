@@ -1,9 +1,22 @@
 import { on } from "@/lib/events";
+import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/modules/email";
 import * as notify from "@/lib/modules/email/notifications";
 import * as customerNotify from "@/lib/modules/email/customer-notifications";
 import { upsertCustomerFromLead } from "@/lib/modules/customer";
 import type { Lead, Booking } from "@prisma/client";
+
+// Escape user-supplied values before embedding in notification HTML.
+function esc(s: string | null | undefined): string {
+  return String(s ?? "—").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Resolve the business owner's inbox for a tenant (falls back to the platform
+// inbox only when the owner has no email on file).
+async function ownerInbox(clientId: string): Promise<string> {
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { ownerEmail: true } });
+  return client?.ownerEmail || process.env.RESEND_FROM_EMAIL || "owner@pagebee.com";
+}
 
 // Register domain-event handlers exactly once (survives dev hot reload).
 const globalForSubs = globalThis as unknown as { __pagebeeSubscribers?: boolean };
@@ -33,18 +46,17 @@ if (!globalForSubs.__pagebeeSubscribers) {
       });
     }
 
-    // TODO: look up the client owner's email; for now notify the platform inbox.
-    const ownerEmail = process.env.RESEND_FROM_EMAIL ?? "owner@pagebee.com";
+    // Notify the actual business owner (falls back to the platform inbox only if none on file).
     await sendEmail({
-      to: ownerEmail,
+      to: await ownerInbox(lead.clientId),
       subject: `New ${lead.type.toLowerCase().replace("_", " ")} lead: ${lead.name}`,
       html: `
         <h2>New lead captured</h2>
-        <p><strong>Name:</strong> ${lead.name}</p>
-        <p><strong>Email:</strong> ${lead.email ?? "—"}</p>
-        <p><strong>Phone:</strong> ${lead.phone ?? "—"}</p>
-        <p><strong>Message:</strong> ${lead.message ?? "—"}</p>
-        <p><strong>Source:</strong> ${lead.source ?? "—"}</p>
+        <p><strong>Name:</strong> ${esc(lead.name)}</p>
+        <p><strong>Email:</strong> ${esc(lead.email)}</p>
+        <p><strong>Phone:</strong> ${esc(lead.phone)}</p>
+        <p><strong>Message:</strong> ${esc(lead.message)}</p>
+        <p><strong>Source:</strong> ${esc(lead.source)}</p>
       `,
     });
   });
@@ -61,18 +73,17 @@ if (!globalForSubs.__pagebeeSubscribers) {
       booking: Booking;
       customer: { name: string; email?: string; phone?: string };
     };
-    const ownerEmail = process.env.RESEND_FROM_EMAIL ?? "owner@pagebee.com";
     await sendEmail({
-      to: ownerEmail,
+      to: await ownerInbox(booking.clientId),
       subject: `New appointment request: ${booking.serviceName}`,
       html: `
         <h2>New appointment request</h2>
-        <p><strong>Service:</strong> ${booking.serviceName}</p>
-        <p><strong>When:</strong> ${booking.startAt.toLocaleString()}</p>
-        <p><strong>Name:</strong> ${customer.name}</p>
-        <p><strong>Email:</strong> ${customer.email ?? "—"}</p>
-        <p><strong>Phone:</strong> ${customer.phone ?? "—"}</p>
-        <p><strong>Notes:</strong> ${booking.notes ?? "—"}</p>
+        <p><strong>Service:</strong> ${esc(booking.serviceName)}</p>
+        <p><strong>When:</strong> ${esc(booking.startAt.toLocaleString())}</p>
+        <p><strong>Name:</strong> ${esc(customer.name)}</p>
+        <p><strong>Email:</strong> ${esc(customer.email)}</p>
+        <p><strong>Phone:</strong> ${esc(customer.phone)}</p>
+        <p><strong>Notes:</strong> ${esc(booking.notes)}</p>
       `,
     });
   });

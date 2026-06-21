@@ -17,7 +17,10 @@ export interface ResendWebhookHeaders {
  *  secret is configured — dev/stub mode). */
 export function verifyResendSignature(headers: ResendWebhookHeaders, rawBody: string): boolean {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
-  if (!secret) return true; // not configured — accept (dev). Configure in prod.
+  // Fail CLOSED in production: an unset secret would otherwise accept forged
+  // webhooks that can poison the suppression list / falsify delivery analytics.
+  // Only dev/test accepts an unconfigured secret.
+  if (!secret) return process.env.NODE_ENV !== "production";
   if (!headers.id || !headers.timestamp || !headers.signature) return false;
 
   // Reject stale deliveries (> 5 min skew) to blunt replay.

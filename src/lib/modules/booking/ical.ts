@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
+import { signingSecret } from "@/lib/secret";
 
 // Stateless, subscribable calendar feed (like Google Calendar's "secret address"):
 // the URL carries a signed token so it works in any calendar app without a login,
 // and can't be guessed for another client. No DB column needed.
 
 function secret(): string {
-  return process.env.ICAL_FEED_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "pagebee-dev-ical-secret";
+  return signingSecret("ICAL_FEED_SECRET", "SUPABASE_SERVICE_ROLE_KEY");
 }
 
 function sign(clientId: string): string {

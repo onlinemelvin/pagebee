@@ -214,11 +214,18 @@ function leadCaptureDirective(intake: WebsiteIntake, _limits: PlanLimits): strin
     "still has direct contact details even when the form isn't shown. Give that Contact section id=\"contact\".",
     "PRIMARY CTA BUTTONS — every prominent button/link whose job is to send the visitor to the lead form",
     "(hero CTA, sticky-nav CTA, mid-page 'get started' buttons, etc.) MUST: (a) carry the attribute",
-    "data-pb-cta, (b) link to the form/contact section via href=\"#contact\", and (c) use a label that matches",
-    "the primary goal (e.g. 'Request a Quote', 'Book an Appointment'). PageBee re-labels and re-targets these",
-    "at serve time: it keeps them in sync if the owner changes their goal later, and when the form is turned",
-    "OFF it automatically rewrites them to 'Contact Us' pointing at the contact section. Do NOT add",
-    "data-pb-cta to ordinary nav links, phone/email links, or non-lead buttons — only the form-bound CTAs.",
+    "data-pb-cta, (b) link to the form/contact section, and (c) use a label that matches the primary goal",
+    "(e.g. 'Request a Quote', 'Book an Appointment'). The HREF depends on your chosen layout:",
+    "  • SINGLE-PAGE — use href=\"#contact\" (the contact section is on the same page, so this scrolls to it).",
+    "  • MULTI-PAGE / HYBRID where the contact form is on its OWN page (e.g. data-page=\"/contact\") — link to",
+    "    that PAGE so the router actually navigates there: href=\"/contact#contact\" (the page path, optionally",
+    "    with the #contact anchor). A bare href=\"#contact\" will NOT work on a multi-page site — the contact",
+    "    section lives on another page, so the button would do nothing. Only use #contact when the contact",
+    "    section is on the CURRENT page.",
+    "PageBee re-labels and re-targets these at serve time: it keeps them in sync if the owner changes their",
+    "goal later, and when the form is turned OFF it automatically rewrites them to 'Contact Us' pointing at",
+    "the contact section. Do NOT add data-pb-cta to ordinary nav links, phone/email links, or non-lead",
+    "buttons — only the form-bound CTAs.",
   ].join("\n");
 }
 
@@ -309,10 +316,14 @@ No markdown, no code fences, no commentary before or after.
     • HYBRID — a multi-page site where some pages bundle several sections (e.g. Home = Hero + Services + Testimonials sections; About and Contact are their own pages). Combine the two techniques.
   Match the choice to the business: a solo plumber → single-page; a multi-service clinic or a restaurant with menu/gallery/events → multi-page or hybrid.
 - MULTI-PAGE CONTRACT (only when you choose multi-page/hybrid). Wrap each page in a plain block container and let the PLATFORM route it — do NOT write routing JS, do NOT pre-hide pages with display:none/hidden:
+    <header> …sticky nav (shared chrome — see below)… </header>
     <div data-page="/" data-title="Home — {Business Name}"> …home (may contain several sections)… </div>
     <div data-page="/about" data-title="About — {Business Name}"> …about… </div>
+    <div data-page="/contact" data-title="Contact — {Business Name}"> …contact section… </div>
+    <footer> …shared footer… </footer>
   The HOME page MUST be the FIRST [data-page] and use data-page="/". Use clean lowercase hyphenated paths (/about, /services, /gallery). data-title sets that page's tab title. Nav links use REAL paths (<a href="/about">). PageBee injects a router that shows the matching page, animates the transition, marks the active link (class "is-active"), closes the mobile menu, and wires deep links + back/forward. Keep ALL pages in the DOM (crawlable). In-page #anchor links to sections WITHIN the current page still work normally.
-- NAVIGATION (both layouts) — a sticky <header> with a <nav>, the logo/business name linking home, and the primary CTA repeated. Add CSS so the class "is-active" (set by the platform — on the current page link in multi-page, or the in-view section link in single-page) is clearly distinct (color/underline/weight). Provide a mobile menu: a <button aria-controls="mobile-menu" aria-expanded="false"> toggling a panel <... id="mobile-menu" data-menu hidden>; you MAY write the small toggle handler (flip aria-expanded + the panel's hidden attribute). A matching <footer> repeats the nav + contact/hours/areas. The platform highlights nav links and closes the mobile menu for you in BOTH layouts.
+  SHARED CHROME — CRITICAL: the platform shows ONE [data-page] at a time and HIDES the rest, so anything you put INSIDE a [data-page] appears ONLY on that page. Therefore the sticky <header>/nav and the <footer> MUST live OUTSIDE every [data-page] wrapper (as siblings — header before the first page, footer after the last), so they persist on EVERY page. Put ONLY each page's unique content inside its [data-page]. Do NOT nest the header or footer inside the home page (or any single page) — that is the #1 mistake and it makes the nav vanish on sub-pages.
+- NAVIGATION (both layouts) — a sticky <header> with a <nav>, the logo/business name linking home, and the primary CTA repeated. In multi-page/hybrid layouts this header sits OUTSIDE the [data-page] wrappers (see SHARED CHROME above) so it shows on every page. Add CSS so the class "is-active" (set by the platform — on the current page link in multi-page, or the in-view section link in single-page) is clearly distinct (color/underline/weight). Provide a mobile menu: a <button aria-controls="mobile-menu" aria-expanded="false"> toggling a panel <... id="mobile-menu" data-menu hidden>; you MAY write the small toggle handler (flip aria-expanded + the panel's hidden attribute). A matching <footer> (also outside the [data-page] wrappers in multi-page) repeats the nav + contact/hours/areas. The platform highlights nav links and closes the mobile menu for you in BOTH layouts.
 - SEO: include a descriptive <title>, <meta name="description">, <link rel="canonical" href="__SITE_URL__/">, and Open Graph tags (og:title, og:description, og:url="__SITE_URL__", og:type="website"). One <h1> on a single-page site (one per page in multi-page); use header/main/section/footer landmarks.
 - IMAGERY — use images to enrich the page, but ONLY as INTEGRATED section visuals, never as a photo gallery. GOOD: a strong hero image; one photo paired beside the About story; a single feature/banner image behind or alongside a section's text. BAD — do NOT do any of these unless the owner explicitly chose a Gallery page (see PAGES / SECTIONS): a standalone ROW / STRIP / GRID / WALL of 2+ photos, a "see our work" / "our projects" photo block, a carousel of photos, or images lined up just to fill space. Treat ANY block of multiple photos as a GALLERY — it is FORBIDDEN unless selected. One image per section maximum, each tied to real copy, with descriptive alt + loading="lazy". Rich means well-placed, not many-in-a-grid. If no images are provided, use tasteful CSS gradients/patterns and richer layout — NEVER emit broken or placeholder image URLs.
 - SCROLL-REVEAL — the PLATFORM owns it. Just mark elements that should fade/rise in on scroll with the data-reveal attribute (e.g. <section data-reveal>, or each card in a grid). PageBee injects a controller at serve time that reveals above-the-fold content INSTANTLY (no blank first paint), fades in below-the-fold content as it scrolls into view, and respects prefers-reduced-motion.

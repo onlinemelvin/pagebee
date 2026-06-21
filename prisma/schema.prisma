@@ -2168,7 +2168,7 @@ model SendingDomain {
   id             String              @id @default(cuid())
   clientId       String
   client         Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  domain         String              @unique // the bare domain we send from, e.g. mail.acme.com
+  domain         String // the bare domain we send from, e.g. mail.acme.com
   resendDomainId String? // Resend domain id (for verify polling)
   status         SendingDomainStatus @default(PENDING)
   records        Json? // DNS records the owner must add (when we don't control DNS)
@@ -2178,6 +2178,10 @@ model SendingDomain {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
+  // Scoped per-client (NOT a global unique on `domain`) so one tenant can never
+  // hijack another's row via an upsert that rewrites clientId. Cross-client
+  // ownership of the same host is rejected explicitly in provisionSendingDomain.
+  @@unique([clientId, domain])
   @@index([clientId])
   @@index([status])
   @@map("sending_domains")

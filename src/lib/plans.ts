@@ -109,7 +109,7 @@ export const PLANS: PlanDef[] = [
       customDomain: true,
       booking: true,
       chat: true,
-      smsAlerts: true,
+      smsAlerts: false, // disabled until a real SMS provider is wired — sendSms() is a metered stub that would bill for unsent messages
       smsIncludedMonthly: 100,
       emailIncludedMonthly: 1000,
       payments: false,
@@ -164,7 +164,7 @@ export const PLANS: PlanDef[] = [
       customDomain: true,
       booking: true,
       chat: true,
-      smsAlerts: true,
+      smsAlerts: false, // disabled until a real SMS provider is wired — sendSms() is a metered stub that would bill for unsent messages
       smsIncludedMonthly: 500,
       emailIncludedMonthly: 5000,
       payments: true,

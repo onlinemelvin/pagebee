@@ -1,20 +1,31 @@
 import { NextResponse } from "next/server";
 import { requireOwner, AuthError } from "@/lib/auth/session";
+import { assertFeature } from "@/lib/auth/policy";
 import { getSendingDomain, provisionSendingDomain, checkSendingDomain, removeSendingDomain, SendingDomainError } from "@/lib/modules/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/v1/client/email-domain — current sending-domain status + DNS records. */
-export async function GET() {
-  let auth;
+/**
+ * Resolve the owner + enforce the customDomain plan gate (a custom sending
+ * domain is a CONNECT/AUTOMATE capability). Returns the client or a NextResponse.
+ */
+async function gate() {
   try {
-    auth = await requireOwner();
+    const { client } = await requireOwner();
+    assertFeature(client, "customDomain");
+    return { client };
   } catch (err) {
-    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    if (err instanceof AuthError) return { res: NextResponse.json({ error: err.message }, { status: err.status }) };
     throw err;
   }
-  const row = await getSendingDomain(auth.client.id);
+}
+
+/** GET /api/v1/client/email-domain — current sending-domain status + DNS records. */
+export async function GET() {
+  const g = await gate();
+  if ("res" in g) return g.res;
+  const row = await getSendingDomain(g.client.id);
   return NextResponse.json({ sendingDomain: row });
 }
 
@@ -23,15 +34,10 @@ export async function GET() {
  * Owner sets up / re-checks / removes sending customer email from their own domain.
  */
 export async function POST(req: Request) {
-  let auth;
-  try {
-    auth = await requireOwner();
-  } catch (err) {
-    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
-    throw err;
-  }
+  const g = await gate();
+  if ("res" in g) return g.res;
   const action = new URL(req.url).searchParams.get("action") ?? "provision";
-  const clientId = auth.client.id;
+  const clientId = g.client.id;
 
   try {
     if (action === "remove") {

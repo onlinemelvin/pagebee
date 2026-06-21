@@ -1,6 +1,19 @@
 import { escapeHtml } from "./send";
 import type { ClientBrand } from "./tenant-sender";
 
+/**
+ * Escape + scheme-validate a URL for safe use inside an href/src attribute.
+ * Client-controlled branding values (logoUrl, websiteUrl) reach these sinks, so
+ * we reject anything that isn't http(s) — blocking javascript:/data: payloads
+ * and attribute breakout — and HTML-escape the rest. Returns "#" when invalid.
+ */
+function safeUrl(url: string | null | undefined): string {
+  if (!url) return "#";
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return "#";
+  return escapeHtml(trimmed);
+}
+
 const INK = "#1c1917";
 const BODY = "#44403c";
 const MUTED = "#78716c";
@@ -23,7 +36,7 @@ function contrastText(hex: string): string {
 /** A brand-coloured CTA button for customer emails. */
 export function tButton(label: string, url: string, color: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px"><tr><td style="border-radius:12px;background:${color}">
-    <a href="${url}" style="display:inline-block;padding:13px 26px;border-radius:12px;color:${contrastText(color)};font-weight:700;font-size:15px;text-decoration:none">${escapeHtml(label)}</a>
+    <a href="${safeUrl(url)}" style="display:inline-block;padding:13px 26px;border-radius:12px;color:${contrastText(color)};font-weight:700;font-size:15px;text-decoration:none">${escapeHtml(label)}</a>
   </td></tr></table>`;
 }
 
@@ -42,8 +55,9 @@ export interface TenantLayoutOptions {
 
 /** The brand mark: the client's logo image if set, else their business name. */
 function brandMark(brand: ClientBrand): string {
-  if (brand.logoUrl) {
-    return `<img src="${brand.logoUrl}" alt="${escapeHtml(brand.businessName)}" style="display:block;max-height:40px;width:auto;border:0" />`;
+  const logo = safeUrl(brand.logoUrl);
+  if (brand.logoUrl && logo !== "#") {
+    return `<img src="${logo}" alt="${escapeHtml(brand.businessName)}" style="display:block;max-height:40px;width:auto;border:0" />`;
   }
   return `<span style="font-size:19px;font-weight:800;letter-spacing:-0.01em;color:${INK}">${escapeHtml(brand.businessName)}</span>`;
 }
@@ -65,14 +79,14 @@ export function renderTenantLayout(opts: TenantLayoutOptions): string {
 
   const contactBits = [
     brand.phone ? escapeHtml(brand.phone) : "",
-    brand.websiteUrl ? `<a href="${brand.websiteUrl}" style="color:${MUTED};text-decoration:underline">${escapeHtml(brand.websiteUrl.replace(/^https?:\/\//, ""))}</a>` : "",
+    brand.websiteUrl ? `<a href="${safeUrl(brand.websiteUrl)}" style="color:${MUTED};text-decoration:underline">${escapeHtml(brand.websiteUrl.replace(/^https?:\/\//, ""))}</a>` : "",
   ].filter(Boolean).join("&nbsp;&nbsp;·&nbsp;&nbsp;");
 
   const marketingFooter = opts.unsubscribeUrl
     ? `<p style="margin:10px 0 0;color:${FAINT};font-size:12px;line-height:1.55">
         ${brand.address ? `${escapeHtml(brand.address)}<br/>` : ""}
         You're receiving this because you're a customer of ${escapeHtml(brand.businessName)}.
-        <a href="${opts.unsubscribeUrl}" style="color:${MUTED};text-decoration:underline">Unsubscribe</a>.
+        <a href="${safeUrl(opts.unsubscribeUrl)}" style="color:${MUTED};text-decoration:underline">Unsubscribe</a>.
       </p>`
     : "";
 

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/modules/audit";
 import { getFinanceSettings, saveFinanceSettings } from "@/lib/modules/finance";
 import { getStripe, stripeConfigured, connectClientId, appBaseUrl, applicationFee, PLATFORM_FEE_BPS } from "@/lib/stripe/client";
+import { signingSecret } from "@/lib/secret";
 
 export class PaymentError extends Error {
   constructor(
@@ -50,7 +51,7 @@ async function assertTier(clientId: string): Promise<void> {
 }
 
 function connectStateSecret(): string {
-  return process.env.STRIPE_CONNECT_STATE_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "pagebee-dev-connect-secret";
+  return signingSecret("STRIPE_CONNECT_STATE_SECRET", "SUPABASE_SERVICE_ROLE_KEY");
 }
 
 /** Signed, single-use-ish OAuth `state` bound to a client (CSRF + tamper protection). */
@@ -272,14 +273,39 @@ export async function processStripeEvent(event: Stripe.Event): Promise<void> {
     }
     case "charge.refunded": {
       const charge = event.data.object as Stripe.Charge;
-      const payment = await prisma.payment.findFirst({ where: { stripeChargeId: charge.id }, select: { id: true, invoiceId: true } });
+      const payment = await prisma.payment.findFirst({ where: { stripeChargeId: charge.id }, select: { id: true, invoiceId: true, amount: true } });
       if (payment) {
-        const refundedTotal = charge.amount_refunded ?? 0;
-        await prisma.payment.update({ where: { id: payment.id }, data: { status: charge.refunded ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
-        if (payment.invoiceId) {
-          await prisma.invoice.update({ where: { id: payment.invoiceId }, data: { status: "REFUNDED", amountPaid: { decrement: 0 } } }).catch(() => {});
+        // charge.amount_refunded is the CUMULATIVE amount refunded on this charge.
+        const cumulativeRefunded = charge.amount_refunded ?? 0;
+        const fullyRefunded = charge.refunded || cumulativeRefunded >= payment.amount;
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: fullyRefunded ? "REFUNDED" : "PARTIALLY_REFUNDED" },
+        });
+
+        // Reconcile Refund rows to the cumulative truth. Settle any PENDING
+        // owner-initiated refund, then add a row for any not-yet-recorded delta
+        // (e.g. a refund issued from the Stripe dashboard) — never double-count.
+        const existing = await prisma.refund.findMany({ where: { paymentId: payment.id }, select: { amount: true } });
+        const recorded = existing.reduce((s, r) => s + r.amount, 0);
+        await prisma.refund.updateMany({ where: { paymentId: payment.id, status: "PENDING" }, data: { status: "SUCCEEDED" } });
+        if (cumulativeRefunded > recorded) {
+          await prisma.refund.create({
+            data: { paymentId: payment.id, invoiceId: payment.invoiceId, amount: cumulativeRefunded - recorded, status: "SUCCEEDED", reason: "stripe_webhook" },
+          });
         }
-        void refundedTotal;
+
+        if (payment.invoiceId) {
+          // Recompute net paid from the ledger: sum(payments) - sum(refunds), clamped to [0, total].
+          const [inv, paidAgg, refundAgg] = await Promise.all([
+            prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { total: true } }),
+            prisma.payment.aggregate({ where: { invoiceId: payment.invoiceId, status: { in: ["SUCCEEDED", "PARTIALLY_REFUNDED", "REFUNDED"] } }, _sum: { amount: true } }),
+            prisma.refund.aggregate({ where: { invoiceId: payment.invoiceId }, _sum: { amount: true } }),
+          ]);
+          const net = Math.max(0, (paidAgg._sum.amount ?? 0) - (refundAgg._sum.amount ?? 0));
+          const status = net <= 0 ? "REFUNDED" : net >= (inv?.total ?? 0) ? "PAID" : "PARTIALLY_PAID";
+          await prisma.invoice.update({ where: { id: payment.invoiceId }, data: { amountPaid: net, status } }).catch(() => {});
+        }
       }
       break;
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles, Check, RefreshCw, ShieldCheck, Zap, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -71,12 +72,12 @@ export function PaymentsConnect({ status, notice }: { status: PaymentStatus; not
             </ul>
             <p className="mt-3 text-xs text-stone-400">Flat {fee}% per payment — no monthly fees, no setup cost. Payouts go straight to your bank.</p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <a
+              <Link
                 href="/client/invoices/payments"
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 px-5 py-2.5 text-sm font-semibold text-stone-950 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-6px_rgba(245,158,11,0.6)] motion-reduce:transform-none"
               >
                 <Sparkles size={15} /> {status.connected ? "Finish activating PageBee Pay" : "Activate PageBee Pay"}
-              </a>
+              </Link>
               {status.connected && (
                 <Button size="sm" variant="ghost" disabled={busy} onClick={refresh}>
                   <RefreshCw size={14} className={cn(busy && "animate-spin")} /> Check status

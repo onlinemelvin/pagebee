@@ -24,6 +24,9 @@ interface Base {
   businessName: string;
   accent: string;
   customerName?: string | null;
+  /** ISO currency of the document's money fields (defaults to USD). Non-USD
+   *  clients MUST pass this so amounts don't render with a "$". */
+  currency?: string;
 }
 
 // — Inquiry & booking lifecycle ----------------------------------------------
@@ -139,14 +142,14 @@ export function estimateSentEmail(args: Base & { number: string; amountCents: nu
     category: "CUSTOMER_BILLING",
     template: "customer_estimate_sent",
     subject: `Your estimate from ${args.businessName} (${args.number})`,
-    preheader: `Estimate ${args.number} for ${formatMoney(args.amountCents)} is ready to view.`,
+    preheader: `Estimate ${args.number} for ${formatMoney(args.amountCents, args.currency)} is ready to view.`,
     body:
       h("Here's your estimate") +
       greet(args.customerName) +
       p(`Thanks for the opportunity to work with you. Please find your estimate from <strong>${escapeHtml(args.businessName)}</strong> below:`) +
       detailTable([
         ["Estimate", escapeHtml(args.number)],
-        ["Total", `<span style="font-size:16px">${formatMoney(args.amountCents)}</span>`],
+        ["Total", `<span style="font-size:16px">${formatMoney(args.amountCents, args.currency)}</span>`],
         ...(args.expiresOn ? [["Valid until", escapeHtml(args.expiresOn)] as [string, string]] : []),
       ]) +
       tButton("View estimate", args.viewUrl, args.accent) +
@@ -176,14 +179,14 @@ export function invoiceSentEmail(args: Base & { number: string; amountCents: num
     category: "CUSTOMER_BILLING",
     template: "customer_invoice_sent",
     subject: `Invoice ${args.number} from ${args.businessName}`,
-    preheader: `Invoice ${args.number} for ${formatMoney(args.amountCents)}${args.dueOn ? `, due ${args.dueOn}` : ""}.`,
+    preheader: `Invoice ${args.number} for ${formatMoney(args.amountCents, args.currency)}${args.dueOn ? `, due ${args.dueOn}` : ""}.`,
     body:
       h("Here's your invoice") +
       greet(args.customerName) +
       p(`Thank you for your business! Here are the details of your invoice from <strong>${escapeHtml(args.businessName)}</strong>:`) +
       detailTable([
         ["Invoice", escapeHtml(args.number)],
-        ["Amount due", `<span style="font-size:16px">${formatMoney(args.amountCents)}</span>`],
+        ["Amount due", `<span style="font-size:16px">${formatMoney(args.amountCents, args.currency)}</span>`],
         ...(args.dueOn ? [["Due date", escapeHtml(args.dueOn)] as [string, string]] : []),
       ]) +
       tButton("View & pay invoice", args.viewUrl, args.accent) +
@@ -197,14 +200,14 @@ export function customerPaymentReceiptEmail(args: Base & { number: string; amoun
     category: "CUSTOMER_BILLING",
     template: "customer_payment_receipt",
     subject: `Payment received — thank you! (${args.number})`,
-    preheader: `We received your payment of ${formatMoney(args.amountCents)}. Thank you!`,
+    preheader: `We received your payment of ${formatMoney(args.amountCents, args.currency)}. Thank you!`,
     body:
       h("Payment received — thank you! 🙌") +
       greet(args.customerName) +
       p(`We've received your payment to <strong>${escapeHtml(args.businessName)}</strong>. Here's your receipt:`) +
       detailTable([
         ["Invoice", escapeHtml(args.number)],
-        ["Amount paid", `<span style="font-size:16px">${formatMoney(args.amountCents)}</span>`],
+        ["Amount paid", `<span style="font-size:16px">${formatMoney(args.amountCents, args.currency)}</span>`],
         ["Date", escapeHtml(args.when)],
       ]) +
       (args.viewUrl ? tButton("View receipt", args.viewUrl, args.accent) : "") +
@@ -222,7 +225,7 @@ export function invoiceOverdueEmail(args: Base & { number: string; amountCents: 
       h("A friendly payment reminder") +
       greet(args.customerName) +
       p(`This is a gentle reminder that invoice <strong>${escapeHtml(args.number)}</strong> from <strong>${escapeHtml(args.businessName)}</strong> was due on <strong>${escapeHtml(args.dueOn)}</strong>.`) +
-      detailTable([["Amount due", `<span style="font-size:16px">${formatMoney(args.amountCents)}</span>`]]) +
+      detailTable([["Amount due", `<span style="font-size:16px">${formatMoney(args.amountCents, args.currency)}</span>`]]) +
       tButton("View & pay invoice", args.viewUrl, args.accent) +
       p(`If you've already paid, please disregard this — and thank you!`) +
       sign(args.businessName),
@@ -239,7 +242,7 @@ export function statementEmail(args: Base & { period: string; balanceCents: numb
       h("Your account statement") +
       greet(args.customerName) +
       p(`Here's your account statement from <strong>${escapeHtml(args.businessName)}</strong> for <strong>${escapeHtml(args.period)}</strong>.`) +
-      detailTable([["Balance", `<span style="font-size:16px">${formatMoney(args.balanceCents)}</span>`]]) +
+      detailTable([["Balance", `<span style="font-size:16px">${formatMoney(args.balanceCents, args.currency)}</span>`]]) +
       tButton("View statement", args.viewUrl, args.accent) +
       sign(args.businessName),
   };

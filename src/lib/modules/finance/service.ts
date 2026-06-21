@@ -496,7 +496,7 @@ export async function sendDocument(clientId: string, id: string): Promise<Docume
     }
     const viewUrl = `${APP_URL}/d/${token}`;
     const dueOn = updated.dueDate ? updated.dueDate.toLocaleDateString("en-US", { dateStyle: "long" }) : undefined;
-    const common = { to: inv.customer.email, customerId: inv.customerId, customerName: inv.customer.name, number: inv.number, amountCents: updated.total, viewUrl, attachments };
+    const common = { to: inv.customer.email, customerId: inv.customerId, customerName: inv.customer.name, number: inv.number, amountCents: updated.total, currency: updated.currency, viewUrl, attachments };
     if (inv.docType === "INVOICE") {
       await customerNotify.sendInvoiceSent(clientId, { ...common, dueOn });
     } else {
