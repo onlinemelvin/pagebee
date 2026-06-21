@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
-  Search, Bell, Menu, X, LogOut, CreditCard, ChevronDown, ArrowRight, Sparkles,
+  Search, Bell, Menu, X, LogOut, CreditCard, ChevronDown, ArrowRight, Sparkles, FlaskConical,
   LayoutDashboard, Inbox, CalendarCheck, FileText, Globe, Tag, Image as ImageIcon, type LucideIcon,
 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -32,7 +32,7 @@ function useClickOutside<T extends HTMLElement>(onClose: () => void) {
 }
 
 export function Topbar({
-  email, businessName, planName, tabs, actions, isOwner = true,
+  email, businessName, planName, tabs, actions, isOwner = true, testMode = false, testModeEligible = false,
 }: {
   email: string;
   businessName: string;
@@ -40,6 +40,8 @@ export function Topbar({
   tabs: NavTab[];
   actions: ActionItem[];
   isOwner?: boolean;
+  testMode?: boolean;
+  testModeEligible?: boolean;
 }) {
   const [drawer, setDrawer] = React.useState(false);
   const pathname = usePathname();
@@ -59,6 +61,7 @@ export function Topbar({
         <QuickSearch tabs={tabs} />
 
         <div className="ml-auto flex items-center gap-1.5">
+          {testModeEligible && <TestModeToggle enabled={testMode} />}
           <Notifications actions={actions} />
           <AvatarMenu email={email} businessName={businessName} planName={planName} isOwner={isOwner} />
         </div>
@@ -203,6 +206,52 @@ function Notifications({ actions }: { actions: ActionItem[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ── Test Mode toggle (testers only) ──────────────────────────────────── */
+function TestModeToggle({ enabled }: { enabled: boolean }) {
+  const router = useRouter();
+  const [on, setOn] = React.useState(enabled);
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => setOn(enabled), [enabled]);
+
+  async function toggle() {
+    const next = !on;
+    setOn(next); // optimistic
+    setBusy(true);
+    try {
+      const res = await fetch("/api/v1/client/test-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      router.refresh(); // re-read server state (generation now stubs/replays)
+    } catch {
+      setOn(!next); // revert on failure
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={busy}
+      title={on ? "Test mode is ON — website generation is stubbed/replayed (no AI cost)" : "Turn on Test Mode (stub AI generation)"}
+      aria-pressed={on}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-60",
+        on
+          ? "border-violet-300 bg-violet-100 text-violet-800 hover:bg-violet-200"
+          : "border-stone-200 text-stone-500 hover:bg-stone-100",
+      )}
+    >
+      <FlaskConical size={14} />
+      <span className="hidden sm:inline">Test mode</span>
+      <span className={cn("inline-block h-1.5 w-1.5 rounded-full", on ? "bg-violet-500" : "bg-stone-300")} />
+    </button>
   );
 }
 

@@ -131,6 +131,8 @@ export default async function ClientLayout({ children }: { children: React.React
           tabs={ws.tabs}
           actions={ws.actions}
           isOwner={isOwner}
+          testMode={ws.testMode}
+          testModeEligible={ws.testModeEligible}
         />
         <main className="relative z-10 mx-auto w-full max-w-[1400px] flex-1 p-5 sm:p-8">
           {access.warn && (

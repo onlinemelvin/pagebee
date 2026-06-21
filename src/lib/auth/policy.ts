@@ -95,6 +95,15 @@ export function setupFeeRequired(client: { isTest?: boolean }): boolean {
  * So the capability never bleeds to a real customer's frontend.
  */
 export function isDomainDryRunEligible(email: string | null | undefined): boolean {
+  return isTestModeEligible(email);
+}
+
+/**
+ * Who may toggle global Test Mode (stubs LLM generation by replaying saved data,
+ * and simulates domain purchases). Restricted to test accounts + the platform
+ * owner's inbox so a real customer can never enable it from the frontend.
+ */
+export function isTestModeEligible(email: string | null | undefined): boolean {
   if (!email) return false;
   const e = email.trim().toLowerCase();
   return e.endsWith("@test.com") || e === "onlinemelvin@gmail.com";

@@ -244,6 +244,14 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     const surgical =
       edits.length > 0 && Boolean(prev?.generatedHtml) && Boolean(process.env.ANTHROPIC_API_KEY);
 
+    // Test Mode: skip the (paid, slow) LLM calls. If a prior version exists, replay it verbatim
+    // ("saved test data"); otherwise fall through to the built-in deterministic stub (forceStub).
+    const testMode = await prisma.featureFlag
+      .findUnique({ where: { clientId_key: { clientId, key: "testMode" } }, select: { enabled: true } })
+      .then((f) => f?.enabled === true)
+      .catch(() => false);
+    const replay = testMode && !surgical && Boolean(prev?.generatedHtml);
+
     const enabledFeatures = {
       contactForm: limits.forms,
       booking: limits.booking,
@@ -307,12 +315,38 @@ export async function runGenerationJob(jobId: string): Promise<void> {
         order: p.order,
       }));
       jobOutput = (pc?.copy ?? {}) as Prisma.InputJsonValue;
+    } else if (replay && prev) {
+      // TEST MODE replay — reuse the last generated version verbatim (no LLM call), carrying its
+      // config + pages forward unchanged. Mirrors the surgical carry-forward minus the edit.
+      await setJobStage(job.id, 60, "Test mode — replaying your saved site");
+      generatedHtml = prev.generatedHtml as string;
+      htmlEngine = "test-replay";
+      configEngine = "test-replay";
+      const pc = prev.config;
+      configCreate = {
+        theme: (pc?.theme ?? {}) as Prisma.InputJsonValue,
+        copy: (pc?.copy ?? {}) as Prisma.InputJsonValue,
+        enabledFeatures: enabledFeatures as Prisma.InputJsonValue,
+        apiIntegrations: apiIntegrations as Prisma.InputJsonValue,
+        components: (pc?.components ?? []) as Prisma.InputJsonValue,
+        seoDefaults: (pc?.seoDefaults ?? {}) as Prisma.InputJsonValue,
+        adminReviewed: false,
+      };
+      pagesCreate = prev.pages.map((p) => ({
+        slug: p.slug,
+        title: p.title,
+        seoTitle: p.seoTitle ?? undefined,
+        metaDescription: p.metaDescription ?? undefined,
+        sections: (p.sections ?? []) as Prisma.InputJsonValue,
+        order: p.order,
+      }));
+      jobOutput = (pc?.copy ?? {}) as Prisma.InputJsonValue;
     } else {
       await setJobStage(job.id, 25, "Writing your website content");
-      const result = await generateWebsiteConfig(intake, limits);
+      const result = await generateWebsiteConfig(intake, limits, { forceStub: testMode });
       // Code-generated full site (HTML) wired to PageBee shared APIs.
       await setJobStage(job.id, 55, "Designing and building your pages");
-      const site = await generateSiteHtml(intake, limits, clientId);
+      const site = await generateSiteHtml(intake, limits, clientId, { forceStub: testMode });
       generatedHtml = site.html;
       htmlEngine = site.engine;
       configEngine = result.engine;

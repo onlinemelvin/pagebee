@@ -128,9 +128,10 @@ const SHAPE = `{
 export async function generateWebsiteConfig(
   intake: WebsiteIntake,
   limits: PlanLimits,
+  opts?: { forceStub?: boolean },
 ): Promise<GenerateResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (apiKey && !AI_FORCE_STUB) {
+  if (apiKey && !AI_FORCE_STUB && !opts?.forceStub) {
     try {
       const { config, prompt } = await generateWithClaude(intake, limits, apiKey);
       return { config, engine: "claude", prompt };
@@ -348,9 +349,10 @@ export async function generateSiteHtml(
   intake: WebsiteIntake,
   limits: PlanLimits,
   clientId?: string,
+  opts?: { forceStub?: boolean },
 ): Promise<{ html: string; engine: "claude+magic" | "claude" | "stub"; prompt?: PromptDebug }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (apiKey && !AI_FORCE_STUB) {
+  if (apiKey && !AI_FORCE_STUB && !opts?.forceStub) {
     try {
       // Pull reference components (21st.dev Magic) + stock photos (Pexels) in parallel; [] if unavailable.
       const [refs, images] = await Promise.all([

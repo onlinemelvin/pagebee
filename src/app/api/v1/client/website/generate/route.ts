@@ -1,5 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { requireCapability, requireOwner, AuthError } from "@/lib/auth/session";
+import { isTestMode } from "@/lib/modules/client";
 import {
   startGeneration,
   claimAndRun,
@@ -41,15 +42,18 @@ export async function POST(req: Request) {
     if (!gate.ok) return NextResponse.json(gate, { status: 409 });
 
     const { jobId } = await startGeneration(client.id, parsed.data);
-    if (process.env.VERCEL) {
+    // Test Mode generation is a fast stub/replay (no LLM), so it always runs inline — never offload
+    // it to the paid edge function, even on Vercel.
+    const testMode = await isTestMode(client.id);
+    if (process.env.VERCEL && !testMode) {
       // Vercel: the long HTML call can't run in a 60s function. `after` keeps this function alive
       // past the 202 response to run prepare (config + image prep + prompt build), which then hands
       // the long call off to the Supabase edge function. See modules/website/generation-offload.ts.
       after(() =>
         prepareGeneration(jobId).catch((e) => console.error("[generate] prepare failed", jobId, e)),
       );
-    } else if (process.env.GENERATION_WORKER !== "external") {
-      // Local / single-node: process inline (atomic claim).
+    } else if (testMode || process.env.GENERATION_WORKER !== "external") {
+      // Local / single-node / Test Mode: process inline (atomic claim).
       void claimAndRun(jobId).catch((e) => console.error("[generate] inline job failed", jobId, e));
     }
     // else: an external `npm run worker` process drains the queue.
