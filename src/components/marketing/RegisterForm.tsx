@@ -28,45 +28,8 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const formRef = React.useRef<HTMLFormElement>(null);
-  const pendingFill = React.useRef(false);
-
   const testMode = isTestEmail(email);
   const selectedPlan = PLANS.find((p) => p.name === plan);
-
-  // TODO(dev): temporary test-data autofill — remove before launch.
-  function applyTestFill() {
-    const f = formRef.current;
-    if (!f) return;
-    const fields: Record<string, string> = {
-      businessName: "K & K Automobiles",
-      businessType: "Mobile auto-repair",
-      ownerName: "Melvin Abraham",
-      phone: "804-714-4973",
-      password: "january@13",
-    };
-    for (const [name, val] of Object.entries(fields)) {
-      const el = f.elements.namedItem(name) as HTMLInputElement | null;
-      if (el) el.value = val;
-    }
-  }
-
-  function fillTestData() {
-    if (!plan) setPlan("AUTOMATE");
-    setEmail("onlinemelvin@gmail.com");
-    if (step === "details") applyTestFill();
-    else {
-      pendingFill.current = true;
-      setStep("details");
-    }
-  }
-
-  React.useEffect(() => {
-    if (step === "details" && pendingFill.current) {
-      pendingFill.current = false;
-      applyTestFill();
-    }
-  }, [step]);
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -118,15 +81,6 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
     <main className="min-h-screen bg-[var(--background)] px-6 py-12">
       <div className={cn("mx-auto transition-all", step === "plan" ? "max-w-6xl" : "max-w-xl")}>
         <BrandLogo href="/" size={40} textClassName="text-2xl" className="mb-8" />
-
-        {/* TODO(dev): temporary — remove before launch. */}
-        <button
-          type="button"
-          onClick={fillTestData}
-          className="mb-6 w-full rounded-lg border border-dashed border-violet-400 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100"
-        >
-          🧪 Fill test data (remove later)
-        </button>
 
         {/* Step 1 — choose your plan */}
         {step === "plan" && (
@@ -237,7 +191,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
 
         {/* Step 2 — your details */}
         {step === "details" && (
-          <form ref={formRef} onSubmit={handleCreate}>
+          <form onSubmit={handleCreate}>
             <button
               type="button"
               onClick={() => setStep("plan")}

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/modules/audit";
 import { getFinanceSettings, saveFinanceSettings } from "@/lib/modules/finance";
 import { getStripe, stripeConfigured, connectClientId, appBaseUrl, applicationFee, PLATFORM_FEE_BPS } from "@/lib/stripe/client";
+import { signingSecret } from "@/lib/secret";
 
 export class PaymentError extends Error {
   constructor(
@@ -50,7 +51,7 @@ async function assertTier(clientId: string): Promise<void> {
 }
 
 function connectStateSecret(): string {
-  return process.env.STRIPE_CONNECT_STATE_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? "pagebee-dev-connect-secret";
+  return signingSecret("STRIPE_CONNECT_STATE_SECRET", "SUPABASE_SERVICE_ROLE_KEY");
 }
 
 /** Signed, single-use-ish OAuth `state` bound to a client (CSRF + tamper protection). */

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { appBase } from "./layout";
+import { signingSecret } from "@/lib/secret";
 
 // Per-customer email consent for the CLIENT → CUSTOMER stream. Marketing requires
 // an explicit opt-in (CustomerConsent EMAIL granted = true); review requests send
@@ -8,8 +9,11 @@ import { appBase } from "./layout";
 // Unsubscribe links are STATELESS — a signed token over the customerId — so no
 // extra storage or per-send token rows are needed.
 
+// Note: deliberately NOT chained onto RESEND_API_KEY — an API key is not a
+// signing secret, and rotating it would silently invalidate every already-sent
+// unsubscribe link (breaking one-click List-Unsubscribe / CAN-SPAM compliance).
 function secret(): string {
-  return process.env.EMAIL_TOKEN_SECRET || process.env.INTERNAL_API_SECRET || process.env.RESEND_API_KEY || "pagebee-dev-secret";
+  return signingSecret("EMAIL_TOKEN_SECRET", "INTERNAL_API_SECRET");
 }
 
 function sign(customerId: string): string {

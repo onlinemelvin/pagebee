@@ -36,8 +36,16 @@ export async function provisionSendingDomain(clientId: string) {
   }
   const domain = deriveSendingDomain(domainState.domain);
 
-  // Reuse an existing row for this domain if present.
-  const existing = await prisma.sendingDomain.findUnique({ where: { domain } });
+  // Tenant isolation: reject if ANOTHER client already owns this sending host.
+  // (Without this, the upsert below could silently rewrite clientId and steal it.)
+  const conflict = await prisma.sendingDomain.findFirst({
+    where: { domain, clientId: { not: clientId } },
+    select: { id: true },
+  });
+  if (conflict) throw new SendingDomainError(409, "domain_taken");
+
+  // Reuse this client's existing row for the domain if present.
+  const existing = await prisma.sendingDomain.findUnique({ where: { clientId_domain: { clientId, domain } } });
   if (existing?.resendDomainId) {
     const remote = await getResendDomain(existing.resendDomainId);
     if (!("error" in remote)) {
@@ -53,7 +61,7 @@ export async function provisionSendingDomain(clientId: string) {
   if ("error" in created) throw new SendingDomainError(502, created.error);
 
   const row = await prisma.sendingDomain.upsert({
-    where: { domain },
+    where: { clientId_domain: { clientId, domain } },
     create: {
       clientId,
       domain,
@@ -62,7 +70,6 @@ export async function provisionSendingDomain(clientId: string) {
       records: created.records as unknown as Prisma.InputJsonValue,
     },
     update: {
-      clientId,
       resendDomainId: created.id,
       status: mapStatus(created.status),
       records: created.records as unknown as Prisma.InputJsonValue,

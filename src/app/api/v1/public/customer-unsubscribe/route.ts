@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { unsubscribeCustomerByToken, verifyCustomerUnsubToken, setCustomerEmailConsent } from "@/lib/modules/email";
 import { prisma } from "@/lib/db";
+import { rateLimited } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,9 @@ function token(req: Request): string | null {
 
 /** GET — resolve a customer unsubscribe token to the business name (confirm page). */
 export async function GET(req: Request) {
+  // Throttle token-validity probing (the GET confirms a token + leaks businessName).
+  const limited = await rateLimited(req, "customer-unsub-get", { limit: 30, windowMs: 60_000 });
+  if (limited) return limited;
   const t = token(req);
   if (!t) return NextResponse.json({ error: "missing_token" }, { status: 400 });
   const customerId = verifyCustomerUnsubToken(t);
@@ -26,6 +30,9 @@ export async function GET(req: Request) {
  * work without a session. `action=resubscribe` re-grants consent.
  */
 export async function POST(req: Request) {
+  // Mutates consent — rate-limit to blunt mass-toggle / brute-force abuse.
+  const limited = await rateLimited(req, "customer-unsub-post", { limit: 15, windowMs: 60_000 });
+  if (limited) return limited;
   const t = token(req);
   if (!t) return NextResponse.json({ error: "missing_token" }, { status: 400 });
 
