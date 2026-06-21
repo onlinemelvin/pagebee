@@ -297,17 +297,36 @@ enum DeliveryStatus {
 // unsubscribe); MARKETING categories honour the suppression list and carry a
 // one-click unsubscribe link. See src/lib/modules/email/categories.ts.
 enum EmailCategory {
-  // Transactional (always sent) ------------------------------------------------
+  // Platform → client (transactional, always sent) -----------------------------
   WELCOME // registration / onboarding kickoff
   AUTH // password reset, email verification, security alerts
   BILLING // receipts, payment failed, renewal, cancellation
   WEBSITE // preview ready, published, update approved/rejected
   USAGE // quota nudges, setup-fee pending, preview auto-release reminders
   ACCOUNT // important account changes (email/password changed, plan changed)
-  // Marketing (suppressible, unsubscribe footer) -------------------------------
+  // Platform → client (marketing, suppressible, unsubscribe footer) -------------
   TIPS // product tips, education, onboarding drips
   ANNOUNCEMENT // product updates, newsletters
   PROMOTION // sales, discounts, upsells
+  // Client → their customers (audience = CUSTOMER) -----------------------------
+  CUSTOMER_INQUIRY // lead/inquiry acknowledgement (transactional)
+  CUSTOMER_APPOINTMENT // booking confirmation, reminder, reschedule, follow-up (transactional)
+  CUSTOMER_BILLING // estimate, invoice, receipt, overdue reminder, statement (transactional)
+  CUSTOMER_REVIEW // post-visit review request (transactional-ish; honours opt-out)
+  CUSTOMER_MARKETING // promos, win-backs, birthday (marketing — needs consent + unsubscribe)
+}
+
+// Which stream an email belongs to: platform→client vs client→their-customer.
+// Drives sender resolution, branding, suppression keying, and dashboard filters.
+enum EmailAudience {
+  PLATFORM // PageBee → a client business account
+  CUSTOMER // a client business → one of its end customers
+}
+
+enum SendingDomainStatus {
+  PENDING // created in Resend, DNS records not yet verified
+  VERIFIED // DKIM/SPF verified — safe to send from
+  FAILED // verification failed / temporary error
 }
 
 enum CampaignStatus {
@@ -910,6 +929,7 @@ model Client {
   taxRates        TaxRate[]
   userInvites     ClientUserInvite[]
   usageRecords    UsageRecord[]
+  sendingDomains  SendingDomain[]
 
   @@index([status])
   @@map("clients")
@@ -2111,6 +2131,8 @@ model EmailLog {
   subject    String
   template   String? // template/trigger key, e.g. "welcome", "payment_failed"
   category   EmailCategory  @default(ACCOUNT)
+  audience   EmailAudience  @default(PLATFORM)
+  customerId String? // set when audience = CUSTOMER (the client's end customer)
   status     DeliveryStatus @default(QUEUED)
   providerId String? // Resend message id (links provider webhooks back to this row)
   campaignId String? // set for bulk-campaign sends
@@ -2133,7 +2155,32 @@ model EmailLog {
   @@index([campaignId])
   @@index([providerId])
   @@index([createdAt])
+  @@index([clientId, audience])
+  @@index([customerId])
   @@map("email_logs")
+}
+
+// A per-client sending domain verified in Resend (DKIM/SPF), so a CONNECT/AUTOMATE
+// client can send customer email from their own custom domain. Clients without a
+// verified row fall back to the shared platform sending domain. See
+// src/lib/modules/email/sending-domains.ts.
+model SendingDomain {
+  id             String              @id @default(cuid())
+  clientId       String
+  client         Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  domain         String              @unique // the bare domain we send from, e.g. mail.acme.com
+  resendDomainId String? // Resend domain id (for verify polling)
+  status         SendingDomainStatus @default(PENDING)
+  records        Json? // DNS records the owner must add (when we don't control DNS)
+  managedDns     Boolean             @default(false) // true = we own/auto-write the DNS
+  lastError      String?
+  verifiedAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+  @@map("sending_domains")
 }
 
 // Admin bulk-email campaign: a segment + a rendered template, sent now or scheduled.

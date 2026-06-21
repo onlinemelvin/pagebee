@@ -274,6 +274,36 @@ a separate, later concern.)
   template, sent now or scheduled (worker sweep claims due campaigns atomically).
   Admin console lives at `/admin/email` (dashboard, campaigns, templates).
 
+### 7.2 Client → customer email (audience = CUSTOMER)
+
+A second stream sends on a **client's** behalf to their **end customers** (inquiry
+auto-replies, appointment confirm/remind/reschedule/cancel, invoices, estimates,
+receipts, overdue reminders, review requests, and marketing). It reuses the
+EmailLog (with `audience = CUSTOMER`, `customerId`) but has its own funnel:
+
+- **`dispatchToCustomer()`** (`tenant-dispatch.ts`) resolves the client's brand +
+  sending identity, enforces consent, wraps the body in a **client-branded**
+  layout (`tenant-layout.ts` — the business's logo/name/accent, never PageBee),
+  and sends. `customer-notifications.ts` holds the high-level `send*` helpers;
+  `customer-templates.ts` the templates.
+- **Sender** (`tenant-sender.ts`): customer email sends from the **shared,
+  Resend-verified domain** (`CUSTOMER_MAIL_DOMAIN`, default `mail.<root>`) with
+  the business *name* in the From and reply-to = the client's real inbox. A client
+  with a **VERIFIED `SendingDomain`** sends from their own domain instead.
+- **Custom domains** (`sending-domains.ts` + `lib/resend/domains.ts`): a CONNECT/
+  AUTOMATE client can verify their connected domain in Resend — we register it,
+  surface the DKIM/SPF records for them to add (guided; `managedDns` reserved for
+  future auto-write), and a worker sweep polls until verified, after which the
+  sender auto-upgrades. Owner API: `/api/v1/client/email-domain`.
+- **Consent** (`customer-consent.ts`): transactional customer mail always sends;
+  **marketing** (`CUSTOMER_MARKETING`) requires `CustomerConsent` EMAIL granted +
+  a one-click unsubscribe + the business's physical address (CAN-SPAM); review
+  requests honour an explicit opt-out. Unsubscribe tokens are **stateless**
+  (signed HMAC over the customerId) — `/unsubscribe/customer/[token]`.
+- **Triggers**: `lead.created` → inquiry auto-reply; booking confirm/reminder/
+  reschedule/cancel; finance `sendDocument` (invoice/estimate) + overdue sweep —
+  all refactored to route through the branded tenant funnel.
+
 ---
 
 ## 8. AI guardrails (enforced, not advisory)

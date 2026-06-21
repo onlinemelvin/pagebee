@@ -50,3 +50,30 @@ export { sweepScheduledCampaigns, sweepEmailReminders } from "./sweep";
 export { handleResendEvent, verifyResendSignature } from "./tracking";
 
 export { segmentSchema, campaignSchema, campaignUpdateSchema, templateSchema, templateUpdateSchema } from "./schema";
+
+// — Client → customer stream --------------------------------------------------
+export { dispatchToCustomer } from "./tenant-dispatch";
+export type { CustomerDispatchParams, CustomerDispatchResult } from "./tenant-dispatch";
+export { resolveClientBrand, resolveClientSender, sharedMailDomain } from "./tenant-sender";
+export type { ClientBrand, ClientSender } from "./tenant-sender";
+export { renderTenantLayout } from "./tenant-layout";
+export {
+  customerEmailConsent,
+  setCustomerEmailConsent,
+  customerUnsubPageUrl,
+  customerUnsubOneClickUrl,
+  customerUnsubToken,
+  verifyCustomerUnsubToken,
+  unsubscribeCustomerByToken,
+} from "./customer-consent";
+export * as customerTemplates from "./customer-templates";
+export * as customerNotify from "./customer-notifications";
+
+export {
+  getSendingDomain,
+  provisionSendingDomain,
+  checkSendingDomain,
+  sweepSendingDomains,
+  removeSendingDomain,
+  SendingDomainError,
+} from "./sending-domains";
