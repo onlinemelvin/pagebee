@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { createDocumentFromBooking, FinanceError, type DocType } from "@/lib/modules/finance";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   let ctx, client;
   try {
-    ({ ctx, client } = await requireClient());
+    ({ ctx, client } = await requireCapability("finance", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

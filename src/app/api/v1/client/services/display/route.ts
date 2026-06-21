@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { setServiceDisplay } from "@/lib/modules/service";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ const schema = z.object({ showPrice: z.boolean().optional(), showDuration: z.boo
 export async function POST(req: Request) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("website", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

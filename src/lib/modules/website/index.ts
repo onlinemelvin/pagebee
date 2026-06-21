@@ -49,6 +49,7 @@ export {
   requestPurchaseDomain,
   executePurchase,
   getConnectInstructions,
+  isDomainBuyDryRun,
 } from "./domain-purchase";
 export type { DomainLookup, DomainSuggestion, ConnectInstructions } from "./domain-purchase";
 export { websiteIntakeSchema } from "./schema";

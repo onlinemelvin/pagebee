@@ -248,6 +248,32 @@ Handlers are idempotent and run via the background-job runner so a slow email or
 SMS send never blocks the request. Example: `invoice.paid` →
 [receipt email, mark commission eligible, analytics conversion, audit log].
 
+### 7.1 Platform email (PageBee → clients)
+
+All account email PageBee sends to its **client businesses** funnels through
+`src/lib/modules/email`. (Client → end-customer email — lead replies, etc. — is
+a separate, later concern.)
+
+- **`dispatch()`** is the single funnel: it honours the marketing suppression
+  list, wraps the body in the branded layout (`layout.ts`), writes an `EmailLog`
+  row, sends via Resend (`send.ts`), and reconciles status. `notifications.ts`
+  holds the high-level `send*` helpers product code calls.
+- **Categories** (`EmailCategory`) split mail into **transactional** (WELCOME,
+  AUTH, BILLING, WEBSITE, USAGE, ACCOUNT — always sent, no unsubscribe) and
+  **marketing** (TIPS, ANNOUNCEMENT, PROMOTION — suppressible, one-click
+  unsubscribe footer + `List-Unsubscribe` header per RFC 8058).
+- **Triggers**: registration → welcome; `requestPasswordReset`/`resetPassword`
+  (branded, Supabase-backed) → reset + password-changed; billing webhook →
+  receipt / payment-failed / plan-changed / cancellation; `website.preview_released`
+  → preview-ready; worker sweep → setup-fee reminders + scheduled campaigns.
+- **Tracking**: Resend webhooks hit `/api/v1/webhooks/resend` (Svix-signed,
+  `RESEND_WEBHOOK_SECRET`); `tracking.ts` updates `EmailLog`
+  delivered/opened/bounced/complained timestamps and campaign roll-ups, and
+  auto-suppresses hard bounces/complaints.
+- **Bulk** (`bulk.ts`): admin campaigns = a segment (plan/status filter) + a
+  template, sent now or scheduled (worker sweep claims due campaigns atomically).
+  Admin console lives at `/admin/email` (dashboard, campaigns, templates).
+
 ---
 
 ## 8. AI guardrails (enforced, not advisory)

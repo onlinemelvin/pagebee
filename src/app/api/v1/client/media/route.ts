@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { uploadPublicFile } from "@/lib/supabase/storage";
 import { listMedia, addMedia } from "@/lib/modules/media";
 
@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
-async function client() {
-  const { client } = await requireClient();
+async function client(action: "view" | "manage") {
+  const { client } = await requireCapability("website", action);
   return client;
 }
 
@@ -18,7 +18,7 @@ async function client() {
 export async function GET() {
   let c;
   try {
-    c = await client();
+    c = await client("view");
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -30,7 +30,7 @@ export async function GET() {
 export async function POST(req: Request) {
   let c;
   try {
-    c = await client();
+    c = await client("manage");
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

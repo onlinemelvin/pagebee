@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { getTaxReport, getIncomeReport, get1099Summary } from "@/lib/modules/finance";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -24,7 +24,7 @@ function parseDate(s: string | null, fallback: Date): Date {
 export async function GET(req: Request, { params }: { params: Promise<{ type: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("finance", "view"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

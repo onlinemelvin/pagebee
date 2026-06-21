@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Wallet, ReceiptText, Clock3, ScrollText, CalendarClock, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getClientWorkspace } from "@/lib/modules/client";
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function ClientInvoicesPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
+  if (!ws.access.finance.view) redirect("/client"); // staff without finance access
   // Finance (invoices/payments/statements) is an Automate feature; surfaced to every tier as an
   // upsell, gated here for lower plans. On-plan owners reach the dashboard whether or not they've
   // toggled it on yet — the feature card still governs what's live on their public site.

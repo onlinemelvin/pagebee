@@ -17,13 +17,33 @@ const TLD_OPTIONS = ["com", "biz", "us", "net", "org", "co"];
  *     the price cap, else admin price-review) and sets it up automatically.
  * Backend is the source of truth; this drives UX and self-polls while DNS/verification settles.
  */
-export function CustomDomainPanel({ initial }: { initial: DomainState | null }) {
+export function CustomDomainPanel({
+  initial,
+  dryRunEligible = false,
+  dryRunEnabled = false,
+}: {
+  initial: DomainState | null;
+  /** Server-decided: show the test-mode toggle (PageBee testers only). */
+  dryRunEligible?: boolean;
+  /** Current server state of the test-mode flag. */
+  dryRunEnabled?: boolean;
+}) {
   const router = useRouter();
   const [state, setState] = React.useState<DomainState | null>(initial);
   const [mode, setMode] = React.useState<"choose" | "connect" | "buy">("choose");
   const [error, setError] = React.useState<string | null>(null);
+  const [dry, setDry] = React.useState(dryRunEnabled);
   const status = state?.status ?? null;
   const isPurchase = state?.hosts?.find((h) => h.isPrimary)?.source === "purchase";
+
+  async function toggleDry(enabled: boolean) {
+    setDry(enabled);
+    await fetch("/api/v1/client/website/domain/dry-run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }).catch(() => {});
+  }
 
   const runCheck = React.useCallback(async () => {
     const res = await fetch("/api/v1/client/website/domain/verify", { method: "POST" });
@@ -64,6 +84,30 @@ export function CustomDomainPanel({ initial }: { initial: DomainState | null }) 
           <p className="text-sm text-stone-500">Use your own domain name instead of your free address.</p>
         </div>
       </div>
+
+      {/* Test-mode toggle — only rendered for server-eligible testers (see isDomainDryRunEligible). */}
+      {dryRunEligible && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-violet-300 bg-violet-50 p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-violet-800">🧪 Test mode{dry ? " — on" : ""}</p>
+            <p className="text-xs text-violet-600">Buying simulates the flow — no domain is registered and nothing is charged.</p>
+          </div>
+          <div className="flex shrink-0 overflow-hidden rounded-lg border border-violet-300">
+            <button
+              onClick={() => toggleDry(false)}
+              className={`px-3.5 py-1 text-xs font-semibold transition ${!dry ? "bg-violet-600 text-white" : "bg-white text-violet-700 hover:bg-violet-100"}`}
+            >
+              Off
+            </button>
+            <button
+              onClick={() => toggleDry(true)}
+              className={`px-3.5 py-1 text-xs font-semibold transition ${dry ? "bg-violet-600 text-white" : "bg-white text-violet-700 hover:bg-violet-100"}`}
+            >
+              On
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── No domain yet: choose a path ── */}
       {!status && mode === "choose" && (

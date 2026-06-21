@@ -41,7 +41,7 @@ Prices in dollars below; stored in **cents** in `plans` (`setupFee`,
 | Monthly fee             | $39    | $89     | $179     |
 | Max pages               | 3      | 6       | 12       |
 | Minor updates / month   | 2      | 5       | Unlimited¹ |
-| Team members (seats)    | 1      | 2       | 5        |
+| Team members (seats)    | 1      | 3       | Unlimited¹ |
 | Emails / month          | 250    | 1,000   | 5,000    |
 | Contact form            | ❌     | ✅      | ✅       |
 | Hosting + SSL           | ✅     | ✅      | ✅       |
@@ -84,7 +84,7 @@ generator and API gating read.
 // CONNECT
 {
   "planName": "Connect",
-  "setupFee": 699, "monthlyFee": 89, "maxPages": 6, "monthlyUpdates": 5, "teamSeats": 2,
+  "setupFee": 699, "monthlyFee": 89, "maxPages": 6, "monthlyUpdates": 5, "teamSeats": 3,
   "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": true,
   "booking": true, "chat": true, "smsAlerts": true, "smsIncludedMonthly": 100,
@@ -97,7 +97,7 @@ generator and API gating read.
 // AUTOMATE
 {
   "planName": "Automate",
-  "setupFee": 999, "monthlyFee": 179, "maxPages": 12, "monthlyUpdates": 30, "teamSeats": 5,
+  "setupFee": 999, "monthlyFee": 179, "maxPages": 12, "monthlyUpdates": 30, "teamSeats": 5, "unlimitedSeats": true,
   "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": true,
   "booking": true, "chat": true, "smsAlerts": true, "smsIncludedMonthly": 500,

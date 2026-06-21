@@ -1,1 +1,1 @@
-export { createBillingCheckout, processBillingEvent, BillingError } from "./service";
+export { createBillingCheckout, upgradeSubscription, processBillingEvent, BillingError } from "./service";

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getAuthContext } from "@/lib/auth/session";
 import { planForFlag, nextTier } from "@/lib/plans";
 import { autoReleaseStalePreview } from "@/lib/modules/website";
+import { TEAM_AREAS, areaForNavKey, canView, canManage } from "@/lib/modules/team/permissions";
 
 export interface PreviewInfo {
   status: string; // PreviewStatus or "NONE"
@@ -136,7 +137,9 @@ export interface ClientWorkspace {
   role: string; // "owner" | "staff"
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
-  caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; customDomain: boolean; maxPages: number; teamSeats: number };
+  caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; customDomain: boolean; maxPages: number; teamSeats: number; teamSeatsUnlimited: boolean };
+  permissions: string[]; // raw capability keys ([] for owners, who hold all)
+  access: Record<string, { view: boolean; manage: boolean }>; // per team-area, resolved for this member
   choices: { booking: boolean | null; invoices: boolean | null };
   website: { exists: boolean; published: boolean; subdomain: string | null; latestVersionStatus: string | null };
   counts: { newInquiries: number; pendingAppointments: number };
@@ -194,6 +197,7 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     customDomain: Boolean(planFlags.customDomain),
     maxPages: Number(planFlags.maxPages ?? 5),
     teamSeats: Number(planFlags.teamSeats ?? 1),
+    teamSeatsUnlimited: Boolean(planFlags.unlimitedSeats),
   };
 
   const site = client.websites[0];
@@ -292,6 +296,9 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   const tabs: Tab[] = [];
   for (const item of NAV_CATALOG) {
     if (item.needsSite && !website.exists) continue;
+    // Staff only see tabs they've been granted view access to; owners see everything.
+    const navArea = areaForNavKey(item.key);
+    if (navArea && !canView(membership.role, membership.permissions, navArea.key)) continue;
     const onPlan = !item.flag || Boolean(planFlags[item.flag]);
     const badge =
       item.key === "inquiries" ? newInquiries || undefined
@@ -370,6 +377,13 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     client: { id: client.id, businessName: client.businessName, ownerName: client.ownerName, isTest: client.isTest },
     planName: client.subscription?.plan.name ?? "—",
     caps,
+    permissions: membership.permissions,
+    access: Object.fromEntries(
+      TEAM_AREAS.map((a) => [
+        a.key,
+        { view: canView(membership.role, membership.permissions, a.key), manage: canManage(membership.role, membership.permissions, a.key) },
+      ]),
+    ),
     choices,
     website,
     counts: { newInquiries, pendingAppointments },

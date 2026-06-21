@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { requireClient, requireOwner, AuthError } from "@/lib/auth/session";
+import { requireCapability, requireOwner, AuthError } from "@/lib/auth/session";
 import {
   startGeneration,
   claimAndRun,
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 export async function GET() {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("website", "view"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

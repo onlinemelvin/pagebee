@@ -2,9 +2,10 @@ import type Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getStripe, appBaseUrl } from "@/lib/stripe/client";
-import { planByName, type PlanDef, type PlanName } from "@/lib/plans";
+import { planByName, planRank, type PlanDef, type PlanName } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { launchPreview } from "@/lib/modules/preview";
+import * as notify from "@/lib/modules/email/notifications";
 
 // PageBee's own subscription billing — we charge the CLIENT for their plan (monthly) + the
 // one-time setup fee, on the PLATFORM Stripe account (separate from Connect payouts). Setup-fee
@@ -108,6 +109,65 @@ export async function createBillingCheckout(
   return { url: session.url };
 }
 
+/** A Stripe subscription that can be modified in place (vs. canceled/expired). */
+function isModifiable(status: Stripe.Subscription.Status): boolean {
+  return status === "active" || status === "trialing" || status === "past_due";
+}
+
+/**
+ * Upgrade an existing subscriber to a higher tier. When the client already has a live Stripe
+ * subscription, we swap the recurring price IN PLACE (prorated, invoiced immediately) instead of
+ * creating a second subscription — so the customer is never double-billed — and switch the plan +
+ * write the `subscription.upgraded` audit synchronously (queryable trail of when it changed).
+ * Falls back to Checkout when there's no usable subscription yet (collects a payment method).
+ * Returns `{ applied: true }` for an in-place upgrade, or `{ url }` to redirect to Checkout.
+ */
+export async function upgradeSubscription(
+  clientId: string,
+  toPlanName: string,
+): Promise<{ applied: true } | { url: string }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, include: { plan: true } });
+  if (!sub) throw new BillingError(404, "no_subscription");
+
+  const target = planByName(toPlanName);
+  if (!target) throw new BillingError(400, "invalid_plan");
+  if (planRank(target.name) <= planRank(sub.plan.name)) throw new BillingError(400, "not_an_upgrade");
+
+  // No live Stripe subscription yet (e.g. setup fee unpaid) → Checkout collects payment + subscribes.
+  if (!sub.stripeSubscriptionId) return createBillingCheckout(clientId, "upgrade", toPlanName);
+
+  let stripeSub: Stripe.Subscription;
+  try {
+    stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+  } catch {
+    return createBillingCheckout(clientId, "upgrade", toPlanName); // sub vanished on Stripe → re-subscribe
+  }
+  if (!isModifiable(stripeSub.status)) return createBillingCheckout(clientId, "upgrade", toPlanName);
+
+  const itemId = stripeSub.items.data[0]?.id;
+  if (!itemId) return createBillingCheckout(clientId, "upgrade", toPlanName);
+
+  const prices = await ensurePrices(stripe, target);
+  // Swap the recurring price in place; invoice the prorated difference now so the upgrade is paid for.
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+    items: [{ id: itemId, price: prices.monthly }],
+    proration_behavior: "always_invoice",
+    metadata: { clientId },
+  });
+
+  const fromPlan = sub.plan.name;
+  await switchPlan(clientId, target.name);
+  await writeAudit({
+    action: "subscription.upgraded",
+    entityType: "Subscription",
+    entityId: sub.id,
+    clientId,
+    metadata: { fromPlan, toPlan: target.name, via: "stripe", inPlace: true },
+  });
+  return { applied: true };
+}
+
 function mapStatus(s: Stripe.Subscription.Status): "ACTIVE" | "PAST_DUE" | "CANCELLED" | "TRIAL" | "PAYMENT_FAILED" {
   switch (s) {
     case "active":
@@ -163,19 +223,30 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
       });
 
       if (kind === "upgrade" && toPlan) {
+        const before = await prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } });
         await switchPlan(clientId, toPlan);
         await prisma.subscription.update({ where: { clientId }, data: { status: "ACTIVE" } });
         await writeAudit({ action: "subscription.upgraded", entityType: "Client", entityId: clientId, clientId, metadata: { toPlan, via: "stripe" } });
+        if (before?.plan.name && before.plan.name !== toPlan) {
+          await notify.sendPlanChanged(clientId, { fromPlan: before.plan.name, toPlan });
+        }
       } else {
-        await prisma.subscription.update({
+        const sub = await prisma.subscription.update({
           where: { clientId },
           data: { setupFeePaid: true, setupFeePaidAt: new Date(), status: "ACTIVE" },
+          select: { agreedSetupFee: true },
         });
         const preview = await prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
         if (preview && preview.status !== "LIVE") {
           await launchPreview(preview.id).catch((e) => console.error("[billing] launch failed", e));
         }
         await writeAudit({ action: "billing.setup_fee_paid", entityType: "Client", entityId: clientId, clientId });
+        await notify.sendPaymentReceipt(clientId, {
+          amountCents: sub.agreedSetupFee,
+          description: "One-time website setup fee",
+          when: new Date().toLocaleDateString("en-US", { dateStyle: "long" }),
+          invoiceUrl: notify.billingUrl(),
+        });
       }
       break;
     }
@@ -194,20 +265,34 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
     }
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
+      const row = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: sub.id }, select: { clientId: true, currentPeriodEnd: true } });
       await prisma.subscription.updateMany({
         where: { stripeSubscriptionId: sub.id },
         data: { status: "CANCELLED", cancelledAt: new Date() },
       });
+      if (row) {
+        await notify.sendSubscriptionCancelled(row.clientId, {
+          accessUntil: row.currentPeriodEnd?.toLocaleDateString("en-US", { dateStyle: "long" }),
+        });
+      }
       break;
     }
     case "invoice.payment_failed": {
       const inv = event.data.object as Stripe.Invoice;
       const subId = (inv as unknown as { subscription?: string }).subscription;
       if (subId) {
-        await prisma.subscription.updateMany({
+        const row = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: subId }, select: { clientId: true } });
+        const updated = await prisma.subscription.updateMany({
           where: { stripeSubscriptionId: subId },
           data: { status: "PAST_DUE", failedPaymentCount: { increment: 1 } },
         });
+        if (row && updated.count) {
+          const fresh = await prisma.subscription.findUnique({ where: { clientId: row.clientId }, select: { failedPaymentCount: true } });
+          await notify.sendPaymentFailed(row.clientId, {
+            amountCents: inv.amount_due ?? 0,
+            attempt: fresh?.failedPaymentCount ?? 1,
+          });
+        }
       }
       break;
     }

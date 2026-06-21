@@ -244,6 +244,7 @@ const verifyRowSelect = {
   id: true,
   host: true,
   isPrimary: true,
+  source: true,
   websiteId: true,
   website: { select: { clientId: true } },
 } satisfies Prisma.WebsiteDomainSelect;
@@ -256,6 +257,24 @@ async function verifyRows(rows: VerifyRow[]): Promise<number> {
   let activated = 0;
   for (const row of rows) {
     try {
+      // BOUGHT domains register ASYNCHRONOUSLY, so the project-attach in executePurchase may have
+      // run before the registration finished. Re-assert the attachment here (addProjectDomain is
+      // idempotent) so a slow registration self-heals instead of getting stuck in "verifying".
+      // Connect domains were already attached at request time, so this is purchase-only.
+      if (row.source === "purchase") {
+        let redirect: string | undefined;
+        if (!row.isPrimary) {
+          const apex = await prisma.websiteDomain.findFirst({
+            where: { websiteId: row.websiteId, isPrimary: true },
+            select: { host: true },
+          });
+          redirect = apex?.host;
+        }
+        await addProjectDomain(row.host, { redirect }).catch((e) =>
+          console.error("[domain] ensure-attach failed", row.host, e),
+        );
+      }
+
       const vd = await verifyProjectDomain(row.host);
       if (!vd.verified) continue;
       await prisma.websiteDomain.update({ where: { id: row.id }, data: { status: "active", error: null } });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { prisma } from "@/lib/db";
 import { LEAD_GOALS } from "@/lib/site/lead-goals";
@@ -19,7 +19,7 @@ const schema = z.object({ goal: z.enum(LEAD_GOALS) });
  */
 export async function POST(req: Request) {
   try {
-    await requireClient();
+    await requireCapability("inquiries", "manage");
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { getDocument, updateDocument, deleteDocument, FinanceError } from "@/lib/modules/finance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function auth() {
-  return requireClient();
-}
-
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await auth());
+    ({ client } = await requireCapability("finance", "view"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -31,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await auth());
+    ({ client } = await requireCapability("finance", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -52,7 +48,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await auth());
+    ({ client } = await requireCapability("finance", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

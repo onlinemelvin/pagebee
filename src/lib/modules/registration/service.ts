@@ -3,6 +3,7 @@ import type { Prisma, PlanName } from "@prisma/client";
 import { createAuthUser, findAuthUserId } from "@/lib/supabase/admin";
 import { uniqueClientSlug } from "@/lib/slug";
 import { writeAudit } from "@/lib/modules/audit";
+import * as notify from "@/lib/modules/email/notifications";
 import { isTestEmail, type RegisterInput } from "./schema";
 
 export class RegistrationError extends Error {
@@ -85,6 +86,9 @@ export async function registerClient(input: RegisterInput) {
     clientId: client.id,
     metadata: { isTest, plan: planName } as Prisma.InputJsonValue,
   });
+
+  // Branded welcome email (fail-soft — never block signup on email delivery).
+  await notify.sendWelcome(client.id);
 
   return { clientId: client.id, isTest, plan: planName };
 }

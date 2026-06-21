@@ -86,3 +86,16 @@ export function setupFeeRequired(client: { isTest?: boolean }): boolean {
   // Unset/blank: required in production (fail-closed), skipped in dev for local testing.
   return process.env.NODE_ENV === "production";
 }
+
+/**
+ * Eligibility for the test-only domain "dry-run" toggle (simulate a purchase: no registrar call, no
+ * charge). PageBee testers only — emails on @test.com or the owner's account. This is the SINGLE
+ * source of truth: the website page only renders the toggle when this is true, the toggle API
+ * re-checks it (403 otherwise), and executePurchase only honours a dry-run flag a gated user set.
+ * So the capability never bleeds to a real customer's frontend.
+ */
+export function isDomainDryRunEligible(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const e = email.trim().toLowerCase();
+  return e.endsWith("@test.com") || e === "onlinemelvin@gmail.com";
+}
