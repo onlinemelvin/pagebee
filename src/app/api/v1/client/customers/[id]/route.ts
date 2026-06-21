@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { getCustomer, updateCustomer, deleteCustomer, CustomerError } from "@/lib/modules/customer";
 import { ZodError } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function auth() {
-  return requireClient();
-}
 function mapError(err: unknown): NextResponse | never {
   if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
   if (err instanceof ZodError) return NextResponse.json({ error: "validation_error", issues: err.flatten() }, { status: 400 });
@@ -19,7 +16,7 @@ function mapError(err: unknown): NextResponse | never {
 /** GET /api/v1/client/customers/{id} — one contact (tenant-scoped). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { client } = await auth();
+    const { client } = await requireCapability("customers", "view");
     const { id } = await params;
     const customer = await getCustomer(client.id, id);
     if (!customer) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -32,7 +29,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 /** PATCH /api/v1/client/customers/{id} — update a contact. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { ctx, client } = await auth();
+    const { ctx, client } = await requireCapability("customers", "manage");
     const { id } = await params;
     const body = await req.json().catch(() => null);
     const customer = await updateCustomer(client.id, id, body, { userId: ctx.userId });
@@ -45,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 /** DELETE /api/v1/client/customers/{id} — permanently remove a contact (blocked if it has invoices/payments). */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { ctx, client } = await auth();
+    const { ctx, client } = await requireCapability("customers", "manage");
     const { id } = await params;
     await deleteCustomer(client.id, id, { userId: ctx.userId });
     return NextResponse.json({ ok: true });

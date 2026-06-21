@@ -292,6 +292,37 @@ enum DeliveryStatus {
   OPENED
 }
 
+// Platform → client account email. Drives suppression + the unsubscribe footer:
+// TRANSACTIONAL categories are always-on (legally required account mail, no
+// unsubscribe); MARKETING categories honour the suppression list and carry a
+// one-click unsubscribe link. See src/lib/modules/email/categories.ts.
+enum EmailCategory {
+  // Transactional (always sent) ------------------------------------------------
+  WELCOME // registration / onboarding kickoff
+  AUTH // password reset, email verification, security alerts
+  BILLING // receipts, payment failed, renewal, cancellation
+  WEBSITE // preview ready, published, update approved/rejected
+  USAGE // quota nudges, setup-fee pending, preview auto-release reminders
+  ACCOUNT // important account changes (email/password changed, plan changed)
+  // Marketing (suppressible, unsubscribe footer) -------------------------------
+  TIPS // product tips, education, onboarding drips
+  ANNOUNCEMENT // product updates, newsletters
+  PROMOTION // sales, discounts, upsells
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+}
+
+enum AuthTokenType {
+  PASSWORD_RESET
+  EMAIL_VERIFY
+}
+
 enum ConsentChannel {
   EMAIL
   SMS
@@ -943,6 +974,9 @@ model ClientUser {
   userId    String   @unique
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      String   @default("owner") // owner, staff
+  // Per-area capability keys for staff (e.g. "inquiries:view", "finance:manage"). Empty for
+  // owners — they implicitly hold every capability. See src/lib/modules/team/permissions.ts.
+  permissions String[] @default([])
   createdAt DateTime @default(now())
 
   @@index([clientId])
@@ -971,6 +1005,8 @@ model ClientUserInvite {
   client     Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   email      String
   role       String    @default("staff") // owner, staff
+  // Capability keys chosen at invite time, copied to ClientUser.permissions on accept.
+  permissions String[]  @default([])
   token      String    @unique
   status     String    @default("pending") // pending, accepted, revoked
   invitedBy  String? // userId of the inviter
@@ -2068,19 +2104,116 @@ model AiUsageLog {
 
 model EmailLog {
   id         String         @id @default(cuid())
-  clientId   String? // null = platform-originated email
+  clientId   String? // the client account this email is about/sent to (null = pure-platform)
+  recipientUserId String? // the User the email was addressed to, when known
   toEmail    String
   fromEmail  String
   subject    String
-  template   String?
+  template   String? // template/trigger key, e.g. "welcome", "payment_failed"
+  category   EmailCategory  @default(ACCOUNT)
   status     DeliveryStatus @default(QUEUED)
-  providerId String? // Resend message id
+  providerId String? // Resend message id (links provider webhooks back to this row)
+  campaignId String? // set for bulk-campaign sends
+  campaign   EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   error      String?
+  // Provider-webhook lifecycle timestamps (Full tracking — see tracking.ts).
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  bouncedAt     DateTime?
+  complainedAt  DateTime?
+  openCount     Int        @default(0)
+  clickCount    Int        @default(0)
   createdAt  DateTime       @default(now())
 
   @@index([clientId])
   @@index([status])
+  @@index([category])
+  @@index([campaignId])
+  @@index([providerId])
+  @@index([createdAt])
   @@map("email_logs")
+}
+
+// Admin bulk-email campaign: a segment + a rendered template, sent now or scheduled.
+// Counters are denormalized roll-ups updated as EmailLog rows transition.
+model EmailCampaign {
+  id          String         @id @default(cuid())
+  name        String
+  subject     String
+  bodyHtml    String // inner HTML; wrapped in the branded layout at send time
+  category    EmailCategory  @default(ANNOUNCEMENT)
+  segment     Json // recipient filter, e.g. { plans: ["CONNECT"], status: ["active"] }
+  status      CampaignStatus @default(DRAFT)
+  scheduledAt DateTime? // when set + status SCHEDULED, the worker sweep sends it
+  sentAt      DateTime?
+  createdBy   String? // admin User id
+  // Denormalized delivery roll-up for the dashboard.
+  totalRecipients Int @default(0)
+  sentCount       Int @default(0)
+  deliveredCount  Int @default(0)
+  openedCount     Int @default(0)
+  bouncedCount    Int @default(0)
+  failedCount     Int @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  emails EmailLog[]
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("email_campaigns")
+}
+
+// Reusable admin email template (for bulk sends + saved transactional copy).
+model EmailTemplate {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  subject   String
+  bodyHtml  String
+  category  EmailCategory @default(ANNOUNCEMENT)
+  createdBy String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("email_templates")
+}
+
+// Marketing suppression list. A row's existence = this address is opted OUT of
+// the given category of marketing mail. `category = null` means all marketing.
+// Transactional categories ignore this list entirely.
+model EmailUnsubscribe {
+  id        String         @id @default(cuid())
+  email     String // lower-cased recipient address
+  clientId  String? // the client account, when the address maps to one
+  category  EmailCategory? // null = unsubscribed from ALL marketing
+  reason    String         @default("user") // user | bounce | complaint | admin
+  token     String         @unique // unguessable token embedded in unsubscribe links
+  createdAt DateTime       @default(now())
+
+  @@unique([email, category])
+  @@index([email])
+  @@index([clientId])
+  @@map("email_unsubscribes")
+}
+
+// Short-lived, single-use token for PageBee-branded auth flows (password reset,
+// email verification) sent via Resend instead of Supabase's default mail.
+// Only the SHA-256 hash is stored; the raw token lives only in the emailed link.
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  email     String
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_tokens")
 }
 
 model SmsLog {

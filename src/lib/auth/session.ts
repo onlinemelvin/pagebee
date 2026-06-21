@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AuthError } from "./errors";
 import { assertActiveAccount } from "./policy";
+import { canView, canManage, type AreaAction } from "@/lib/modules/team/permissions";
 
 // Re-exported so the many `import { AuthError } from "@/lib/auth/session"` callers keep working.
 export { AuthError };
@@ -101,6 +102,22 @@ export async function requireOwner(opts?: { allowInactive?: boolean }) {
   return result;
 }
 
+/**
+ * For client feature routes: throws unless the caller may act on `area` at `action` level.
+ * Owners hold every capability; staff are checked against their granted permissions
+ * (see src/lib/modules/team/permissions.ts). `view` gates reads, `manage` gates writes.
+ */
+export async function requireCapability(
+  area: string,
+  action: AreaAction,
+  opts?: { allowInactive?: boolean },
+) {
+  const result = await requireClient(opts);
+  const ok = action === "manage" ? canManage(result.role, result.permissions, area) : canView(result.role, result.permissions, area);
+  if (!ok) throw new AuthError(403);
+  return result;
+}
+
 /** The client business (tenant) owned by the current user, with subscription + plan. */
 async function getCurrentClientRaw() {
   const ctx = await getAuthContext();
@@ -109,7 +126,9 @@ async function getCurrentClientRaw() {
     where: { userId: ctx.userId },
     include: { client: { include: { subscription: { include: { plan: true } } } } },
   });
-  return membership ? { ctx, client: membership.client, role: membership.role } : null;
+  return membership
+    ? { ctx, client: membership.client, role: membership.role, permissions: membership.permissions }
+    : null;
 }
 
 // Per-request memoization: layout + page + API guards in the same request resolve identity and

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import {
   updateBookingStatus,
   rescheduleBooking,
@@ -19,7 +19,7 @@ const statusSchema = z.object({ status: z.enum(["CONFIRMED", "CANCELLED", "COMPL
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("appointments", "view"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -42,7 +42,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("appointments", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -85,7 +85,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("appointments", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { listCustomers, customerCounts } from "@/lib/modules/customer";
 import { CustomersManager } from "@/components/client/CustomersManager";
@@ -8,6 +9,7 @@ export default async function ClientCustomersPage() {
   // Reuse the workspace the layout already resolved (React cache()) — no extra tenant lookup.
   const ws = await getClientWorkspace();
   if (!ws) return null;
+  if (!ws.access.customers.view) redirect("/client"); // staff without customers access
 
   // Available on every plan: a contact list owners build manually and that fills automatically from
   // their website's lead form (Connect+). No upgrade gate.

@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
   try {
     await assertOwner(client.id, ctx.userId);
-    const invite = await inviteMember(client.id, ctx.userId, parsed.data.email, parsed.data.role);
+    const invite = await inviteMember(client.id, ctx.userId, parsed.data.email, parsed.data.role, parsed.data.permissions ?? []);
     return NextResponse.json({ ok: true, id: invite.id });
   } catch (err) {
     if (err instanceof TeamError) return NextResponse.json({ error: err.code }, { status: err.status });

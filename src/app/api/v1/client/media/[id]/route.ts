@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { deleteMedia, setMediaGallery } from "@/lib/modules/media";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ const patchSchema = z.object({ inGallery: z.boolean() });
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("website", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -31,7 +31,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("website", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

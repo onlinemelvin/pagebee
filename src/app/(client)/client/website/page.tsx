@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Wand2, Eye, Rocket, MessageSquareHeart, ExternalLink } from "lucide-react";
 import { getClientWebsite, getLatestJobStatus, getDomainState, isDomainBuyDryRun } from "@/lib/modules/website";
 import { CustomDomainPanel } from "@/components/client/CustomDomainPanel";
@@ -32,6 +33,7 @@ const STEPS = [
 export default async function ClientWebsitePage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
+  if (!ws.access.website.view) redirect("/client"); // staff without website access
   // Test-only domain "dry-run" toggle — eligibility decided ONLY here on the server (by email), so
   // the capability never reaches a real customer's page. Its on/off state lives in a server flag.
   const dryRunEligible = ws.caps.customDomain && isDomainDryRunEligible(ws.email);

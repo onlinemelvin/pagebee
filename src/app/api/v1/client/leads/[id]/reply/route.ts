@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { replyToLead } from "@/lib/modules/lead";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ const replySchema = z.object({ message: z.string().trim().min(1).max(5000) });
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("inquiries", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;

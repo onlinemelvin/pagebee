@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { createAuthUser, findAuthUserId } from "@/lib/supabase/admin";
 import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { writeAudit } from "@/lib/modules/audit";
+import { sanitizePermissions } from "./permissions";
 
 const INVITE_DAYS = 14;
 
@@ -43,6 +44,7 @@ export interface TeamMember {
   name: string | null;
   email: string;
   role: string;
+  permissions: string[];
   isYou: boolean;
   joinedAt: string;
 }
@@ -50,6 +52,7 @@ export interface TeamInvite {
   id: string;
   email: string;
   role: string;
+  permissions: string[];
   expiresAt: string;
   createdAt: string;
 }
@@ -93,6 +96,7 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
       name: m.user.name,
       email: m.user.email,
       role: m.role,
+      permissions: m.permissions,
       isYou: m.userId === currentUserId,
       joinedAt: m.createdAt.toISOString(),
     })),
@@ -100,6 +104,7 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
       id: i.id,
       email: i.email,
       role: i.role,
+      permissions: i.permissions,
       expiresAt: i.expiresAt.toISOString(),
       createdAt: i.createdAt.toISOString(),
     })),
@@ -110,8 +115,16 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
 }
 
 /** Invite someone to the team by email. Enforces the plan's seat limit. */
-export async function inviteMember(clientId: string, actorUserId: string, emailRaw: string, role: "staff" | "owner") {
+export async function inviteMember(
+  clientId: string,
+  actorUserId: string,
+  emailRaw: string,
+  role: "staff" | "owner",
+  permissions: string[] = [],
+) {
   const email = emailRaw.trim().toLowerCase();
+  // Owners hold every capability implicitly; only staff carry an explicit permission set.
+  const perms = role === "owner" ? [] : sanitizePermissions(permissions);
   const flags = await planFlags(clientId);
   const limit = seatLimit(flags);
   if (limit <= 1) throw new TeamError(403, "team_not_available");
@@ -136,7 +149,7 @@ export async function inviteMember(clientId: string, actorUserId: string, emailR
   const token = `inv_${crypto.randomBytes(24).toString("base64url")}`;
   const expiresAt = new Date(now.getTime() + INVITE_DAYS * 86_400_000);
   const invite = await prisma.clientUserInvite.create({
-    data: { clientId, email, role: role === "owner" ? "owner" : "staff", token, invitedBy: actorUserId, expiresAt },
+    data: { clientId, email, role: role === "owner" ? "owner" : "staff", permissions: perms, token, invitedBy: actorUserId, expiresAt },
   });
 
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true } });
@@ -149,7 +162,7 @@ export async function inviteMember(clientId: string, actorUserId: string, emailR
 <p style="color:#78716c;font-size:13px">Or paste this link: ${url}<br/>This invitation expires in ${INVITE_DAYS} days.</p>`,
   });
 
-  await writeAudit({ action: "team.invited", entityType: "Client", entityId: clientId, clientId, metadata: { email, role } });
+  await writeAudit({ action: "team.invited", entityType: "Client", entityId: clientId, clientId, metadata: { email, role, permissions: perms } });
   return invite;
 }
 
@@ -209,7 +222,14 @@ export async function acceptInvite(
   }
 
   await prisma.$transaction([
-    prisma.clientUser.create({ data: { clientId: inv.clientId, userId: targetUserId, role: inv.role } }),
+    prisma.clientUser.create({
+      data: {
+        clientId: inv.clientId,
+        userId: targetUserId,
+        role: inv.role,
+        permissions: inv.role === "owner" ? [] : sanitizePermissions(inv.permissions),
+      },
+    }),
     prisma.clientUserInvite.update({ where: { id: inv.id }, data: { status: "accepted", acceptedAt: new Date() } }),
   ]);
   await writeAudit({ action: "team.joined", entityType: "Client", entityId: inv.clientId, clientId: inv.clientId, metadata: { email: inv.email } });
@@ -234,4 +254,16 @@ export async function removeMember(clientId: string, actorUserId: string, member
   await prisma.clientUser.delete({ where: { id: member.id } });
   await writeAudit({ action: "team.member_removed", entityType: "Client", entityId: clientId, clientId, metadata: { memberUserId } });
   return { userId: memberUserId };
+}
+
+/** Replace a staff member's capability set. Owner-only (enforced by the route); the owner's own
+ *  permissions can't be edited (they implicitly hold everything). */
+export async function updateMemberPermissions(clientId: string, memberUserId: string, permissions: string[]) {
+  const member = await prisma.clientUser.findFirst({ where: { clientId, userId: memberUserId } });
+  if (!member) throw new TeamError(404, "not_found");
+  if (member.role === "owner") throw new TeamError(400, "cannot_edit_owner");
+  const perms = sanitizePermissions(permissions);
+  await prisma.clientUser.update({ where: { id: member.id }, data: { permissions: perms } });
+  await writeAudit({ action: "team.permissions_updated", entityType: "Client", entityId: clientId, clientId, metadata: { memberUserId, permissions: perms } });
+  return { userId: memberUserId, permissions: perms };
 }

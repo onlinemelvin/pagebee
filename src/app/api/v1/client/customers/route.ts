@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClient, AuthError } from "@/lib/auth/session";
+import { requireCapability, AuthError } from "@/lib/auth/session";
 import { createCustomer, listCustomers, customerCounts, CustomerError } from "@/lib/modules/customer";
 import { ZodError } from "zod";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   let client;
   try {
-    ({ client } = await requireClient());
+    ({ client } = await requireCapability("customers", "view"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let ctx, client;
   try {
-    ({ ctx, client } = await requireClient());
+    ({ ctx, client } = await requireCapability("customers", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
