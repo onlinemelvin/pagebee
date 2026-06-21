@@ -255,29 +255,48 @@ function clientRouterScript(mode: "path" | "hash"): string {
     "var io=new IntersectionObserver(function(en){en.forEach(function(e){if(e.isIntersecting){links.forEach(function(a){a.classList.remove('is-active');a.removeAttribute('aria-current');});var a=map[e.target.id];if(a){a.classList.add('is-active');a.setAttribute('aria-current','true');}}});},{rootMargin:'-45% 0px -50% 0px'});" +
     "Object.keys(map).forEach(function(id){io.observe(document.getElementById(id));});}" +
     "var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;" +
+    "function esc(id){return window.CSS&&CSS.escape?CSS.escape(id):id;}" +
+    "function findById(scope,id){try{return scope.querySelector('#'+esc(id));}catch(e){return null;}}" +
+    "function ownerPageOf(id){for(var i=0;i<pages.length;i++){if(findById(pages[i],id))return pages[i];}return null;}" +
     "function norm(p){p=(p||'/').split('#')[0].split('?')[0].replace(/\\/+$/,'');return p===''?'/':p;}" +
     "function key(){return MODE==='hash'?(norm((location.hash||'').replace(/^#/,''))||'/'):norm(location.pathname);}" +
     "function pageFor(path){path=norm(path);for(var i=0;i<pages.length;i++){if(norm(pages[i].getAttribute('data-page'))===path)return pages[i];}return null;}" +
+    // SAFETY NET — shared chrome (header/footer/nav) must live OUTSIDE the [data-page]
+    // wrappers so it persists across pages. A generated site that mistakenly nested the
+    // header inside one page (e.g. the home page) would lose its nav on every other page,
+    // because we hide all non-active pages. Hoist a trapped header/footer out to be a
+    // sibling of the pages (dedupe if several pages each carry one). Only acts when at
+    // least one page LACKS its own — i.e. the actual broken case — so sites that already
+    // place chrome correctly, or intentionally vary it per page, are left untouched.
+    "function hoist(sel,after){var nodes=[].slice.call(document.querySelectorAll(sel)).filter(function(n){return n.closest('[data-page]');});if(!nodes.length)return;var anyWithout=pages.some(function(p){return !p.querySelector(sel);});if(!anyWithout)return;var keep=nodes[0],parent=pages[0].parentNode;if(!parent)return;if(after){parent.insertBefore(keep,pages[pages.length-1].nextSibling);}else{parent.insertBefore(keep,pages[0]);}for(var i=1;i<nodes.length;i++){if(nodes[i].parentNode)nodes[i].parentNode.removeChild(nodes[i]);}}" +
+    "hoist('header,[role=banner]',false);hoist('footer,[role=contentinfo]',true);" +
     "function revealIn(scope){[].forEach.call(scope.querySelectorAll('[data-reveal]'),function(el){if(!reduce)el.style.transition='opacity .5s ease, transform .5s ease';el.style.setProperty('opacity','1','important');el.style.setProperty('transform','none','important');});}" +
     "function setActive(path){[].forEach.call(document.querySelectorAll('nav a[href^=\"/\"]'),function(a){var on=norm(a.getAttribute('href'))===path;if(on){a.classList.add('is-active');a.setAttribute('aria-current','page');}else{a.classList.remove('is-active');a.removeAttribute('aria-current');}});}" +
     "function closeMenus(){[].forEach.call(document.querySelectorAll('[data-menu]'),function(m){m.setAttribute('hidden','');});[].forEach.call(document.querySelectorAll('[aria-controls][aria-expanded]'),function(b){b.setAttribute('aria-expanded','false');});}" +
-    "var current=null;" +
-    "function show(path,initial){var next=pageFor(path)||pageFor('/')||pages[0];if(!next)return;" +
+    "function scrollToId(scope,id){var el=findById(scope,id);if(el&&el.scrollIntoView){requestAnimationFrame(function(){el.scrollIntoView(reduce?{block:'start'}:{behavior:'smooth',block:'start'});});}}" +
+    "var current=null,pendingAnchor='';" +
+    "function show(path,initial,anchor){var next=pageFor(path)||pageFor('/')||pages[0];if(!next)return;" +
     "for(var i=0;i<pages.length;i++){if(pages[i]!==next){pages[i].style.display='none';}}" +
     "next.removeAttribute('hidden');next.style.display='block';" +
     "var t=next.getAttribute('data-title');if(t)document.title=t;" +
     "setActive(norm(path));closeMenus();" +
-    "if(current&&current!==next)window.scrollTo(0,0);" +
+    "if(current&&current!==next&&!anchor)window.scrollTo(0,0);" +
     "if(!initial){if(!reduce){next.style.opacity='0';next.style.transform='translateY(14px)';requestAnimationFrame(function(){next.style.transition='opacity .45s ease, transform .45s ease';next.style.opacity='1';next.style.transform='none';});}revealIn(next);}" +
+    "if(anchor)scrollToId(next,anchor);" +
     "current=next;try{document.dispatchEvent(new CustomEvent('pagebee:navigate',{detail:{path:norm(path)}}));}catch(e){}}" +
+    "function go(path,anchor){path=norm(path);if(!pageFor(path))return;if(MODE==='hash'){pendingAnchor=anchor||'';if(norm((location.hash||'').replace(/^#/,''))!==path){location.hash='#'+path;}else{pendingAnchor='';show(path,false,anchor);}}else{if(norm(location.pathname)!==path)history.pushState({p:path},'',path);show(path,false,anchor);}}" +
     "document.addEventListener('click',function(e){var a=e.target.closest?e.target.closest('a[href]'):null;if(!a)return;" +
     "if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;" +
     "if(a.target==='_blank'||a.hasAttribute('download'))return;" +
-    "var href=a.getAttribute('href')||'';if(href.charAt(0)!=='/')return;" +
-    "var path=norm(href);if(!pageFor(path))return;e.preventDefault();" +
-    "if(MODE==='hash'){if(norm((location.hash||'').replace(/^#/,''))!==path){location.hash='#'+path;}else{show(path,false);}}" +
-    "else{if(norm(location.pathname)!==path)history.pushState({p:path},'',href);show(path,false);}});" +
-    "if(MODE==='hash'){addEventListener('hashchange',function(){show(key(),false);});}else{addEventListener('popstate',function(){show(key(),false);});}" +
+    "var href=a.getAttribute('href')||'';" +
+    // In-page #anchor links: if the target id isn't on the CURRENT page but lives on
+    // another [data-page] (e.g. a 'Get a Quote' CTA href="#contact" while the contact
+    // form is on /contact), navigate to that page and scroll to it. Same-page anchors
+    // fall through to the browser's native scroll.
+    "if(href.charAt(0)==='#'){if(href.length<2)return;var aid=href.slice(1);if(current&&findById(current,aid))return;var owner=ownerPageOf(aid);if(owner){e.preventDefault();go(norm(owner.getAttribute('data-page')),aid);}return;}" +
+    "if(href.charAt(0)!=='/')return;" +
+    "var hi=href.indexOf('#');var anchor=hi>=0?href.slice(hi+1):'';var path=norm(href);if(!pageFor(path))return;e.preventDefault();go(path,anchor);});" +
+    "if(MODE==='hash'){addEventListener('hashchange',function(){var a=pendingAnchor;pendingAnchor='';show(key(),false,a);});}else{addEventListener('popstate',function(){show(key(),false);});}" +
     "show(key(),true);" +
     "})();</script>"
   );
