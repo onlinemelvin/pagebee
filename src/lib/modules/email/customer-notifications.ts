@@ -66,23 +66,23 @@ export const sendAppointmentFollowUp = (clientId: string, a: { to?: string | nul
 
 // — Billing to customers ------------------------------------------------------
 
-export const sendEstimateSent = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; viewUrl: string; expiresOn?: string; attachments?: EmailAttachment[] }) =>
-  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, attachments: a.attachments, build: (b) => ct.estimateSentEmail({ ...b, number: a.number, amountCents: a.amountCents, viewUrl: a.viewUrl, expiresOn: a.expiresOn }) });
+export const sendEstimateSent = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; currency?: string; viewUrl: string; expiresOn?: string; attachments?: EmailAttachment[] }) =>
+  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, attachments: a.attachments, build: (b) => ct.estimateSentEmail({ ...b, number: a.number, amountCents: a.amountCents, currency: a.currency, viewUrl: a.viewUrl, expiresOn: a.expiresOn }) });
 
 export const sendEstimateExpiring = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; viewUrl: string; expiresOn: string }) =>
   sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.estimateExpiringEmail({ ...b, number: a.number, viewUrl: a.viewUrl, expiresOn: a.expiresOn }) });
 
-export const sendInvoiceSent = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; dueOn?: string; viewUrl: string; attachments?: EmailAttachment[] }) =>
-  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, attachments: a.attachments, build: (b) => ct.invoiceSentEmail({ ...b, number: a.number, amountCents: a.amountCents, dueOn: a.dueOn, viewUrl: a.viewUrl }) });
+export const sendInvoiceSent = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; currency?: string; dueOn?: string; viewUrl: string; attachments?: EmailAttachment[] }) =>
+  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, attachments: a.attachments, build: (b) => ct.invoiceSentEmail({ ...b, number: a.number, amountCents: a.amountCents, currency: a.currency, dueOn: a.dueOn, viewUrl: a.viewUrl }) });
 
-export const sendCustomerPaymentReceipt = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; when: string; viewUrl?: string }) =>
-  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.customerPaymentReceiptEmail({ ...b, number: a.number, amountCents: a.amountCents, when: a.when, viewUrl: a.viewUrl }) });
+export const sendCustomerPaymentReceipt = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; currency?: string; when: string; viewUrl?: string }) =>
+  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.customerPaymentReceiptEmail({ ...b, number: a.number, amountCents: a.amountCents, currency: a.currency, when: a.when, viewUrl: a.viewUrl }) });
 
-export const sendInvoiceOverdue = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; dueOn: string; viewUrl: string }) =>
-  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.invoiceOverdueEmail({ ...b, number: a.number, amountCents: a.amountCents, dueOn: a.dueOn, viewUrl: a.viewUrl }) });
+export const sendInvoiceOverdue = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; number: string; amountCents: number; currency?: string; dueOn: string; viewUrl: string }) =>
+  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.invoiceOverdueEmail({ ...b, number: a.number, amountCents: a.amountCents, currency: a.currency, dueOn: a.dueOn, viewUrl: a.viewUrl }) });
 
-export const sendStatement = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; period: string; balanceCents: number; viewUrl: string }) =>
-  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.statementEmail({ ...b, period: a.period, balanceCents: a.balanceCents, viewUrl: a.viewUrl }) });
+export const sendStatement = (clientId: string, a: { to?: string | null; customerId?: string | null; customerName?: string | null; period: string; balanceCents: number; currency?: string; viewUrl: string }) =>
+  sendCustomer({ clientId, to: a.to, customerId: a.customerId, customerName: a.customerName, build: (b) => ct.statementEmail({ ...b, period: a.period, balanceCents: a.balanceCents, currency: a.currency, viewUrl: a.viewUrl }) });
 
 // — Review request ------------------------------------------------------------
 

@@ -3,8 +3,41 @@
 // public bucket and returns the public URL.
 
 import { randomBytes } from "node:crypto";
+import { isIP } from "node:net";
+import { lookup } from "node:dns/promises";
 
 const BUCKET = "client-uploads";
+
+/** True for loopback / private / link-local / reserved IPs we must never fetch (SSRF). */
+function isPrivateIp(ip: string): boolean {
+  const v = ip.toLowerCase().replace(/^::ffff:/, ""); // unwrap IPv4-mapped IPv6
+  if (isIP(v) === 4) {
+    const [a, b] = v.split(".").map(Number);
+    return (
+      a === 10 || a === 127 || a === 0 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) || // link-local (incl. cloud metadata 169.254.169.254)
+      a >= 224 // multicast / reserved
+    );
+  }
+  // IPv6: loopback, unspecified, unique-local (fc00::/7), link-local (fe80::/10).
+  return v === "::1" || v === "::" || /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
+}
+
+/**
+ * Resolve a user-supplied URL and reject it if it targets a private/reserved
+ * host — blocks SSRF to cloud metadata, localhost, and internal services before
+ * we fetch. Only http(s) is allowed. (Residual: redirect-time DNS rebinding is
+ * not covered; fetch below could still be hardened with a pinned dispatcher.)
+ */
+async function assertPublicHttpUrl(raw: string): Promise<void> {
+  const u = new URL(raw);
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("ssrf_blocked_scheme");
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  const addrs = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
+  if (addrs.length === 0 || addrs.some(isPrivateIp)) throw new Error("ssrf_blocked_host");
+}
 const MAX_IMAGE_BYTES = 5_242_880; // matches the bucket's file_size_limit
 
 const EXT_BY_TYPE: Record<string, string> = {
@@ -70,6 +103,7 @@ export async function uploadPublicFile(
 export async function persistRemoteImage(clientId: string, remoteUrl: string): Promise<string | null> {
   if (!cfg()) return null;
   try {
+    await assertPublicHttpUrl(remoteUrl); // SSRF guard — reject private/reserved hosts
     const res = await fetch(remoteUrl, { signal: AbortSignal.timeout(20_000) });
     if (!res.ok) return null;
     const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();

@@ -112,8 +112,19 @@ export async function checkSendingDomain(id: string) {
   return updated;
 }
 
-/** Worker sweep: poll all PENDING sending domains until verified. */
-export async function sweepSendingDomains(): Promise<{ checked: number; verified: number }> {
+/** Days a sending domain may stay PENDING before we give up polling it. */
+const SENDING_DOMAIN_PENDING_TTL_DAYS = 14;
+
+/** Worker sweep: poll PENDING sending domains until verified; retire chronically-stale ones. */
+export async function sweepSendingDomains(): Promise<{ checked: number; verified: number; retired: number }> {
+  // Retire domains stuck PENDING past the TTL (DNS never added) so they stop
+  // consuming Resend API calls every tick. The owner can re-provision to retry.
+  const cutoff = new Date(Date.now() - SENDING_DOMAIN_PENDING_TTL_DAYS * 86_400_000);
+  const retired = await prisma.sendingDomain.updateMany({
+    where: { status: "PENDING", createdAt: { lt: cutoff } },
+    data: { status: "FAILED", lastError: "verification_timed_out" },
+  });
+
   const pending = await prisma.sendingDomain.findMany({ where: { status: "PENDING" }, select: { id: true }, take: 100 });
   let verified = 0;
   for (const d of pending) {
@@ -124,7 +135,7 @@ export async function sweepSendingDomains(): Promise<{ checked: number; verified
       console.error(`[email:sending-domain] check failed for ${d.id}`, err);
     }
   }
-  return { checked: pending.length, verified };
+  return { checked: pending.length, verified, retired: retired.count };
 }
 
 /** Remove a client's sending domain (revert to the shared domain). */

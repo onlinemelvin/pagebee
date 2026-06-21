@@ -63,6 +63,7 @@ export async function sweepInvoiceReminders(): Promise<{ sent: number }> {
       customerName: inv.customer.name,
       number: inv.number,
       amountCents: balance,
+      currency: inv.currency,
       dueOn: inv.dueDate.toLocaleDateString("en-US", { dateStyle: "long" }),
       viewUrl: `${APP_URL}/d/${inv.publicToken}`,
     });
