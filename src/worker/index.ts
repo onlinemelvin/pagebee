@@ -28,6 +28,7 @@ async function main() {
   );
   const { sweepBookingReminders } = await import("@/lib/modules/booking");
   const { sweepInvoiceReminders, sweepRecurringPlans } = await import("@/lib/modules/finance");
+  const { sweepScheduledCampaigns, sweepEmailReminders } = await import("@/lib/modules/email/sweep");
 
   console.log("[worker] PageBee generation worker started");
   const recovered = await requeueStaleJobs();
@@ -47,6 +48,10 @@ async function main() {
         if (fr.sent) console.log(`[worker] invoice reminders sent: ${fr.sent}`);
         const rp = await sweepRecurringPlans();
         if (rp.generated) console.log(`[worker] recurring invoices generated: ${rp.generated} (auto-charged: ${rp.charged})`);
+        const ec = await sweepScheduledCampaigns();
+        if (ec.sent) console.log(`[worker] scheduled email campaigns sent: ${ec.sent}`);
+        const er = await sweepEmailReminders();
+        if (er.setupReminders) console.log(`[worker] setup-fee reminders sent: ${er.setupReminders}`);
       }
 
       const id = await claimNextQueuedJob();

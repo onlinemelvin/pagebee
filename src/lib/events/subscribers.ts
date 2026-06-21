@@ -1,5 +1,6 @@
 import { on } from "@/lib/events";
 import { sendEmail } from "@/lib/modules/email";
+import * as notify from "@/lib/modules/email/notifications";
 import { upsertCustomerFromLead } from "@/lib/modules/customer";
 import type { Lead, Booking } from "@prisma/client";
 
@@ -34,6 +35,13 @@ if (!globalForSubs.__pagebeeSubscribers) {
         <p><strong>Source:</strong> ${lead.source ?? "—"}</p>
       `,
     });
+  });
+
+  // Platform → client: the website preview has been released for the owner to
+  // review. Mirror of the "preview ready" notification.
+  on("website.preview_released", async (payload) => {
+    const { clientId } = payload as { clientId?: string };
+    if (clientId) await notify.sendPreviewReady(clientId);
   });
 
   on("booking.created", async (payload) => {

@@ -47,13 +47,14 @@ export default function LoginPage() {
       setError("Enter your email above first, then click “Forgot password”.");
       return;
     }
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
-    });
-    if (error) {
-      setError(error.message);
-      return;
+    try {
+      await fetch("/api/v1/public/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      /* fail-soft — never reveal whether the address exists */
     }
     setNotice("If an account exists for that email, a password reset link is on its way.");
   }

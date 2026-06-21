@@ -5,6 +5,7 @@ import { getStripe, appBaseUrl } from "@/lib/stripe/client";
 import { planByName, planRank, type PlanDef, type PlanName } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { launchPreview } from "@/lib/modules/preview";
+import * as notify from "@/lib/modules/email/notifications";
 
 // PageBee's own subscription billing — we charge the CLIENT for their plan (monthly) + the
 // one-time setup fee, on the PLATFORM Stripe account (separate from Connect payouts). Setup-fee
@@ -222,19 +223,30 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
       });
 
       if (kind === "upgrade" && toPlan) {
+        const before = await prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } });
         await switchPlan(clientId, toPlan);
         await prisma.subscription.update({ where: { clientId }, data: { status: "ACTIVE" } });
         await writeAudit({ action: "subscription.upgraded", entityType: "Client", entityId: clientId, clientId, metadata: { toPlan, via: "stripe" } });
+        if (before?.plan.name && before.plan.name !== toPlan) {
+          await notify.sendPlanChanged(clientId, { fromPlan: before.plan.name, toPlan });
+        }
       } else {
-        await prisma.subscription.update({
+        const sub = await prisma.subscription.update({
           where: { clientId },
           data: { setupFeePaid: true, setupFeePaidAt: new Date(), status: "ACTIVE" },
+          select: { agreedSetupFee: true },
         });
         const preview = await prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
         if (preview && preview.status !== "LIVE") {
           await launchPreview(preview.id).catch((e) => console.error("[billing] launch failed", e));
         }
         await writeAudit({ action: "billing.setup_fee_paid", entityType: "Client", entityId: clientId, clientId });
+        await notify.sendPaymentReceipt(clientId, {
+          amountCents: sub.agreedSetupFee,
+          description: "One-time website setup fee",
+          when: new Date().toLocaleDateString("en-US", { dateStyle: "long" }),
+          invoiceUrl: notify.billingUrl(),
+        });
       }
       break;
     }
@@ -253,20 +265,34 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
     }
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
+      const row = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: sub.id }, select: { clientId: true, currentPeriodEnd: true } });
       await prisma.subscription.updateMany({
         where: { stripeSubscriptionId: sub.id },
         data: { status: "CANCELLED", cancelledAt: new Date() },
       });
+      if (row) {
+        await notify.sendSubscriptionCancelled(row.clientId, {
+          accessUntil: row.currentPeriodEnd?.toLocaleDateString("en-US", { dateStyle: "long" }),
+        });
+      }
       break;
     }
     case "invoice.payment_failed": {
       const inv = event.data.object as Stripe.Invoice;
       const subId = (inv as unknown as { subscription?: string }).subscription;
       if (subId) {
-        await prisma.subscription.updateMany({
+        const row = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: subId }, select: { clientId: true } });
+        const updated = await prisma.subscription.updateMany({
           where: { stripeSubscriptionId: subId },
           data: { status: "PAST_DUE", failedPaymentCount: { increment: 1 } },
         });
+        if (row && updated.count) {
+          const fresh = await prisma.subscription.findUnique({ where: { clientId: row.clientId }, select: { failedPaymentCount: true } });
+          await notify.sendPaymentFailed(row.clientId, {
+            amountCents: inv.amount_due ?? 0,
+            attempt: fresh?.failedPaymentCount ?? 1,
+          });
+        }
       }
       break;
     }

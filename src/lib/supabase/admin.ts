@@ -44,6 +44,34 @@ export async function createAuthUser(email: string, password: string): Promise<C
   return { ok: false, status: res.status, error: body.msg ?? body.error_description ?? body.code ?? `auth_error_${res.status}` };
 }
 
+/** Set a Supabase Auth user's password (used by the branded password-reset flow). */
+export async function updateAuthUserPassword(supabaseUserId: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  const cfg = adminConfig();
+  if (!cfg) return { ok: false, error: "supabase_not_configured" };
+  const res = await fetch(`${cfg.url}/auth/v1/admin/users/${supabaseUserId}`, {
+    method: "PUT",
+    headers: cfg.headers,
+    body: JSON.stringify({ password }),
+  });
+  if (res.ok) return { ok: true };
+  const body = (await res.json().catch(() => ({}))) as { msg?: string };
+  return { ok: false, error: body.msg ?? `auth_error_${res.status}` };
+}
+
+/** Mark a Supabase Auth user's email as confirmed (used by the branded verify flow). */
+export async function confirmAuthUserEmail(supabaseUserId: string): Promise<{ ok: boolean; error?: string }> {
+  const cfg = adminConfig();
+  if (!cfg) return { ok: false, error: "supabase_not_configured" };
+  const res = await fetch(`${cfg.url}/auth/v1/admin/users/${supabaseUserId}`, {
+    method: "PUT",
+    headers: cfg.headers,
+    body: JSON.stringify({ email_confirm: true }),
+  });
+  if (res.ok) return { ok: true };
+  const body = (await res.json().catch(() => ({}))) as { msg?: string };
+  return { ok: false, error: body.msg ?? `auth_error_${res.status}` };
+}
+
 /** Look up an existing auth user id by email (used when create reports a conflict). */
 export async function findAuthUserId(email: string): Promise<string | undefined> {
   const cfg = adminConfig();

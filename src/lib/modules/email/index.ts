@@ -1,62 +1,52 @@
-import { Resend } from "resend";
+// PageBee platform email module. `sendEmail`/`escapeHtml` are the low-level
+// primitives (kept for existing callers); most product code should call
+// `dispatch()` or the high-level `notifications` helpers, which add EmailLog
+// persistence, the branded layout, suppression, and the unsubscribe footer.
+export { sendEmail, escapeHtml } from "./send";
+export type { SendEmailParams, EmailAttachment } from "./send";
 
-const apiKey = process.env.RESEND_API_KEY;
-const resend = apiKey ? new Resend(apiKey) : null;
+export { dispatch } from "./dispatch";
+export type { DispatchParams, DispatchResult } from "./dispatch";
 
-const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL ?? "PageBee <noreply@pagebee.com>";
+export { renderLayout, button, linkFallback, appBase } from "./layout";
+export { isMarketing, MARKETING_CATEGORIES, CATEGORY_LABELS } from "./categories";
 
-export interface EmailAttachment {
-  filename: string;
-  content: Buffer; // raw bytes; forwarded to Resend as base64
-}
+export {
+  isSuppressed,
+  unsubscribe,
+  resubscribe,
+  unsubscribeUrlFor,
+  resolveUnsubscribeToken,
+  suppressFromProvider,
+} from "./preferences";
 
-export interface SendEmailParams {
-  to: string;
-  subject: string;
-  html: string;
-  from?: string;
-  replyTo?: string;
-  attachments?: EmailAttachment[];
-}
+export * as templates from "./templates";
+export type { BuiltEmail } from "./templates";
 
-/** Escape user-controlled values before interpolating them into email HTML bodies. */
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+export * as notify from "./notifications";
 
-/**
- * Centralized email send (docs/ARCHITECTURE.md §8.8). Falls back to console
- * logging when RESEND_API_KEY is unset, so dev works without a Resend account.
- */
-export async function sendEmail(params: SendEmailParams): Promise<{ id: string | null; stubbed: boolean }> {
-  const from = params.from ?? DEFAULT_FROM;
+export {
+  resolveSegment,
+  segmentCount,
+  createCampaign,
+  updateCampaign,
+  listCampaigns,
+  getCampaign,
+  cancelCampaign,
+  sendCampaign,
+  listTemplates,
+  getTemplate,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  CampaignError,
+} from "./bulk";
+export type { Segment, SegmentRecipient, CampaignInput, TemplateInput } from "./bulk";
 
-  if (!resend) {
-    const att = params.attachments?.length ? ` attachments=${params.attachments.map((a) => a.filename).join(",")}` : "";
-    console.log(
-      `[email:stub] to=${params.to} from="${from}"${params.replyTo ? ` replyTo=${params.replyTo}` : ""} subject="${params.subject}"${att}`,
-    );
-    return { id: null, stubbed: true };
-  }
+export { emailOverview, emailByCategory, listEmailLogs } from "./analytics";
+export type { EmailOverview, EmailLogFilter } from "./analytics";
 
-  const { data, error } = await resend.emails.send({
-    from,
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
-    ...(params.attachments?.length
-      ? { attachments: params.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
-      : {}),
-  });
-  if (error) {
-    console.error("[email] send failed", error);
-    throw new Error(error.message);
-  }
-  return { id: data?.id ?? null, stubbed: false };
-}
+export { sweepScheduledCampaigns, sweepEmailReminders } from "./sweep";
+export { handleResendEvent, verifyResendSignature } from "./tracking";
+
+export { segmentSchema, campaignSchema, campaignUpdateSchema, templateSchema, templateUpdateSchema } from "./schema";
