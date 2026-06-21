@@ -10,7 +10,6 @@ import { RegenerateSection } from "@/components/client/RegenerateSection";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
 import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
-import { CheckoutButton } from "@/components/client/BillingActions";
 import { PreviewCover } from "@/components/client/PreviewCover";
 import { extractAccentColor } from "@/lib/site/accent";
 import { LogoMark } from "@/components/brand/Logo";
@@ -94,7 +93,9 @@ export default async function ClientWebsitePage() {
                 publishes, your domain connects, and your features turn on right away.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <CheckoutButton kind="setup" label="Pay &amp; launch your site" />
+                <a href="/client/launch" className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700">
+                  <Rocket size={16} /> Continue to launch
+                </a>
                 <a href="/client/billing" className="text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
                   Billing details
                 </a>

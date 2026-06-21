@@ -94,12 +94,15 @@ export async function createBillingCheckout(
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: prices.monthly, quantity: 1 }];
   if (kind === "setup") lineItems.push({ price: prices.setup, quantity: 1 }); // one-time, billed on the first invoice
 
+  // The setup (first launch) flow returns to the dedicated launch page so the customer sees a
+  // clear "your site is going live" confirmation; plan upgrades return to billing as before.
+  const returnBase = kind === "setup" ? `${base}/client/launch` : `${base}/client/billing`;
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer,
     line_items: lineItems,
-    success_url: `${base}/client/billing?checkout=success`,
-    cancel_url: `${base}/client/billing?checkout=cancel`,
+    success_url: `${returnBase}?checkout=success`,
+    cancel_url: `${returnBase}?checkout=cancel`,
     metadata: { clientId, kind, toPlan: planName },
     subscription_data: { metadata: { clientId } },
     allow_promotion_codes: true,
