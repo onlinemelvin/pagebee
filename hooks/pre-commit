@@ -5,13 +5,12 @@ echo "🔍 Running pre-commit checks..."
 
 # ── 1. TypeScript type check ─────────────────────────────────────────────────
 echo "→ Type checking..."
-# npx tsc --noEmit
-# Uncomment above when tsconfig.json exists
+npx tsc --noEmit
 
 # ── 2. Lint ──────────────────────────────────────────────────────────────────
 echo "→ Linting..."
-# npx eslint . --ext .ts,.tsx --max-warnings 0
-# Uncomment above when eslint is configured
+# Flat config (eslint.config.mjs) — fails on errors; the warning backlog is allowed.
+npx eslint
 
 # ── 3. Secrets scan ──────────────────────────────────────────────────────────
 echo "→ Scanning for secrets..."
@@ -57,7 +56,6 @@ fi
 
 # ── 5. Unit tests ────────────────────────────────────────────────────────────
 echo "→ Running unit tests..."
-# npx vitest run --reporter=dot
-# Uncomment above when tests exist
+npx vitest run --reporter=dot
 
 echo "✅ Pre-commit checks passed."

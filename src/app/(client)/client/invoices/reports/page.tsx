@@ -130,7 +130,7 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
         )}
         <p className="mt-4 text-xs text-stone-400">
           Your official IRS 1099-K (if your volume crosses the reporting threshold) is filed with the IRS and delivered to you by
-          PageBee Pay each January — by email, with a mailed copy as backup — so there's nothing to file yourself. The summary above
+          PageBee Pay each January — by email, with a mailed copy as backup — so there&apos;s nothing to file yourself. The summary above
           and the printable statement are for your own records.
         </p>
       </section>

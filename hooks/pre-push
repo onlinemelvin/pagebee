@@ -8,12 +8,10 @@ echo "🚀 Running pre-push checks..."
 
 # ── 2. Full test suite ───────────────────────────────────────────────────────
 echo "→ Running full test suite..."
-# npx vitest run
-# Uncomment above when tests exist
+npx vitest run
 
 # ── 3. Build check ───────────────────────────────────────────────────────────
 echo "→ Checking build..."
-# npx next build
-# Uncomment above when the Next.js app exists
+npx next build
 
 echo "✅ Pre-push checks passed."

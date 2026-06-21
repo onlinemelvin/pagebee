@@ -93,7 +93,7 @@ export default async function Form1099StatementPage({ searchParams }: { searchPa
           <p className="font-semibold text-stone-600">This is an informational summary — not the official IRS Form 1099-K.</p>
           <p className="mt-1">
             It reflects gross card payments processed through PageBee Pay for the tax year shown, for your records and your
-            accountant's reference. Your official IRS Form 1099-K (if your volume crosses the reporting threshold) is filed
+            accountant&apos;s reference. Your official IRS Form 1099-K (if your volume crosses the reporting threshold) is filed
             with the IRS and delivered to you by PageBee Pay each January — no action is needed on your part. Figures are
             denominated in USD.
           </p>

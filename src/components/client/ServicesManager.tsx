@@ -328,7 +328,7 @@ export function ServicesManager({
                 disabled={form.isDefault}
                 placeholder="e.g. Oil change"
               />
-              {form.isDefault && <span className="text-xs font-normal text-stone-400">The Other entry's name is fixed.</span>}
+              {form.isDefault && <span className="text-xs font-normal text-stone-400">The Other entry&apos;s name is fixed.</span>}
             </label>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">

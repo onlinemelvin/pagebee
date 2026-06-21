@@ -47,9 +47,9 @@ export function CreateSiteWelcome({ ownerName, businessName, planName, isOwner, 
           </span>
           <h1 className="mt-4 font-display text-4xl leading-tight text-stone-900 sm:text-5xl">
             {settingUp ? (
-              <>We're building {businessName}'s website</>
+              <>We&apos;re building {businessName}&apos;s website</>
             ) : (
-              <>Let's get {businessName} online, {ownerName}.</>
+              <>Let&apos;s get {businessName} online, {ownerName}.</>
             )}
           </h1>
           <p className="mt-4 max-w-md text-lg text-stone-600">
@@ -83,7 +83,7 @@ export function CreateSiteWelcome({ ownerName, businessName, planName, isOwner, 
 
           {!isOwner && !settingUp && (
             <p className="mt-7 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-              Your account owner hasn't created the website yet. Once it's live, your tools will show up here.
+              Your account owner hasn&apos;t created the website yet. Once it&apos;s live, your tools will show up here.
             </p>
           )}
         </div>
@@ -109,9 +109,9 @@ export function CreateSiteWelcome({ ownerName, businessName, planName, isOwner, 
         </section>
       )}
 
-      {/* ── What you'll manage here ── */}
+      {/* ── What you&apos;ll manage here ── */}
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">What you'll manage here</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">What you&apos;ll manage here</h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {tour.map((t) => (
             <div key={t.title} className="flex flex-col rounded-2xl border border-stone-200 bg-white p-5 shadow-card">
