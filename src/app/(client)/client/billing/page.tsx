@@ -107,7 +107,7 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <UsageTile icon={Wand2} label="Website updates" used={ws.quota.used} limit={ws.quota.allowance} unlimited={plan.quotas.updatesUnlimited} accent="bg-amber-100 text-amber-700" />
-          <UsageTile icon={Users} label="Team seats" used={seatsUsed} limit={plan.quotas.seats} accent="bg-violet-100 text-violet-700" />
+          <UsageTile icon={Users} label="Team seats" used={seatsUsed} limit={plan.quotas.seats} unlimited={plan.quotas.seatsUnlimited} accent="bg-violet-100 text-violet-700" />
           {plan.quotas.invoices !== undefined && (
             <UsageTile icon={FileText} label="Invoices this month" used={invoicesThisMonth} limit={plan.quotas.invoices} unlimited={plan.quotas.invoicesUnlimited} accent="bg-emerald-100 text-emerald-700" />
           )}

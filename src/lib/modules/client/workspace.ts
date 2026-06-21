@@ -136,7 +136,7 @@ export interface ClientWorkspace {
   role: string; // "owner" | "staff"
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
-  caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; customDomain: boolean; maxPages: number; teamSeats: number };
+  caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; customDomain: boolean; maxPages: number; teamSeats: number; teamSeatsUnlimited: boolean };
   choices: { booking: boolean | null; invoices: boolean | null };
   website: { exists: boolean; published: boolean; subdomain: string | null; latestVersionStatus: string | null };
   counts: { newInquiries: number; pendingAppointments: number };
@@ -194,6 +194,7 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     customDomain: Boolean(planFlags.customDomain),
     maxPages: Number(planFlags.maxPages ?? 5),
     teamSeats: Number(planFlags.teamSeats ?? 1),
+    teamSeatsUnlimited: Boolean(planFlags.unlimitedSeats),
   };
 
   const site = client.websites[0];

@@ -29,7 +29,12 @@ async function planFlags(clientId: string): Promise<Record<string, unknown>> {
   return (sub?.plan.featureFlags ?? {}) as Record<string, unknown>;
 }
 
+function seatsUnlimited(flags: Record<string, unknown>): boolean {
+  return flags.unlimitedSeats === true;
+}
+
 function seatLimit(flags: Record<string, unknown>): number {
+  if (seatsUnlimited(flags)) return Infinity;
   return Number(flags.teamSeats ?? 1);
 }
 
@@ -51,7 +56,8 @@ export interface TeamInvite {
 export interface TeamState {
   members: TeamMember[];
   invites: TeamInvite[];
-  seatLimit: number;
+  seatLimit: number; // not meaningful when seatsUnlimited is true
+  seatsUnlimited: boolean;
   seatsUsed: number;
 }
 
@@ -97,7 +103,8 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
       expiresAt: i.expiresAt.toISOString(),
       createdAt: i.createdAt.toISOString(),
     })),
-    seatLimit: seatLimit(flags),
+    seatLimit: seatsUnlimited(flags) ? members.length + invites.length : seatLimit(flags),
+    seatsUnlimited: seatsUnlimited(flags),
     seatsUsed: members.length + invites.length,
   };
 }

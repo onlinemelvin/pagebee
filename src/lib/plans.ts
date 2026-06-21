@@ -9,6 +9,7 @@ export interface PlanQuotas {
   updates: number; // monthly minor-update allowance (soft cap when unlimited)
   updatesUnlimited?: boolean;
   seats: number; // included team members
+  seatsUnlimited?: boolean;
   sms?: number; // SMS alerts included / month (omitted = not included)
   aiReplies?: number; // AI assistant replies / month
   email?: number; // transactional emails / month
@@ -83,8 +84,8 @@ export const PLANS: PlanDef[] = [
     monthlyFee: 8900,
     maxPages: 6,
     monthlyUpdates: 5,
-    teamSeats: 2,
-    quotas: { pages: 6, updates: 5, seats: 2, sms: 100, email: 1000 },
+    teamSeats: 3,
+    quotas: { pages: 6, updates: 5, seats: 3, sms: 100, email: 1000 },
     recommended: true,
     highlights: [
       "Everything in Launch, plus:",
@@ -92,7 +93,7 @@ export const PLANS: PlanDef[] = [
       "Website chat + lead inbox",
       "SMS lead alerts (100/mo included)",
       "Custom domain · up to 6 pages or sections",
-      "2 team members · 5 minor updates / month",
+      "3 team members · 5 minor updates / month",
     ],
     featureFlags: {
       planName: "Connect",
@@ -100,7 +101,7 @@ export const PLANS: PlanDef[] = [
       monthlyFee: 89,
       maxPages: 6,
       monthlyUpdates: 5,
-      teamSeats: 2,
+      teamSeats: 3,
       contactForm: true,
       basicAnalytics: true,
       hosting: true,
@@ -133,6 +134,7 @@ export const PLANS: PlanDef[] = [
       updates: 30,
       updatesUnlimited: true,
       seats: 5,
+      seatsUnlimited: true,
       sms: 500,
       aiReplies: 1000,
       email: 5000,
@@ -145,7 +147,7 @@ export const PLANS: PlanDef[] = [
       "AI assistant — 1,000 replies / mo, follow-ups & lead scoring",
       "Customer payment portal & statements",
       "SMS lead alerts (500/mo included)",
-      "5 team members · unlimited updates",
+      "Unlimited team members · unlimited updates",
     ],
     featureFlags: {
       planName: "Automate",
@@ -154,6 +156,7 @@ export const PLANS: PlanDef[] = [
       maxPages: 12,
       monthlyUpdates: 30,
       teamSeats: 5,
+      unlimitedSeats: true,
       contactForm: true,
       basicAnalytics: true,
       hosting: true,
@@ -218,7 +221,7 @@ export function planLimitRows(plan: PlanDef): { label: string; value: string }[]
   const rows: { label: string; value: string }[] = [
     { label: "Pages & sections", value: `Up to ${q.pages}` },
     { label: "Website updates", value: q.updatesUnlimited ? "Unlimited" : `${q.updates} / mo` },
-    { label: "Team members", value: `${q.seats}` },
+    { label: "Team members", value: q.seatsUnlimited ? "Unlimited" : `${q.seats}` },
   ];
   if (q.sms) rows.push({ label: "SMS lead alerts", value: `${q.sms.toLocaleString()} / mo` });
   if (q.aiReplies) rows.push({ label: "AI assistant replies", value: `${q.aiReplies.toLocaleString()} / mo` });

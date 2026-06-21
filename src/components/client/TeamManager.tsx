@@ -23,8 +23,8 @@ export function TeamManager({ state, isOwner }: { state: TeamState; isOwner: boo
   const [error, setError] = React.useState<string | null>(null);
   const [ok, setOk] = React.useState<string | null>(null);
 
-  const full = state.seatsUsed >= state.seatLimit;
-  const pct = state.seatLimit > 0 ? Math.min(100, Math.round((state.seatsUsed / state.seatLimit) * 100)) : 0;
+  const full = !state.seatsUnlimited && state.seatsUsed >= state.seatLimit;
+  const pct = state.seatsUnlimited ? 0 : state.seatLimit > 0 ? Math.min(100, Math.round((state.seatsUsed / state.seatLimit) * 100)) : 0;
 
   async function invite(e: React.FormEvent) {
     e.preventDefault();
@@ -65,13 +65,15 @@ export function TeamManager({ state, isOwner }: { state: TeamState; isOwner: boo
         <div className="flex items-center justify-between">
           <div>
             <p className="font-display text-lg text-stone-900">Seats</p>
-            <p className="text-sm text-stone-500">{state.seatsUsed} of {state.seatLimit} used</p>
+            <p className="text-sm text-stone-500">{state.seatsUnlimited ? `${state.seatsUsed} member${state.seatsUsed === 1 ? "" : "s"} · unlimited seats` : `${state.seatsUsed} of ${state.seatLimit} used`}</p>
           </div>
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-100 text-violet-700"><ShieldCheck size={20} /></span>
         </div>
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-100">
-          <div className={cn("h-full rounded-full transition-all", full ? "bg-amber-500" : "bg-violet-500")} style={{ width: `${pct}%` }} />
-        </div>
+        {!state.seatsUnlimited && (
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-100">
+            <div className={cn("h-full rounded-full transition-all", full ? "bg-amber-500" : "bg-violet-500")} style={{ width: `${pct}%` }} />
+          </div>
+        )}
       </div>
 
       {/* Invite form (owner only) */}
