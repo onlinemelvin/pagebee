@@ -8,8 +8,8 @@ import { PLAN_BADGES } from "@/lib/planBadges";
 import { formatUsd, cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Pricing — PageBee",
-  description: "Simple plans for local businesses: Launch, Connect, and Automate.",
+  title: "Pricing",
+  description: "Simple, transparent plans for local small businesses — Launch, Connect, and Automate. Start with a free preview.",
 };
 
 export default function PricingPage() {

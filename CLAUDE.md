@@ -93,3 +93,36 @@ fixing a bug). If a hook blocks an action, fix the cause — don't bypass with
 - **Prisma 6** (the schema's `datasource` uses inline `url`/`directUrl`); pin
   `prisma`/`@prisma/client` to `^6` — Prisma 7 removed inline `url`.
 - **Admin review required** before any generated client website is published.
+- **Notifications:** every owner-relevant event raises an in-app notification (the
+  topbar bell) and, when the owner has opted in, an email — both flow through one
+  funnel. See **Notifications** below; wire one for every new owner-facing feature.
+
+---
+
+## Notifications — [src/lib/modules/notification/](src/lib/modules/notification/)
+
+In-app (bell) + email, from one place. The in-app feed is the `NotificationEvent`
+table (`channel = DASHBOARD`); email reuses the existing `toClient` funnel.
+
+**When you add a feature that should alert the owner, do ONE of:**
+
+1. **Has an owner email template?** Add it via `toClient()` in
+   [email/notifications.ts](src/lib/modules/email/notifications.ts) as usual — you
+   get the in-app notification **for free** (the funnel records it automatically)
+   and the email is gated by the owner's opt-in. Add a row to `NOTIF_META` in
+   [notification/meta.ts](src/lib/modules/notification/meta.ts) keyed by the
+   template name so the bell shows the right icon/title/href/group.
+
+2. **No email (in-app only), or firing from an event subscriber?** Call the
+   primitive directly — it's fail-soft and tenant-scoped:
+   ```ts
+   import { createNotification } from "@/lib/modules/notification";
+   await createNotification({ clientId, type: "lead.created", body: `New lead from ${name}` });
+   ```
+   Add the `type` to `NOTIF_META` (icon, href, `group`, level). Gate any matching
+   owner email with `isGroupEmailAllowed(clientId, group)`.
+
+Rules: in-app notifications are **always** recorded (the bell isn't gated); only
+the **email copy** respects opt-in (`ClientSetting.emailSettings.notifications`,
+default all-on). Critical mail (security, account, payment-failed) uses
+`group: null` and always sends. Owners manage opt-ins at `/client/settings`.

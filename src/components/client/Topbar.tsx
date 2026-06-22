@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Search, Bell, Menu, X, LogOut, CreditCard, ChevronDown, ArrowRight, Sparkles, FlaskConical,
-  LayoutDashboard, Inbox, CalendarCheck, FileText, Globe, Tag, Image as ImageIcon, type LucideIcon,
+  LayoutDashboard, Inbox, CalendarCheck, FileText, Globe, Tag, Image as ImageIcon,
+  Eye, Clock, Rocket, CheckCircle2, AlertTriangle, Receipt, CalendarClock, XCircle, PartyPopper,
+  Gauge, LifeBuoy, Settings, CheckCheck, type LucideIcon,
 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -158,51 +160,176 @@ function QuickSearch({ tabs }: { tabs: NavTab[] }) {
 }
 
 /* ── Notifications ────────────────────────────────────────────────────── */
+interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  href: string;
+  icon: string;
+  level: "info" | "success" | "warning";
+  read: boolean;
+  createdAt: string;
+}
+
+// Lucide icon names stored on a notification → component (see notification/meta.ts).
+const NOTIF_ICONS: Record<string, LucideIcon> = {
+  Bell, Eye, Clock, Rocket, CheckCircle2, AlertTriangle, Receipt, CalendarClock, XCircle,
+  Sparkles, PartyPopper, Gauge, Inbox, CalendarCheck, LifeBuoy, Globe,
+};
+
+const LEVEL_STYLES: Record<Notification["level"], string> = {
+  info: "bg-stone-100 text-stone-500",
+  success: "bg-emerald-100 text-emerald-700",
+  warning: "bg-amber-100 text-amber-700",
+};
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.round(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return d < 7 ? `${d}d ago` : new Date(iso).toLocaleDateString();
+}
+
 function Notifications({ actions }: { actions: ActionItem[] }) {
   const [open, setOpen] = React.useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const count = actions.length;
+  const [items, setItems] = React.useState<Notification[]>([]);
+  const [unread, setUnread] = React.useState(0);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/client/notifications", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { notifications: Notification[]; unread: number };
+      setItems(data.notifications);
+      setUnread(data.unread);
+    } catch {
+      /* fail-soft — the bell just shows what it last had */
+    }
+  }, []);
+
+  // Initial load + light polling so new notifications surface without a reload.
+  React.useEffect(() => {
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  // Opening the panel clears the unread badge (mark all read, optimistically).
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && unread > 0) {
+      setUnread(0);
+      setItems((cur) => cur.map((n) => ({ ...n, read: true })));
+      try {
+        await fetch("/api/v1/client/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ all: true }),
+        });
+      } catch {
+        /* fail-soft */
+      }
+    }
+  }
+
+  // Badge = unread notifications + live "needs attention" action items.
+  const badge = unread + actions.length;
+  const empty = items.length === 0 && actions.length === 0;
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className="relative grid h-9 w-9 place-items-center rounded-lg text-stone-500 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-        aria-label={count > 0 ? `Notifications, ${count} items` : "Notifications"}
+        aria-label={badge > 0 ? `Notifications, ${badge} items` : "Notifications"}
         aria-haspopup="true"
         aria-expanded={open}
       >
         <Bell size={19} />
-        {count > 0 && <span className="pulse-dot absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500" />}
+        {badge > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )}
       </button>
       {open && (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-40 w-80 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xl anim-pop">
+        <div className="absolute right-0 top-[calc(100%+6px)] z-40 w-[22rem] overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xl anim-pop">
           <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
             <p className="font-display text-sm font-semibold text-stone-900">Notifications</p>
-            {count > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{count}</span>}
+            <Link href="/client/settings" onClick={() => setOpen(false)} className="grid h-7 w-7 place-items-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-600" aria-label="Notification settings">
+              <Settings size={15} />
+            </Link>
           </div>
-          {count === 0 ? (
-            <div className="px-4 py-8 text-center">
+
+          {empty ? (
+            <div className="px-4 py-10 text-center">
               <Sparkles size={22} className="mx-auto text-amber-400" />
               <p className="mt-2 text-sm text-stone-500">You&apos;re all caught up.</p>
             </div>
           ) : (
-            <ul className="max-h-96 overflow-auto">
-              {actions.map((a, i) => (
-                <li key={i}>
-                  <Link href={a.href} onClick={() => setOpen(false)} className="flex items-start gap-3 px-4 py-3 hover:bg-stone-50">
-                    <span className={cn("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg", a.primary ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")}>
-                      <ArrowRight size={14} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-stone-900">{a.title}</span>
-                      <span className="block truncate text-xs text-stone-500">{a.desc}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <div className="max-h-[28rem] overflow-auto">
+              {/* Live "needs attention" — derived from current account state. */}
+              {actions.length > 0 && (
+                <>
+                  <p className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-stone-400">Needs attention</p>
+                  <ul>
+                    {actions.map((a, i) => (
+                      <li key={`a${i}`}>
+                        <Link href={a.href} onClick={() => setOpen(false)} className="flex items-start gap-3 px-4 py-3 hover:bg-stone-50">
+                          <span className={cn("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg", a.primary ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")}>
+                            <ArrowRight size={14} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-stone-900">{a.title}</span>
+                            <span className="block truncate text-xs text-stone-500">{a.desc}</span>
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {/* Recorded notifications (persistent feed). */}
+              {items.length > 0 && (
+                <>
+                  {actions.length > 0 && <div className="border-t border-stone-100" />}
+                  <p className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-stone-400">Recent</p>
+                  <ul>
+                    {items.map((n) => {
+                      const Icon = NOTIF_ICONS[n.icon] ?? Bell;
+                      return (
+                        <li key={n.id}>
+                          <Link href={n.href} onClick={() => setOpen(false)} className={cn("flex items-start gap-3 px-4 py-3 hover:bg-stone-50", !n.read && "bg-amber-50/40")}>
+                            <span className={cn("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg", LEVEL_STYLES[n.level])}>
+                              <Icon size={14} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium text-stone-900">{n.title}</span>
+                              {n.body && <span className="block truncate text-xs text-stone-500">{n.body}</span>}
+                              <span className="mt-0.5 block text-[11px] text-stone-400">{timeAgo(n.createdAt)}</span>
+                            </span>
+                            {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" />}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+            </div>
           )}
+
+          <Link href="/client/settings" onClick={() => setOpen(false)} className="flex items-center justify-center gap-1.5 border-t border-stone-100 px-4 py-2.5 text-xs font-semibold text-stone-500 hover:bg-stone-50 hover:text-stone-700">
+            <CheckCheck size={13} /> Notification settings
+          </Link>
         </div>
       )}
     </div>
@@ -290,9 +417,14 @@ function AvatarMenu({ email, businessName, planName, isOwner }: { email: string;
           </div>
           <div className="p-1.5">
             {isOwner && (
-              <Link href="/client/billing" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
-                <CreditCard size={16} className="text-stone-400" /> Billing & plan
-              </Link>
+              <>
+                <Link href="/client/billing" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
+                  <CreditCard size={16} className="text-stone-400" /> Billing & plan
+                </Link>
+                <Link href="/client/settings" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
+                  <Settings size={16} className="text-stone-400" /> Settings
+                </Link>
+              </>
             )}
             <button onClick={signOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-stone-700 hover:bg-stone-100">
               <LogOut size={16} className="text-stone-400" /> Sign out

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { dispatch } from "./dispatch";
 import { appBase } from "./layout";
 import * as t from "./templates";
+import { createNotificationFromEmail, isEmailAllowed } from "@/lib/modules/notification";
 
 // — URL builders --------------------------------------------------------------
 const base = () => appBase();
@@ -41,7 +42,15 @@ export async function clientRecipient(clientId: string): Promise<Recipient | nul
   return { to, clientId, recipientUserId: owner?.userId ?? null, businessName: client.businessName, ownerName: client.ownerName };
 }
 
-/** Send a built template to a client's owner. Fail-soft (logs, never throws). */
+/**
+ * Send a built template to a client's owner. Fail-soft (logs, never throws).
+ *
+ * This is the single funnel for every owner-facing notification, so it owns BOTH
+ * channels: it always records an in-app (dashboard) notification, then sends the
+ * email copy only when the owner has opted in for that notification's group
+ * (critical mail — security, account, payment failures — always sends). Any new
+ * owner notification added via toClient() therefore gets both channels for free.
+ */
 async function toClient(clientId: string, build: (r: Recipient) => t.BuiltEmail): Promise<void> {
   try {
     const r = await clientRecipient(clientId);
@@ -50,6 +59,13 @@ async function toClient(clientId: string, build: (r: Recipient) => t.BuiltEmail)
       return;
     }
     const e = build(r);
+
+    // 1. In-app notification — always (the bell isn't gated by email prefs).
+    await createNotificationFromEmail(r.clientId, r.recipientUserId, e);
+
+    // 2. Email copy — gated by the owner's per-group opt-in.
+    if (!(await isEmailAllowed(r.clientId, e.category, e.template))) return;
+
     await dispatch({
       to: r.to,
       subject: e.subject,
