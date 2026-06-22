@@ -1,1 +1,10 @@
-export { createBillingCheckout, upgradeSubscription, processBillingEvent, BillingError } from "./service";
+export {
+  createBillingCheckout,
+  upgradeSubscription,
+  cancelSubscription,
+  reactivateSubscription,
+  syncCheckoutSession,
+  reconcileFromStripe,
+  processBillingEvent,
+  BillingError,
+} from "./service";

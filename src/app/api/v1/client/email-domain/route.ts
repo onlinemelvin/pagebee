@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Resolve the owner + enforce the customDomain plan gate (a custom sending
- * domain is a CONNECT/AUTOMATE capability). Returns the client or a NextResponse.
+ * domain is a HONEY/HIVE capability). Returns the client or a NextResponse.
  */
 async function gate() {
   try {

@@ -9,7 +9,7 @@ import { formatUsd, cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Simple, transparent plans for local small businesses — Launch, Connect, and Automate. Start with a free preview.",
+  description: "Simple, transparent plans for local small businesses — Nectar, Honey, and Hive. Start with a free preview.",
 };
 
 export default function PricingPage() {
@@ -46,6 +46,7 @@ export default function PricingPage() {
                 </span>
               )}
               <h2 className="font-display text-2xl text-stone-900">{plan.label}</h2>
+              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-amber-700">{plan.cardSubtitle}</p>
               <p className="mt-2 min-h-12 text-sm text-stone-600">{plan.tagline}</p>
 
               <div className="mt-6">

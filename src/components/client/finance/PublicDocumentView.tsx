@@ -5,6 +5,7 @@ import { Check, X, Lock, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fmt } from "./money-format";
+import { StripePaymentElement, cardEntryAvailable } from "@/components/payments/StripePaymentElement";
 import type { DocumentDTO } from "@/lib/modules/finance";
 
 const DOC_LABEL: Record<string, string> = { ESTIMATE: "Estimate", QUOTE: "Quote", INVOICE: "Invoice" };
@@ -13,6 +14,10 @@ export function PublicDocumentView({ doc, businessName, paymentsEnabled }: { doc
   const [status, setStatus] = React.useState(doc.status);
   const [busy, setBusy] = React.useState(false);
   const [payErr, setPayErr] = React.useState<string | null>(null);
+  // Embedded (white-label) card entry: once we have a client secret, render the Payment Element
+  // inline instead of redirecting to hosted Checkout. Checkout stays as an automatic fallback.
+  const [intent, setIntent] = React.useState<{ clientSecret: string; amount: number } | null>(null);
+  const [settled, setSettled] = React.useState(false);
   const isQuoteish = doc.docType === "ESTIMATE" || doc.docType === "QUOTE";
   const decided = status === "ACCEPTED" || status === "DECLINED";
 
@@ -27,21 +32,43 @@ export function PublicDocumentView({ doc, businessName, paymentsEnabled }: { doc
     if (res.ok) setStatus(decision);
   }
 
+  // Hosted Checkout — used as a fallback when embedded card entry isn't configured or the
+  // PaymentIntent couldn't be created.
+  async function payViaCheckout(deposit: boolean) {
+    const res = await fetch(`/api/v1/public/finance/${doc.publicToken}/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deposit }),
+    });
+    const data = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+    if (data?.url) window.location.href = data.url;
+    else setPayErr(data?.error === "payments_unavailable" ? "Online payment isn't available right now." : "Couldn't start checkout.");
+  }
+
   async function pay(deposit: boolean) {
     setBusy(true);
     setPayErr(null);
     try {
-      const res = await fetch(`/api/v1/public/finance/${doc.publicToken}/checkout`, {
+      if (!cardEntryAvailable) return payViaCheckout(deposit);
+      const res = await fetch(`/api/v1/public/finance/${doc.publicToken}/payment-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deposit }),
       });
-      const data = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-      if (data?.url) window.location.href = data.url;
-      else setPayErr(data?.error === "payments_unavailable" ? "Online payment isn't available right now." : "Couldn't start checkout.");
+      const data = (await res.json().catch(() => null)) as { clientSecret?: string; amount?: number; error?: string } | null;
+      if (data?.clientSecret) setIntent({ clientSecret: data.clientSecret, amount: data.amount ?? doc.balanceDue });
+      else if (data?.error === "payments_unavailable") setPayErr("Online payment isn't available right now.");
+      else return payViaCheckout(deposit); // any other hiccup → fall back to Checkout
     } finally {
       setBusy(false);
     }
+  }
+
+  function onPaid() {
+    // The webhook records the payment asynchronously; show a confirmation and refresh so the
+    // balance/receipt reflect it once it lands.
+    setSettled(true);
+    setTimeout(() => { window.location.href = `/d/${doc.publicToken}?paid=1`; }, 1500);
   }
 
   const canPay = paymentsEnabled && doc.balanceDue > 0;
@@ -126,6 +153,21 @@ export function PublicDocumentView({ doc, businessName, paymentsEnabled }: { doc
             <div className="mt-6 border-t border-stone-100 pt-5">
               {status === "PAID" ? (
                 <p className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700"><Check size={15} /> Paid in full</p>
+              ) : settled ? (
+                <p className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700"><Check size={15} /> Payment received — updating…</p>
+              ) : intent ? (
+                <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-4">
+                  <p className="mb-3 text-sm font-medium text-stone-800">Pay {fmt(intent.amount, doc.currency)}</p>
+                  <StripePaymentElement
+                    clientSecret={intent.clientSecret}
+                    mode="payment"
+                    submitLabel={`Pay ${fmt(intent.amount, doc.currency)}`}
+                    returnUrl={`${typeof window !== "undefined" ? window.location.origin : ""}/d/${doc.publicToken}?paid=1`}
+                    onSuccess={onPaid}
+                  />
+                  <button onClick={() => setIntent(null)} className="mt-2 text-xs text-stone-400 hover:text-stone-600">Cancel</button>
+                  <p className="mt-2 inline-flex items-center gap-1 text-xs text-stone-400"><Lock size={11} /> Secure payment by PageBee Pay</p>
+                </div>
               ) : canPay ? (
                 <>
                   <div className="flex flex-wrap items-center gap-2">

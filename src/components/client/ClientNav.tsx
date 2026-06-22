@@ -40,7 +40,7 @@ export function ClientNav({ tabs }: { tabs: NavTab[] }) {
         // Thin separator whenever the tier changes — groups base / premium tiers visually.
         const prev = tabs[i - 1];
         const showSep = i > 0 && t.tier !== undefined && prev?.tier !== undefined && t.tier !== prev.tier;
-        // Locked items carry their unlocking plan's accent (CONNECT/AUTOMATE) — tag + a faint icon tint.
+        // Locked items carry their unlocking plan's accent (HONEY/HIVE) — tag + a faint icon tint.
         const accent = planAccent(t.lockLabel);
         return (
           <Fragment key={t.key}>

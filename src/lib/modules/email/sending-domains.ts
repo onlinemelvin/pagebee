@@ -26,7 +26,7 @@ export function getSendingDomain(clientId: string) {
 /**
  * Begin sending-domain verification for a client: register their active custom
  * domain in Resend and persist the DKIM/SPF records they must add. Requires an
- * active custom domain (CONNECT/AUTOMATE who've connected one). Idempotent — a
+ * active custom domain (HONEY/HIVE who've connected one). Idempotent — a
  * second call refreshes the records from Resend.
  */
 export async function provisionSendingDomain(clientId: string) {

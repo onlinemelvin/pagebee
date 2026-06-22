@@ -52,9 +52,9 @@ it is **not** a fully activated production website.
 
 | Plan      | Setup fee | Monthly |
 | --------- | --------- | ------- |
-| Launch    | $399      | $39/mo  |
-| Connect   | $699      | $89/mo  |
-| Automate  | $999      | $179/mo |
+| Nectar    | $399      | $39/mo  |
+| Honey     | $699      | $89/mo  |
+| Hive      | $999      | $179/mo |
 
 Direct website customers pay **listed** pricing. Sales reps may offer **approved
 discounts, mainly on setup fees**. Monthly-fee discounts require **admin approval**.
@@ -121,20 +121,20 @@ access, or approval delays):
 
 ## 8. Plan-Specific Preview Experience
 
-### Launch — preview shows
+### Nectar — preview shows
 Home · Services/About · Contact · contact form in **demo mode** · basic SEO preview ·
 basic local-business layout.
 **After payment, activate:** full 5-page site · hosting · SSL · contact form · basic
 SEO · maintenance.
 
-### Connect — preview shows
-Everything in Launch + sample booking section · sample chat widget · quote-request
+### Honey — preview shows
+Everything in Nectar + sample booking section · sample chat widget · quote-request
 section · lead-capture experience (all demo).
 **After payment, activate:** booking system · chat widget · lead inbox · email
 notifications · SMS alerts (plan limits) · calendar config.
 
-### Automate — preview shows
-Everything in Launch + Connect + sample AI-assistant demo · sample payment section ·
+### Hive — preview shows
+Everything in Nectar + Honey + sample AI-assistant demo · sample payment section ·
 sample invoice/payment page · follow-up automation explanation (all demo).
 **After payment, activate:** AI knowledge base · AI assistant · AI follow-ups · Stripe
 Connect · payment links · invoices · statements · paid bookings/deposits · payment
@@ -173,9 +173,9 @@ Direct customers pay published pricing. Reps offer approved discounts through `Q
 
 | Plan     | Listed                 | Sales-rep minimum (no admin) |
 | -------- | ---------------------- | ---------------------------- |
-| Launch   | $399 setup + $39/mo    | **$299** setup + $39/mo      |
-| Connect  | $699 setup + $89/mo    | **$599** setup + $89/mo      |
-| Automate | $999 setup + $179/mo   | **$899** setup + $179/mo     |
+| Nectar   | $399 setup + $39/mo    | **$299** setup + $39/mo      |
+| Honey    | $699 setup + $89/mo    | **$599** setup + $89/mo      |
+| Hive     | $999 setup + $179/mo   | **$899** setup + $179/mo     |
 
 Anything below these (or any monthly discount) requires **admin approval**
 (`Quote.requiresApproval`). See [FEATURE_FLAGS.md](FEATURE_FLAGS.md#discount-rules).
@@ -184,7 +184,7 @@ Anything below these (or any monthly discount) requires **admin approval**
 
 ## 11. Monetization — four layers
 
-1. **Setup fees** — onboarding/launch: Launch $399 · Connect $699 · Automate $999.
+1. **Setup fees** — onboarding/launch: Nectar $399 · Honey $699 · Hive $999.
 2. **Monthly subscriptions** — recurring: $39 · $89 · $179.
 3. **Add-ons** — extra page, extra update, rush launch, logo refresh, Google Business
    Profile setup, local SEO, blog posts, review management, additional location,

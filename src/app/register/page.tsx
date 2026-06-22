@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "Choose a plan and create your PageBee account — see your new website free, no card required.",
 };
 
-const PLAN_NAMES = ["LAUNCH", "CONNECT", "AUTOMATE"];
+const PLAN_NAMES = ["NECTAR", "HONEY", "HIVE"];
 
 export default async function RegisterPage({
   searchParams,

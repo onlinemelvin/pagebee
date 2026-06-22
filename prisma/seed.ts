@@ -141,7 +141,7 @@ async function main() {
   });
 
   // 3. Active Automate subscription for the demo tenant.
-  const automate = await prisma.plan.findUnique({ where: { name: "AUTOMATE" } });
+  const automate = await prisma.plan.findUnique({ where: { name: "HIVE" } });
   if (automate) {
     await prisma.subscription.upsert({
       where: { clientId: client.id },

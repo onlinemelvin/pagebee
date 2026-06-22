@@ -5,13 +5,18 @@ export {
   verifyConnectState,
   refreshAccountStatus,
   createInvoiceCheckout,
+  createInvoicePaymentIntent,
   createPaymentLink,
   chargeInvoiceOffSession,
   processStripeEvent,
   refundPayment,
+  mintPlanAuthToken,
+  getPlanAuthContext,
+  createPlanSetupIntent,
+  savePlanCard,
   PaymentError,
 } from "./service";
-export type { PaymentStatus, StripeMode } from "./service";
+export type { PaymentStatus, StripeMode, PlanAuthContext } from "./service";
 export { submitOnboarding, getOnboardingState, uploadIdentityDocument } from "./onboarding";
 export type { OnboardingState } from "./onboarding";
 export { getTaxStatus, syncTaxRegistrations, calculateTax, recordTaxTransaction } from "./tax";

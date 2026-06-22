@@ -13,7 +13,7 @@ export const registerSchema = z
     email: z.string().trim().email("Enter a valid email").max(200),
     phone: z.string().trim().max(40).optional(),
     password: z.string().min(8, "Use at least 8 characters").max(200),
-    plan: z.enum(["LAUNCH", "CONNECT", "AUTOMATE"]).optional(),
+    plan: z.enum(["NECTAR", "HONEY", "HIVE"]).optional(),
   })
   // Real (non-test) signups must choose a plan; test signups may skip it.
   .refine((d) => isTestEmail(d.email) || Boolean(d.plan), {

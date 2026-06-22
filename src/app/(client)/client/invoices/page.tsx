@@ -21,7 +21,7 @@ export default async function ClientInvoicesPage() {
   // Finance (invoices/payments/statements) is an Automate feature; surfaced to every tier as an
   // upsell, gated here for lower plans. On-plan owners reach the dashboard whether or not they've
   // toggled it on yet — the feature card still governs what's live on their public site.
-  if (!ws.caps.invoices) return <UpgradeGate title="Finance" flag="invoices" blurb="Send invoices, take card payments, and share statements — available on the AUTOMATE plan." />;
+  if (!ws.caps.invoices) return <UpgradeGate title="Finance" flag="invoices" blurb="Send invoices, take card payments, and share statements — available on the HIVE plan." />;
 
   const [dash, documents, services, taxRates, settings, customerRows, uninvoiced] = await Promise.all([
     getFinanceDashboard(ws.client.id),

@@ -7,7 +7,8 @@ import { prisma } from "@/lib/db";
 import { planByName, planLimitRows, PLANS, PRICING_NOTE } from "@/lib/plans";
 import { SectionCard } from "@/components/client/ui/SectionCard";
 import { PlanComparison } from "@/components/client/PlanComparison";
-import { CheckoutButton } from "@/components/client/BillingActions";
+import { reconcileFromStripe } from "@/lib/modules/billing";
+import { CheckoutButton, CancelPlanButton, CheckoutStatusBanner } from "@/components/client/BillingActions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,18 +50,31 @@ function UsageTile({ icon: Icon, label, used, limit, unlimited, accent }: {
   );
 }
 
-export default async function ClientBillingPage({ searchParams }: { searchParams: Promise<{ checkout?: string }> }) {
+export default async function ClientBillingPage({ searchParams }: { searchParams: Promise<{ checkout?: string; session_id?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) return null;
   if (ws.role !== "owner") redirect("/client"); // billing & plan are owner-only
 
-  const { checkout } = await searchParams;
+  const { checkout, session_id } = await searchParams;
+
+  // Self-heal from Stripe so a missed/delayed webhook can't leave the plan, launch, or a duplicate
+  // subscription out of sync. When we have a session id on the success return, CheckoutStatusBanner
+  // handles it (polls the reconcile endpoint + shows progress), so skip the server pass to keep that
+  // UX; otherwise reconcile here.
+  if (!(checkout === "success" && session_id)) {
+    const sub0 = await prisma.subscription.findUnique({ where: { clientId: ws.client.id }, select: { stripeCustomerId: true } });
+    if (sub0?.stripeCustomerId) {
+      const { changed } = await reconcileFromStripe(ws.client.id).catch(() => ({ changed: false }));
+      if (changed) redirect("/client/billing"); // re-render with fresh (cached) workspace
+    }
+  }
+
   const plan = planByName(ws.planName) ?? PLANS[0];
   const awaiting = ws.preview.awaitingPayment;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-  const [invoicesThisMonth, memberCount, inviteCount, aiUsed, smsUsed, emailUsed] = await Promise.all([
+  const [invoicesThisMonth, memberCount, inviteCount, aiUsed, smsUsed, emailUsed, subRow] = await Promise.all([
     plan.quotas.invoices !== undefined
       ? prisma.invoice.count({ where: { clientId: ws.client.id, docType: "INVOICE", createdAt: { gte: monthStart } } })
       : Promise.resolve(0),
@@ -69,8 +83,13 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
     plan.quotas.aiReplies ? getMonthlyUsage(ws.client.id, "aiReplies") : Promise.resolve(0),
     plan.quotas.sms ? getMonthlyUsage(ws.client.id, "sms") : Promise.resolve(0),
     plan.quotas.email ? getMonthlyUsage(ws.client.id, "email") : Promise.resolve(0),
+    prisma.subscription.findUnique({ where: { clientId: ws.client.id }, select: { stripeSubscriptionId: true, cancelAt: true, currentPeriodEnd: true } }),
   ]);
   const seatsUsed = memberCount + inviteCount;
+  // A live subscription the owner can cancel (or un-cancel if already scheduled).
+  const hasActiveSub = Boolean(subRow?.stripeSubscriptionId) && ws.preview.live;
+  const cancelScheduled = Boolean(subRow?.cancelAt);
+  const accessUntil = (subRow?.cancelAt ?? subRow?.currentPeriodEnd)?.toLocaleDateString("en-US", { dateStyle: "long" }) ?? null;
 
   return (
     <div className="space-y-6">
@@ -79,11 +98,7 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
         <p className="mt-1 text-stone-500">Your plan, usage, and payment method.</p>
       </div>
 
-      {checkout === "success" && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Payment received — thank you! Your subscription is active. It can take a moment to reflect here.
-        </div>
-      )}
+      {checkout === "success" && <CheckoutStatusBanner sessionId={session_id} />}
       {checkout === "cancel" && (
         <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
           Checkout canceled — no charge was made. You can pick up where you left off anytime.
@@ -97,6 +112,7 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
             <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-400 text-white shadow-sm"><Crown size={24} /></span>
             <div>
               <p className="font-display text-2xl text-stone-900">{plan.label} plan</p>
+              <p className="text-xs font-medium text-amber-700">{plan.subtitle}</p>
               <p className="text-sm text-stone-500">{STATUS_LABEL[ws.preview.status] ?? ws.preview.status} · ${Math.round(plan.monthlyFee / 100)}/mo</p>
             </div>
           </div>
@@ -159,16 +175,23 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
             {awaiting ? <Rocket size={26} /> : <CreditCard size={26} />}
           </span>
           <p className="mt-4 font-display text-xl text-stone-900">
-            {awaiting ? "Pay your setup fee to launch" : "Card payments are coming soon"}
+            {awaiting ? "Pay your setup fee to launch" : ws.preview.live ? "Your plan is active" : "Secure card payments"}
           </p>
           <p className="mt-1 max-w-md text-sm text-stone-500">
             {awaiting
               ? `You approved your preview. Pay the one-time setup fee ($${Math.round(plan.setupFee / 100)}) and your first month ($${Math.round(plan.monthlyFee / 100)}/mo) to launch — your site goes live, your domain connects, and your features turn on.`
-              : "Secure card billing for your plan. No charge until you approve your preview and choose to launch."}
+              : ws.preview.live
+                ? `Your ${plan.label ?? plan.name} subscription is active, billed securely by card each month. We'll email a receipt every time.`
+                : "Secure card billing by Stripe. No charge until you approve your preview and choose to launch."}
           </p>
           {awaiting && (
             <div className="mt-5">
               <CheckoutButton kind="setup" label="Pay setup fee &amp; launch" />
+            </div>
+          )}
+          {hasActiveSub && (
+            <div className="mt-6 w-full max-w-md border-t border-stone-100 pt-5">
+              <CancelPlanButton cancelScheduled={cancelScheduled} accessUntil={accessUntil} />
             </div>
           )}
         </div>

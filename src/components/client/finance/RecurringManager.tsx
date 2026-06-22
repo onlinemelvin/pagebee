@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Pause, Play, X, RefreshCw, CreditCard, Mail } from "lucide-react";
+import { Plus, Trash2, Pause, Play, X, RefreshCw, CreditCard, Mail, Link2, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -44,12 +44,30 @@ export function RecurringManager({
   const [plans, setPlans] = React.useState(initialPlans);
   const [showCreate, setShowCreate] = React.useState(false);
   const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
+  const [authLink, setAuthLink] = React.useState<{ id: string; url: string } | null>(null);
+  const [copied, setCopied] = React.useState(false);
 
   React.useEffect(() => setPlans(initialPlans), [initialPlans]);
 
   async function patch(id: string, body: Record<string, unknown>) {
     const res = await fetch(`/api/v1/client/finance/recurring/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (res.ok) router.refresh();
+  }
+  // Mint (or fetch) the white-label card-authorization link the owner shares with the customer.
+  async function getAuthLink(id: string) {
+    setCopied(false);
+    const res = await fetch(`/api/v1/client/finance/recurring/${id}/authorize-link`, { method: "POST" });
+    const data = (await res.json().catch(() => null)) as { url?: string } | null;
+    if (data?.url) setAuthLink({ id, url: data.url });
+  }
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard blocked — the link is still shown for manual copy */
+    }
   }
   async function del(id: string) {
     const res = await fetch(`/api/v1/client/finance/recurring/${id}`, { method: "DELETE" });
@@ -94,6 +112,24 @@ export function RecurringManager({
                     {p.occurrences > 0 && ` · ${p.occurrences} sent`}
                     {p.mode === "AUTO_CHARGE" && !p.hasCardOnFile && " · no card on file yet (sends a pay link)"}
                   </p>
+
+                  {/* Card-on-file authorization link — only when auto-charging without a saved card. */}
+                  {p.mode === "AUTO_CHARGE" && !p.hasCardOnFile && (
+                    <div className="mt-2">
+                      {authLink?.id === p.id ? (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 p-2">
+                          <input readOnly value={authLink.url} onFocus={(e) => e.currentTarget.select()} className="min-w-[180px] flex-1 bg-transparent text-xs text-stone-600 focus:outline-none" />
+                          <button onClick={() => copyLink(authLink.url)} className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-xs font-medium text-stone-600 shadow-sm hover:bg-stone-100">
+                            {copied ? <><Check size={12} className="text-green-600" /> Copied</> : <><Copy size={12} /> Copy</>}
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => getAuthLink(p.id)} className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 hover:underline">
+                          <Link2 size={13} /> Get card authorization link
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {p.status === "ACTIVE" && <button onClick={() => patch(p.id, { status: "PAUSED" })} title="Pause" className="grid h-9 w-9 place-items-center rounded-lg text-stone-500 hover:bg-stone-100"><Pause size={16} /></button>}

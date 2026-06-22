@@ -34,16 +34,16 @@ gated by the client's plan (see [FEATURE_FLAGS.md](./FEATURE_FLAGS.md)).
 | GET    | `/api/v1/public/site-config`               | all       | Theme, copy, pages, enabled features for render |
 | POST   | `/api/v1/public/leads`                     | all       | Submit contact / quote / service inquiry |
 | POST   | `/api/v1/public/analytics/events`          | all       | Record a website/conversion event        |
-| GET    | `/api/v1/public/booking/availability`      | Connect+  | Open slots for a bookable service        |
-| POST   | `/api/v1/public/bookings`                  | Connect+  | Create an appointment request            |
-| POST   | `/api/v1/public/chat/conversations`        | Connect+  | Start a conversation                      |
-| POST   | `/api/v1/public/chat/messages`             | Connect+  | Post a customer message                   |
-| POST   | `/api/v1/public/ai/reply`                  | Automate  | Get an AI reply (mode-gated; may escalate)|
-| POST   | `/api/v1/public/payments/payment-link`     | Automate  | Create a Stripe payment link             |
-| GET    | `/api/v1/public/invoices/{invoiceId}`      | Automate  | Fetch an invoice for the pay page         |
-| GET    | `/api/v1/public/statements/{customerId}`   | Automate  | Customer statement (portal)               |
+| GET    | `/api/v1/public/booking/availability`      | Honey+    | Open slots for a bookable service        |
+| POST   | `/api/v1/public/bookings`                  | Honey+    | Create an appointment request            |
+| POST   | `/api/v1/public/chat/conversations`        | Honey+    | Start a conversation                      |
+| POST   | `/api/v1/public/chat/messages`             | Honey+    | Post a customer message                   |
+| POST   | `/api/v1/public/ai/reply`                  | Hive      | Get an AI reply (mode-gated; may escalate)|
+| POST   | `/api/v1/public/payments/payment-link`     | Hive      | Create a Stripe payment link             |
+| GET    | `/api/v1/public/invoices/{invoiceId}`      | Hive      | Fetch an invoice for the pay page         |
+| GET    | `/api/v1/public/statements/{customerId}`   | Hive      | Customer statement (portal)               |
 
-Plan gating is hard: a Launch site calling `/bookings` gets
+Plan gating is hard: a Nectar site calling `/bookings` gets
 `403 feature_not_enabled`. See per-plan allow-lists in §17 of the master spec.
 
 ### `POST /api/v1/public/leads`
@@ -64,7 +64,7 @@ Plan gating is hard: a Launch site calling `/bookings` gets
 ```
 
 Side effects: persists `Lead` (clientId from token) → emits `lead.created` →
-owner email/SMS alert (per plan/consent) → optional AI follow-up (Automate).
+owner email/SMS alert (per plan/consent) → optional AI follow-up (Hive).
 
 ---
 
@@ -119,11 +119,11 @@ Auth: client-user session; `clientId` from session.
 | GET    | `/api/v1/client/conversations`        | Inbox                                |
 | POST   | `/api/v1/client/conversations/{id}/messages` | Reply (or approve AI draft)   |
 | GET    | `/api/v1/client/customers`            | CRM list                             |
-| GET    | `/api/v1/client/invoices`             | List invoices (Automate)             |
-| POST   | `/api/v1/client/invoices`             | Create invoice (Automate)            |
-| POST   | `/api/v1/client/invoices/{id}/send`   | Email invoice (Automate)             |
-| GET    | `/api/v1/client/payments`             | Payment history (Automate)           |
-| GET    | `/api/v1/client/statements`           | Statements (Automate)                |
+| GET    | `/api/v1/client/invoices`             | List invoices (Hive)                 |
+| POST   | `/api/v1/client/invoices`             | Create invoice (Hive)                |
+| POST   | `/api/v1/client/invoices/{id}/send`   | Email invoice (Hive)                 |
+| GET    | `/api/v1/client/payments`             | Payment history (Hive)               |
+| GET    | `/api/v1/client/statements`           | Statements (Hive)                    |
 | GET    | `/api/v1/client/website`              | Website status + content             |
 | POST   | `/api/v1/client/website/change-request` | Request a content change           |
 | GET    | `/api/v1/client/usage`                | Usage vs plan limits (SMS, AI, invoices) |

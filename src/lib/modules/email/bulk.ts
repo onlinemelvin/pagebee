@@ -15,7 +15,7 @@ export class CampaignError extends Error {
 // — Segments ------------------------------------------------------------------
 
 export interface Segment {
-  plans?: string[]; // PlanName[] — e.g. ["LAUNCH","CONNECT"]
+  plans?: string[]; // PlanName[] — e.g. ["NECTAR","HONEY"]
   statuses?: string[]; // Client.status — e.g. ["active"]
   includeTest?: boolean; // include @test.com / isTest accounts (default false)
 }

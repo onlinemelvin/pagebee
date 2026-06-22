@@ -4,7 +4,7 @@ import { Rocket, Check, ExternalLink, ShieldCheck } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { planByName } from "@/lib/plans";
 import { formatUsd } from "@/lib/utils";
-import { CheckoutButton } from "@/components/client/BillingActions";
+import { CheckoutButton, LaunchReconcile } from "@/components/client/BillingActions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +15,10 @@ export const dynamic = "force-dynamic";
  * successful payment — confirms the site is going live (the billing webhook does
  * the actual launchPreview()).
  */
-export default async function LaunchPage({ searchParams }: { searchParams: Promise<{ checkout?: string }> }) {
+export default async function LaunchPage({ searchParams }: { searchParams: Promise<{ checkout?: string; session_id?: string }> }) {
   const ws = await getClientWorkspace();
   if (!ws) redirect("/login");
-  const { checkout } = await searchParams;
+  const { checkout, session_id } = await searchParams;
 
   const paid = checkout === "success";
   const live = ws.preview.live;
@@ -28,6 +28,8 @@ export default async function LaunchPage({ searchParams }: { searchParams: Promi
   if (live || paid) {
     return (
       <Shell>
+        {/* Apply the launch directly from the session if the webhook hasn't (then refresh to "live"). */}
+        {paid && !live && <LaunchReconcile sessionId={session_id} />}
         <span className="grid h-14 w-14 place-items-center rounded-2xl bg-green-100 text-green-700"><Rocket size={30} /></span>
         <h1 className="mt-5 font-display text-3xl text-stone-900">{live ? "Your site is live! 🎉" : "Payment received — you're launching! 🎉"}</h1>
         <p className="mt-2 max-w-md text-stone-600">

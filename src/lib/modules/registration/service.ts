@@ -24,7 +24,7 @@ export class RegistrationError extends Error {
 export async function registerClient(input: RegisterInput) {
   const email = input.email.trim().toLowerCase();
   const isTest = isTestEmail(email);
-  const planName = (isTest ? (input.plan ?? "AUTOMATE") : input.plan) as PlanName;
+  const planName = (isTest ? (input.plan ?? "HIVE") : input.plan) as PlanName;
 
   const plan = await prisma.plan.findUnique({ where: { name: planName } });
   if (!plan) throw new RegistrationError(400, "invalid_plan");

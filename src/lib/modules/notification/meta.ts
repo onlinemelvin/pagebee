@@ -44,6 +44,10 @@ export const NOTIF_META: Record<string, NotifMeta> = {
 
   // — Billing ----------------------------------------------------------------
   payment_receipt: { icon: "Receipt", href: "/client/billing", title: "Payment received", group: "billing", level: "success" },
+  "payment.disputed": { icon: "AlertTriangle", href: "/client/invoices/payments", title: "A payment was disputed", group: null, level: "warning" }, // critical — always
+  "payment.dispute_won": { icon: "CheckCircle2", href: "/client/invoices/payments", title: "You won a payment dispute", group: "billing", level: "success" },
+  "payment.dispute_lost": { icon: "XCircle", href: "/client/invoices/payments", title: "A payment dispute was lost", group: "billing", level: "warning" },
+  "recurring.authorized": { icon: "Receipt", href: "/client/invoices/recurring", title: "Automatic payments authorized", group: "billing", level: "success" },
   payment_failed: { icon: "AlertTriangle", href: "/client/billing", title: "Payment didn't go through", group: null, level: "warning" }, // critical — always
   renewal_notice: { icon: "CalendarClock", href: "/client/billing", title: "Your plan renews soon", group: "billing", level: "info" },
   subscription_cancelled: { icon: "XCircle", href: "/client/billing", title: "Subscription cancelled", group: null, level: "warning" },

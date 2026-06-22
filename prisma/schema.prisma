@@ -63,9 +63,9 @@ enum CompensationType {
 }
 
 enum PlanName {
-  LAUNCH
-  CONNECT
-  AUTOMATE
+  NECTAR
+  HONEY
+  HIVE
 }
 
 enum SubscriptionStatus {
@@ -192,6 +192,7 @@ enum PaymentStatus {
   FAILED
   REFUNDED
   PARTIALLY_REFUNDED
+  DISPUTED // a chargeback was opened on this charge (funds may be withheld pending resolution)
 }
 
 enum PaymentProvider {
@@ -1809,9 +1810,15 @@ model RecurringPlan {
   lastRunAt   DateTime?
   occurrences Int       @default(0)
 
-  // AUTO_CHARGE: card saved on file (set once the customer pays the first pay link with save-card on).
+  // AUTO_CHARGE: card saved on file. The customer authorizes via a white-label SetupIntent page
+  // (/authorize/[authToken]); on confirm we persist the PLATFORM Customer + PaymentMethod here
+  // (destination charges run on the platform) plus the card-on-file mandate they accepted.
   stripeCustomerId      String?
   stripePaymentMethodId String?
+  authToken             String?   @unique // public token for the card-authorization link
+  mandateAcceptedAt     DateTime? // when the customer accepted recurring card-on-file terms
+  mandateText           String? // exact disclosure text they agreed to (evidence)
+  mandateIp             String? // IP captured at acceptance (evidence)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2160,7 +2167,7 @@ model EmailLog {
   @@map("email_logs")
 }
 
-// A per-client sending domain verified in Resend (DKIM/SPF), so a CONNECT/AUTOMATE
+// A per-client sending domain verified in Resend (DKIM/SPF), so a HONEY/HIVE
 // client can send customer email from their own custom domain. Clients without a
 // verified row fall back to the shared platform sending domain. See
 // src/lib/modules/email/sending-domains.ts.
@@ -2195,7 +2202,7 @@ model EmailCampaign {
   subject     String
   bodyHtml    String // inner HTML; wrapped in the branded layout at send time
   category    EmailCategory  @default(ANNOUNCEMENT)
-  segment     Json // recipient filter, e.g. { plans: ["CONNECT"], status: ["active"] }
+  segment     Json // recipient filter, e.g. { plans: ["HONEY"], status: ["active"] }
   status      CampaignStatus @default(DRAFT)
   scheduledAt DateTime? // when set + status SCHEDULED, the worker sweep sends it
   sentAt      DateTime?

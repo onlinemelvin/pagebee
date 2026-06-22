@@ -13,11 +13,11 @@ export function PreviewPanel({ preview }: { preview: PreviewInfo }) {
       <section className="rounded-2xl border border-amber-400 bg-amber-50 p-6 shadow-card">
         <h2 className="font-display text-xl text-stone-900">You approved your preview 🎉</h2>
         <p className="mt-1 text-stone-600">
-          Pay the one-time setup fee to launch your site, connect your domain, and activate your
-          features. (Card payments are connecting soon.)
+          Complete your one-time setup payment to launch your site, connect your domain, and activate
+          your features. Secure checkout by Stripe — your site goes live as soon as you pay.
         </p>
-        <Link href="/client/billing" className="mt-4 inline-block">
-          <Button size="lg">Go to billing</Button>
+        <Link href="/client/launch" className="mt-4 inline-block">
+          <Button size="lg">Pay &amp; launch ↗</Button>
         </Link>
       </section>
     );

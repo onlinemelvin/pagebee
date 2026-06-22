@@ -47,8 +47,8 @@ Auth + Storage) + Prisma · **Vercel** hosting · Stripe Billing + Stripe Connec
 (Express) · Resend · Twilio · Claude (Anthropic) · jobs (Inngest/Trigger.dev) + Vercel
 Cron · Sentry · PostHog.
 
-Client sites are served from one Vercel project: Launch at
-`{slug}.pagebee.com`; Connect/Automate may map a custom domain via the Vercel
+Client sites are served from one Vercel project: Nectar at
+`{slug}.pagebee.com`; Honey/Hive may map a custom domain via the Vercel
 Domains API.
 
 ## Next steps (not yet built)

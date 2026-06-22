@@ -128,7 +128,7 @@ This is the subtlest part of the design, so it is modeled explicitly via
   subscription). Money flows to **PageBee**, via **Stripe Billing** on the
   `Subscription`. `Invoice.kind = PLATFORM_BILLING`, `customerId` null,
   `clientId` identifies the client being charged.
-- **CLIENT_CUSTOMER** — a client business (Automate plan) billing its own end
+- **CLIENT_CUSTOMER** — a client business (Hive plan) billing its own end
   customer. Money flows to **the client**, but PageBee owns the entire invoicing
   experience and the ledger. `Invoice.kind = CLIENT_CUSTOMER`, `clientId` is the
   tenant's ledger, `customerId` is the end customer.
@@ -150,7 +150,7 @@ transmitter — see below). Instead:
    client's connected account. Stripe is merchant of record: it processes the card,
    handles compliance, and pays out to the client's bank.
 4. **Monetization.** PageBee can take an `application_fee_amount` per transaction —
-   a built-in revenue lever for the Automate plan.
+   a built-in revenue lever for the Hive plan.
 5. **Compliance.** Stripe handles KYC/AML, payouts, refund/dispute plumbing, and
    1099-K issuance for connected accounts. PageBee never becomes a licensed money
    transmitter.
@@ -290,8 +290,8 @@ EmailLog (with `audience = CUSTOMER`, `customerId`) but has its own funnel:
   Resend-verified domain** (`CUSTOMER_MAIL_DOMAIN`, default `mail.<root>`) with
   the business *name* in the From and reply-to = the client's real inbox. A client
   with a **VERIFIED `SendingDomain`** sends from their own domain instead.
-- **Custom domains** (`sending-domains.ts` + `lib/resend/domains.ts`): a CONNECT/
-  AUTOMATE client can verify their connected domain in Resend — we register it,
+- **Custom domains** (`sending-domains.ts` + `lib/resend/domains.ts`): a HONEY/
+  HIVE client can verify their connected domain in Resend — we register it,
   surface the DKIM/SPF records for them to add (guided; `managedDns` reserved for
   future auto-write), and a worker sweep polls until verified, after which the
   sender auto-upgrades. Owner API: `/api/v1/client/email-domain`.
@@ -391,8 +391,8 @@ Postgres, Auth, and Storage.
 - **Subdomain (all tiers).** Every site is published at `{subdomain}.pagebee.com`
   via a wildcard `*.pagebee.com` domain on the Vercel project. Middleware reads the
   `Host` header, resolves the `Website` by `subdomain`, and renders the published
-  version. This is the only web address for **Launch**.
-- **Custom domain (Connect & Automate).** Higher tiers may map a custom domain
+  version. This is the only web address for **Nectar**.
+- **Custom domain (Honey & Hive).** Higher tiers may map a custom domain
   (e.g. `acmecleaning.com`). Each connected host is a **`WebsiteDomain`** row
   (one-to-many off `Website`); a single connection provisions a **pair** — the apex
   (`acme.com`) and its `www` — one marked `isPrimary` (canonical), the other set to
@@ -437,8 +437,8 @@ The public API's `Origin` check (§5) validates against **both** the site's
 This schema + API surface covers the full vision, but the build order follows the
 master spec's MVP scope (§31): scaffold → marketing+pricing+leads → CRM+quotes
 (with discount rules & admin approval) → client management + subscriptions
-(Stripe Billing) → website generation + preview + publish-review → Connect
-booking → Automate (AI suggestion mode, payment links, invoices, Stripe Connect).
+(Stripe Billing) → website generation + preview + publish-review → Honey
+booking → Hive (AI suggestion mode, payment links, invoices, Stripe Connect).
 Internal ops (employees, commissions, basic payroll/contracts/expenses) land
 alongside. Phase 2/3 (auto-reply AI, SMS workflows, statements, rollback,
 payroll-provider integration) reuse the same models — nothing here needs to

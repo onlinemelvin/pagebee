@@ -35,8 +35,8 @@ check on every request.
 Prices in dollars below; stored in **cents** in `plans` (`setupFee`,
 `monthlyFee`). Setup fee is one-time; monthly fee recurs.
 
-| Capability              | Launch | Connect | Automate |
-| ----------------------- | :----: | :-----: | :------: |
+| Capability              | Nectar | Honey  | Hive   |
+| ----------------------- | :----: | :----: | :----: |
 | Setup fee               | $399   | $699    | $999     |
 | Monthly fee             | $39    | $89     | $179     |
 | Max pages               | 3      | 6       | 12       |
@@ -68,9 +68,9 @@ Stored verbatim in `plans.featureFlags` (JSON). These are the source of truth th
 generator and API gating read.
 
 ```json
-// LAUNCH
+// NECTAR
 {
-  "planName": "Launch",
+  "planName": "Nectar",
   "setupFee": 399, "monthlyFee": 39, "maxPages": 3, "monthlyUpdates": 2, "teamSeats": 1,
   "contactForm": false, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": false,
@@ -81,9 +81,9 @@ generator and API gating read.
 ```
 
 ```json
-// CONNECT
+// HONEY
 {
-  "planName": "Connect",
+  "planName": "Honey",
   "setupFee": 699, "monthlyFee": 89, "maxPages": 6, "monthlyUpdates": 5, "teamSeats": 3,
   "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": true,
@@ -94,9 +94,9 @@ generator and API gating read.
 ```
 
 ```json
-// AUTOMATE
+// HIVE
 {
-  "planName": "Automate",
+  "planName": "Hive",
   "setupFee": 999, "monthlyFee": 179, "maxPages": 12, "monthlyUpdates": 30, "teamSeats": 5, "unlimitedSeats": true,
   "contactForm": true, "basicAnalytics": true, "hosting": true, "ssl": true,
   "customDomain": true,
@@ -110,7 +110,7 @@ generator and API gating read.
 }
 ```
 
-> **Payments (Automate):** processed through PageBee-managed **Stripe Connect
+> **Payments (Hive):** processed through PageBee-managed **Stripe Connect
 > Express** — clients add a payout bank account once, PageBee does all invoicing
 > and may take an application fee. PageBee does not custody funds. See
 > [ARCHITECTURE.md §4](./ARCHITECTURE.md).
@@ -120,7 +120,7 @@ generator and API gating read.
 Generated websites may only call the APIs their plan permits ([API.md](./API.md)
 Public surface, master spec §17).
 
-| API integration   | Launch | Connect | Automate |
+| API integration   | Nectar | Honey | Hive |
 | ----------------- | :----: | :-----: | :------: |
 | Tenant / site-config | ✅  | ✅      | ✅       |
 | Lead              | ✅     | ✅      | ✅       |
@@ -164,9 +164,9 @@ beyond requires admin approval. The quote pricing engine
 
 | Plan     | List setup | List monthly | Rep min setup | Monthly discount |
 | -------- | ---------- | ------------ | ------------- | ---------------- |
-| Launch   | $399       | $39          | $299          | admin only       |
-| Connect  | $699       | $89          | $599          | admin only       |
-| Automate | $999       | $179         | $899          | admin only       |
+| Nectar   | $399       | $39          | $299          | admin only       |
+| Honey    | $699       | $89          | $599          | admin only       |
+| Hive     | $999       | $179         | $899          | admin only       |
 
 ### Reps may offer without approval
 

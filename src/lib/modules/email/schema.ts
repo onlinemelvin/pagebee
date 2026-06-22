@@ -4,7 +4,7 @@ const CATEGORIES = ["WELCOME", "AUTH", "BILLING", "WEBSITE", "USAGE", "ACCOUNT",
 const MARKETING = ["TIPS", "ANNOUNCEMENT", "PROMOTION"] as const;
 
 export const segmentSchema = z.object({
-  plans: z.array(z.enum(["LAUNCH", "CONNECT", "AUTOMATE"])).optional(),
+  plans: z.array(z.enum(["NECTAR", "HONEY", "HIVE"])).optional(),
   statuses: z.array(z.string().max(40)).optional(),
   includeTest: z.boolean().optional(),
 });

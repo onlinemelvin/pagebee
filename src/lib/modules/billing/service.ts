@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getStripe, appBaseUrl } from "@/lib/stripe/client";
+import { getStripe, appBaseUrl, stripeConfigured } from "@/lib/stripe/client";
 import { planByName, planRank, type PlanDef, type PlanName } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { launchPreview } from "@/lib/modules/preview";
@@ -101,7 +101,9 @@ export async function createBillingCheckout(
     mode: "subscription",
     customer,
     line_items: lineItems,
-    success_url: `${returnBase}?checkout=success`,
+    // {CHECKOUT_SESSION_ID} is substituted by Stripe — lets the return page reconcile the session
+    // directly (so the upgrade/launch applies even if the webhook is delayed or not configured).
+    success_url: `${returnBase}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${returnBase}?checkout=cancel`,
     metadata: { clientId, kind, toPlan: planName },
     subscription_data: { metadata: { clientId } },
@@ -171,6 +173,45 @@ export async function upgradeSubscription(
   return { applied: true };
 }
 
+/**
+ * Cancel the client's PageBee subscription. Default is `cancel_at_period_end` (graceful — they keep
+ * access until the paid period ends; the `customer.subscription.deleted` webhook flips status +
+ * sends the cancellation email when it actually ends). `immediate: true` ends it now. No-op-safe.
+ */
+export async function cancelSubscription(
+  clientId: string,
+  opts: { immediate?: boolean } = {},
+): Promise<{ status: "scheduled" | "cancelled"; accessUntil: string | null }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { id: true, stripeSubscriptionId: true, currentPeriodEnd: true } });
+  if (!sub) throw new BillingError(404, "no_subscription");
+  if (!sub.stripeSubscriptionId) throw new BillingError(409, "no_active_subscription");
+
+  if (opts.immediate) {
+    await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+    await prisma.subscription.update({ where: { id: sub.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    await writeAudit({ action: "subscription.cancelled", entityType: "Subscription", entityId: sub.id, clientId, metadata: { immediate: true } });
+    return { status: "cancelled", accessUntil: null };
+  }
+
+  const updated = await stripe.subscriptions.update(sub.stripeSubscriptionId, { cancel_at_period_end: true });
+  const cancelAt = updated.cancel_at ? new Date(updated.cancel_at * 1000) : sub.currentPeriodEnd;
+  await prisma.subscription.update({ where: { id: sub.id }, data: { cancelAt: cancelAt ?? undefined } });
+  await writeAudit({ action: "subscription.cancel_scheduled", entityType: "Subscription", entityId: sub.id, clientId });
+  return { status: "scheduled", accessUntil: cancelAt?.toLocaleDateString("en-US", { dateStyle: "long" }) ?? null };
+}
+
+/** Undo a scheduled cancellation (cancel_at_period_end) before it takes effect. */
+export async function reactivateSubscription(clientId: string): Promise<{ ok: true }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { id: true, stripeSubscriptionId: true } });
+  if (!sub?.stripeSubscriptionId) throw new BillingError(404, "no_subscription");
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, { cancel_at_period_end: false });
+  await prisma.subscription.update({ where: { id: sub.id }, data: { cancelAt: null } });
+  await writeAudit({ action: "subscription.reactivated", entityType: "Subscription", entityId: sub.id, clientId });
+  return { ok: true };
+}
+
 function mapStatus(s: Stripe.Subscription.Status): "ACTIVE" | "PAST_DUE" | "CANCELLED" | "TRIAL" | "PAYMENT_FAILED" {
   switch (s) {
     case "active":
@@ -198,6 +239,147 @@ async function switchPlan(clientId: string, planName: string): Promise<void> {
   });
 }
 
+/**
+ * Apply a completed Checkout session: store the Stripe customer/subscription, then either switch the
+ * plan (upgrade) or mark the setup fee paid + launch the site. Written to be IDEMPOTENT via DB-state
+ * guards (already-on-plan / already-paid short-circuit), so it's safe to run from BOTH the webhook
+ * AND the on-return reconcile (syncCheckoutSession) — whichever happens first wins, the other no-ops.
+ */
+async function applyCheckoutCompleted(s: Stripe.Checkout.Session): Promise<void> {
+  const clientId = s.metadata?.clientId;
+  if (!clientId) return;
+  const kind = s.metadata?.kind;
+  const toPlan = s.metadata?.toPlan;
+
+  await prisma.subscription.update({
+    where: { clientId },
+    data: {
+      stripeCustomerId: (s.customer as string) ?? undefined,
+      stripeSubscriptionId: (s.subscription as string) ?? undefined,
+    },
+  });
+
+  if (kind === "upgrade" && toPlan) {
+    const before = await prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } });
+    if (before?.plan.name === toPlan) return; // already applied (webhook + reconcile both ran)
+    await switchPlan(clientId, toPlan);
+    await prisma.subscription.update({ where: { clientId }, data: { status: "ACTIVE" } });
+    await writeAudit({ action: "subscription.upgraded", entityType: "Client", entityId: clientId, clientId, metadata: { toPlan, via: "stripe" } });
+    if (before?.plan.name && before.plan.name !== toPlan) {
+      await notify.sendPlanChanged(clientId, { fromPlan: before.plan.name, toPlan });
+    }
+  } else {
+    const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { setupFeePaid: true, agreedSetupFee: true } });
+    if (sub?.setupFeePaid) return; // already applied
+    await prisma.subscription.update({ where: { clientId }, data: { setupFeePaid: true, setupFeePaidAt: new Date(), status: "ACTIVE" } });
+    const preview = await prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
+    if (preview && preview.status !== "LIVE") {
+      await launchPreview(preview.id).catch((e) => console.error("[billing] launch failed", e));
+    }
+    await writeAudit({ action: "billing.setup_fee_paid", entityType: "Client", entityId: clientId, clientId });
+    await notify.sendPaymentReceipt(clientId, {
+      amountCents: sub?.agreedSetupFee ?? 0,
+      description: "One-time website setup fee",
+      when: new Date().toLocaleDateString("en-US", { dateStyle: "long" }),
+      invoiceUrl: notify.billingUrl(),
+    });
+  }
+}
+
+/**
+ * Reconcile a Checkout session on the customer's return from Stripe — so an upgrade/launch applies
+ * even when the webhook is delayed or not configured (e.g. local dev). Retrieves the session, checks
+ * it belongs to this client and is paid, then runs the same idempotent effect the webhook does.
+ * Returns "applied" once done, or "pending" if payment hasn't finalized yet (caller polls).
+ */
+export async function syncCheckoutSession(clientId: string, sessionId: string): Promise<{ status: "applied" | "pending" }> {
+  const s = await getStripe().checkout.sessions.retrieve(sessionId);
+  if (s.metadata?.clientId !== clientId) throw new BillingError(403, "not_your_session");
+  // Subscription checkouts are settled when payment_status is "paid" (or "no_payment_required" for
+  // 100%-discounted / trial sessions). Anything else (async payment methods) → keep polling.
+  if (s.payment_status !== "paid" && s.payment_status !== "no_payment_required") return { status: "pending" };
+  await applyCheckoutCompleted(s);
+  return { status: "applied" };
+}
+
+/** Parse a PageBee price lookup_key ("pagebee_hive_monthly") back to its plan name ("HIVE"). */
+function planNameFromLookupKey(key: string | null | undefined): string | null {
+  if (!key || !key.startsWith("pagebee_")) return null;
+  return key.replace(/^pagebee_/, "").replace(/_monthly$/, "").toUpperCase();
+}
+
+/**
+ * Self-heal the local subscription from Stripe's truth. Stripe is authoritative for what the
+ * customer is actually paying for, so when a webhook is missed (delayed, unconfigured, or it failed)
+ * this reconciles our DB to match: links the live subscription, fixes the plan + status + period,
+ * marks the setup fee paid + launches a pending preview, and cancels any DUPLICATE subscription a
+ * "checkout instead of in-place upgrade" left behind (which would otherwise double-bill). Idempotent
+ * and fail-soft — returns whether anything changed so callers can refresh.
+ */
+export async function reconcileFromStripe(clientId: string): Promise<{ changed: boolean }> {
+  if (!stripeConfigured()) return { changed: false };
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, include: { plan: true } });
+  if (!sub?.stripeCustomerId) return { changed: false };
+
+  const list = await stripe.subscriptions.list({ customer: sub.stripeCustomerId, status: "all", limit: 20 });
+  const liveStatuses = new Set(["active", "trialing", "past_due"]);
+  const liveSubs = list.data.filter((s) => liveStatuses.has(s.status)).sort((a, b) => b.created - a.created);
+  const live = liveSubs[0];
+  if (!live) return { changed: false };
+
+  let changed = false;
+
+  // Cancel duplicate live subscriptions (keep the newest = the most recent purchase) so a missed
+  // webhook on an upgrade can't leave the customer paying for two plans at once.
+  for (const dup of liveSubs.slice(1)) {
+    if (planNameFromLookupKey(dup.items.data[0]?.price?.lookup_key)) {
+      await stripe.subscriptions.cancel(dup.id).catch((e) => console.error("[billing] dup cancel failed", e));
+      await writeAudit({ action: "billing.duplicate_subscription_cancelled", entityType: "Subscription", entityId: sub.id, clientId, metadata: { cancelled: dup.id } });
+      changed = true;
+    }
+  }
+
+  // Sync the stored references + status + period end. Only include fields that ACTUALLY differ —
+  // otherwise an always-present field (e.g. cancelAt) would report a change every call and a caller
+  // that "redirect on changed" would loop forever.
+  const data: Prisma.SubscriptionUpdateInput = {};
+  if (sub.stripeSubscriptionId !== live.id) data.stripeSubscriptionId = live.id;
+  const mapped = mapStatus(live.status);
+  if (sub.status !== mapped) data.status = mapped;
+  const periodEnd = (live as unknown as { current_period_end?: number }).current_period_end;
+  if (periodEnd && sub.currentPeriodEnd?.getTime() !== periodEnd * 1000) data.currentPeriodEnd = new Date(periodEnd * 1000);
+  const newCancelAt = live.cancel_at ? live.cancel_at * 1000 : null;
+  if ((sub.cancelAt?.getTime() ?? null) !== newCancelAt) data.cancelAt = newCancelAt ? new Date(newCancelAt) : null;
+  if (!sub.setupFeePaid) {
+    data.setupFeePaid = true;
+    data.setupFeePaidAt = new Date();
+  }
+  if (Object.keys(data).length > 0) {
+    await prisma.subscription.update({ where: { clientId }, data });
+    changed = true;
+  }
+
+  // Plan drift → switch to the plan the customer is actually paying for, and tell them.
+  const targetName = planNameFromLookupKey(live.items.data[0]?.price?.lookup_key);
+  const target = targetName ? planByName(targetName) : null;
+  if (target && target.name !== sub.plan.name) {
+    await switchPlan(clientId, target.name);
+    await notify.sendPlanChanged(clientId, { fromPlan: sub.plan.name, toPlan: target.name });
+    changed = true;
+  }
+
+  // A paid subscription with a preview still awaiting payment → launch it now (mirrors the webhook).
+  const preview = await prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
+  if (preview && (preview.status === "APPROVED" || preview.status === "SETUP_FEE_PENDING")) {
+    await launchPreview(preview.id).catch((e) => console.error("[billing] reconcile launch failed", e));
+    changed = true;
+  }
+
+  if (changed) await writeAudit({ action: "billing.reconciled_from_stripe", entityType: "Subscription", entityId: sub.id, clientId, metadata: { plan: target?.name ?? sub.plan.name } });
+  return { changed };
+}
+
 /** Process a verified Stripe billing webhook event. Idempotent — dedupes redeliveries by event id
  *  (same PaymentEvent ledger the Connect webhook uses) so a retried setup-fee event can't double-launch. */
 export async function processBillingEvent(event: Stripe.Event): Promise<void> {
@@ -211,46 +393,7 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
 
   switch (event.type) {
     case "checkout.session.completed": {
-      const s = event.data.object as Stripe.Checkout.Session;
-      const clientId = s.metadata?.clientId;
-      const kind = s.metadata?.kind;
-      const toPlan = s.metadata?.toPlan;
-      if (!clientId) break;
-
-      await prisma.subscription.update({
-        where: { clientId },
-        data: {
-          stripeCustomerId: (s.customer as string) ?? undefined,
-          stripeSubscriptionId: (s.subscription as string) ?? undefined,
-        },
-      });
-
-      if (kind === "upgrade" && toPlan) {
-        const before = await prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } });
-        await switchPlan(clientId, toPlan);
-        await prisma.subscription.update({ where: { clientId }, data: { status: "ACTIVE" } });
-        await writeAudit({ action: "subscription.upgraded", entityType: "Client", entityId: clientId, clientId, metadata: { toPlan, via: "stripe" } });
-        if (before?.plan.name && before.plan.name !== toPlan) {
-          await notify.sendPlanChanged(clientId, { fromPlan: before.plan.name, toPlan });
-        }
-      } else {
-        const sub = await prisma.subscription.update({
-          where: { clientId },
-          data: { setupFeePaid: true, setupFeePaidAt: new Date(), status: "ACTIVE" },
-          select: { agreedSetupFee: true },
-        });
-        const preview = await prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
-        if (preview && preview.status !== "LIVE") {
-          await launchPreview(preview.id).catch((e) => console.error("[billing] launch failed", e));
-        }
-        await writeAudit({ action: "billing.setup_fee_paid", entityType: "Client", entityId: clientId, clientId });
-        await notify.sendPaymentReceipt(clientId, {
-          amountCents: sub.agreedSetupFee,
-          description: "One-time website setup fee",
-          when: new Date().toLocaleDateString("en-US", { dateStyle: "long" }),
-          invoiceUrl: notify.billingUrl(),
-        });
-      }
+      await applyCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
       break;
     }
     case "customer.subscription.updated": {

@@ -436,7 +436,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
   if (!alreadyLaunched) {
     await prisma.website.update({ where: { id: website.id }, data: { status: "preview" } });
   }
-  const planName = client.subscription?.plan.name ?? "LAUNCH";
+  const planName = client.subscription?.plan.name ?? "NECTAR";
   await prisma.preview.upsert({
     where: { websiteId: website.id },
     update: { status: "IN_REVIEW", generatedAt: new Date(), selectedPlan: planName, clientId },
@@ -1009,7 +1009,7 @@ export async function releaseToClient(versionId: string, reviewerId: string | nu
 
   const websiteId = version.website.id;
   const clientId = version.website.clientId;
-  const planName = version.website.client.subscription?.plan.name ?? "LAUNCH";
+  const planName = version.website.client.subscription?.plan.name ?? "NECTAR";
 
   await prisma.$transaction([
     prisma.websiteConfig.update({

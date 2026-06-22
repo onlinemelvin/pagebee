@@ -88,8 +88,16 @@ fixing a bug). If a hook blocks an action, fix the cause — don't bypass with
   service layer; public routes derive `clientId` from the site token, never the body.
 - **Feature flags, not plan names**, gate every capability.
 - **Money is integer cents** everywhere.
-- **No raw card/bank data** stored — only Stripe references. Payments use Stripe
-  Connect Express (destination charges); PageBee never custodies funds.
+- **No raw card/bank data** stored — only Stripe references; card entry uses Stripe
+  Elements (Payment Element), keeping PCI scope at SAQ A. Payments use Stripe Connect
+  **destination charges** with an application fee; PageBee never custodies funds.
+  Connect modes: **Custom** accounts for the white-label "use ours" path (PageBee
+  owns KYC + carries dispute/negative-balance liability — see
+  [payments/onboarding.ts](src/lib/modules/payments/onboarding.ts)) and **Standard**
+  via OAuth for "bring your own". Saved cards / Customers live on the **platform**
+  (destination charges), never on the connected account. (Open item: the
+  Custom-vs-Express liability trade-off needs Stripe-risk sign-off — keep docs+code
+  in sync with the decision.)
 - **Prisma 6** (the schema's `datasource` uses inline `url`/`directUrl`); pin
   `prisma`/`@prisma/client` to `^6` — Prisma 7 removed inline `url`.
 - **Admin review required** before any generated client website is published.
