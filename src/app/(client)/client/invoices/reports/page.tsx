@@ -5,8 +5,10 @@ import { ShieldCheck, Download, FileText } from "lucide-react";
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 import { getClientWorkspace } from "@/lib/modules/client";
 import { getTaxReport, getIncomeReport, get1099Summary, getFinanceAnalytics, getFinanceDashboard } from "@/lib/modules/finance";
+import { getPaymentStatus } from "@/lib/modules/payments";
 import { ReportControls } from "@/components/client/finance/ReportControls";
 import { FinanceAnalytics } from "@/components/client/finance/FinanceAnalytics";
+import { TaxDocuments } from "@/components/client/finance/TaxDocuments";
 import { fmt } from "@/components/client/finance/money-format";
 
 export const dynamic = "force-dynamic";
@@ -30,13 +32,19 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
   const toStr = to.toISOString().slice(0, 10);
 
   const year = now.getFullYear();
-  const [tax, income, form1099, analytics, dash] = await Promise.all([
+  const [tax, income, form1099, analytics, dash, payStatus] = await Promise.all([
     getTaxReport(ws.client.id, from, to),
     getIncomeReport(ws.client.id, from, to),
     get1099Summary(ws.client.id, year),
     getFinanceAnalytics(ws.client.id),
     getFinanceDashboard(ws.client.id),
+    getPaymentStatus(ws.client.id),
   ]);
+  // Official 1099-K surfacing: PageBee Pay (Custom) owners download Stripe's form inline; bring-your-
+  // own-Stripe owners get theirs from their own Stripe dashboard. Owner-only (forms carry a tax ID).
+  const isOwner = ws.role === "owner";
+  const showStripeDocs = isOwner && payStatus.connected && payStatus.mode !== "BYO";
+  const isBYO = isOwner && payStatus.connected && payStatus.mode === "BYO";
 
   return (
     <div>
@@ -133,6 +141,27 @@ export default async function FinanceReportsPage({ searchParams }: { searchParam
           PageBee Pay each January — by email, with a mailed copy as backup — so there&apos;s nothing to file yourself. The summary above
           and the printable statement are for your own records.
         </p>
+
+        {/* Official Stripe-issued 1099-K. PageBee Pay accounts download it inline; BYO accounts use
+            their own Stripe dashboard. Stripe renders its own empty-state until a form is generated. */}
+        {showStripeDocs && (
+          <div className="mt-5 border-t border-stone-100 pt-5">
+            <h3 className="font-display text-base text-stone-900">Official tax forms</h3>
+            <p className="mt-1 text-sm text-stone-500">Download your official 1099-K from PageBee Pay when it&apos;s available (issued each January).</p>
+            <div className="mt-3">
+              <TaxDocuments />
+            </div>
+          </div>
+        )}
+        {isBYO && (
+          <div className="mt-5 border-t border-stone-100 pt-5">
+            <h3 className="font-display text-base text-stone-900">Official tax forms</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              You&apos;re using your own Stripe account, so your official 1099-K is available in your{" "}
+              <a href="https://dashboard.stripe.com/tax-forms" target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-700 hover:underline">Stripe dashboard</a>.
+            </p>
+          </div>
+        )}
       </section>
     </div>
   );

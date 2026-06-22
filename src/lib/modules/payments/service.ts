@@ -461,6 +461,23 @@ async function onDisputeClosed(dispute: Stripe.Dispute): Promise<void> {
   });
 }
 
+// ── Official tax forms (1099-K) via the embedded Connect Documents component ─────
+// Custom (PageBee Pay) accounts have no Stripe-hosted dashboard, so we surface Stripe's official
+// 1099 tax forms inside PageBee. An Account Session with the `documents` component returns a client
+// secret the reports page mounts; Stripe renders the official, downloadable form. Only meaningful
+// once 1099 reporting is enabled on the platform and Stripe has generated forms (each January).
+// BYO (Standard) accounts get their 1099-K from their own Stripe dashboard, so this isn't used there.
+export async function createTaxDocumentsSession(clientId: string): Promise<{ clientSecret: string }> {
+  if (!stripeConfigured()) throw new PaymentError(503, "stripe_not_configured");
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { stripeConnectAccountId: true } });
+  if (!client?.stripeConnectAccountId) throw new PaymentError(409, "no_account");
+  const session = await getStripe().accountSessions.create({
+    account: client.stripeConnectAccountId,
+    components: { documents: { enabled: true } },
+  });
+  return { clientSecret: session.client_secret };
+}
+
 // ── White-label card entry: embedded invoice payment (Payment Element) ──────────
 // An alternative to the hosted-Checkout `createInvoiceCheckout`: returns a PaymentIntent client
 // secret the public pay page confirms inline with Stripe Elements, so the customer never leaves the
