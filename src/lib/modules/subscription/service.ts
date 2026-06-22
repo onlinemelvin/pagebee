@@ -35,7 +35,7 @@ export async function getUpdateQuota(clientId: string): Promise<UpdateQuota> {
   const used = await prisma.websiteUpdate.count({
     where: { clientId, status: { not: "rejected" }, createdAt: { gte: periodStart() } },
   });
-  return { allowance, used, remaining: Math.max(0, allowance - used), planName: sub?.plan.name ?? "LAUNCH" };
+  return { allowance, used, remaining: Math.max(0, allowance - used), planName: sub?.plan.name ?? "NECTAR" };
 }
 
 /** Switch a client's subscription to a target plan (and its agreed fees). */
@@ -65,7 +65,7 @@ export async function requestUpgrade(
   if (!client) throw new SubscriptionError(404, "client_not_found");
   const target = planByName(toPlanName);
   if (!target) throw new SubscriptionError(400, "invalid_plan");
-  const fromPlan = client.subscription?.plan.name ?? "LAUNCH";
+  const fromPlan = client.subscription?.plan.name ?? "NECTAR";
 
   if (client.isTest && client.subscription) {
     await applyPlanChange(client.subscription.id, target);

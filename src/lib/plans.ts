@@ -1,7 +1,7 @@
 // Canonical plan definitions — single source of truth for the pricing page, the
 // billing dashboard, and the DB seed. Mirrors docs/FEATURE_FLAGS.md. Fees in integer cents.
 
-export type PlanName = "LAUNCH" | "CONNECT" | "AUTOMATE";
+export type PlanName = "NECTAR" | "HONEY" | "HIVE";
 
 /** A displayable limit row for the billing "what you get" sneak-peek. */
 export interface PlanQuotas {
@@ -19,7 +19,9 @@ export interface PlanQuotas {
 
 export interface PlanDef {
   name: PlanName;
-  label: string;
+  label: string; // honey-themed display name (Nectar / Honey / Hive) — used as the headline
+  subtitle: string; // functional meaning, shown as a subtitle under the name in general UI
+  cardSubtitle: string; // shorter functional descriptor for compact pricing/upgrade cards
   tagline: string;
   setupFee: number; // cents
   monthlyFee: number; // cents
@@ -34,8 +36,10 @@ export interface PlanDef {
 
 export const PLANS: PlanDef[] = [
   {
-    name: "LAUNCH",
-    label: "Launch",
+    name: "NECTAR",
+    label: "Nectar",
+    subtitle: "Launch your business online",
+    cardSubtitle: "Website essentials",
     tagline: "A clean, professional website — built, hosted, and maintained for you.",
     setupFee: 39900,
     monthlyFee: 3900,
@@ -51,15 +55,15 @@ export const PLANS: PlanDef[] = [
       "2 minor updates / month",
     ],
     featureFlags: {
-      planName: "Launch",
+      planName: "Nectar",
       setupFee: 399,
       monthlyFee: 39,
       maxPages: 3,
       monthlyUpdates: 2,
       teamSeats: 1,
       emailIncludedMonthly: 250,
-      // Launch is a brochure site: NO lead-capture forms. The contact section shows
-      // click-to-call / email only. Lead forms (and the inbox) are a Connect+ value prop.
+      // Nectar is a brochure site: NO lead-capture forms. The contact section shows
+      // click-to-call / email only. Lead forms (and the inbox) are a Honey+ value prop.
       contactForm: false,
       basicAnalytics: true,
       hosting: true,
@@ -77,8 +81,10 @@ export const PLANS: PlanDef[] = [
     },
   },
   {
-    name: "CONNECT",
-    label: "Connect",
+    name: "HONEY",
+    label: "Honey",
+    subtitle: "Connect with customers and grow",
+    cardSubtitle: "Customer growth tools",
     tagline: "Capture leads, book customers, and manage inquiries from your site.",
     setupFee: 69900,
     monthlyFee: 8900,
@@ -88,7 +94,7 @@ export const PLANS: PlanDef[] = [
     quotas: { pages: 6, updates: 5, seats: 3, sms: 100, email: 1000 },
     recommended: true,
     highlights: [
-      "Everything in Launch, plus:",
+      "Everything in Nectar, plus:",
       "Appointment booking & scheduling",
       "Website chat + lead inbox",
       "SMS lead alerts (100/mo included)",
@@ -96,7 +102,7 @@ export const PLANS: PlanDef[] = [
       "3 team members · 5 minor updates / month",
     ],
     featureFlags: {
-      planName: "Connect",
+      planName: "Honey",
       setupFee: 699,
       monthlyFee: 89,
       maxPages: 6,
@@ -121,8 +127,10 @@ export const PLANS: PlanDef[] = [
     },
   },
   {
-    name: "AUTOMATE",
-    label: "Automate",
+    name: "HIVE",
+    label: "Hive",
+    subtitle: "Automate and manage your business",
+    cardSubtitle: "Complete business automation",
     tagline: "Let your site respond, book, collect payments, and follow up — automatically.",
     setupFee: 99900,
     monthlyFee: 17900,
@@ -142,7 +150,7 @@ export const PLANS: PlanDef[] = [
       invoicesUnlimited: true,
     },
     highlights: [
-      "Everything in Connect, plus:",
+      "Everything in Honey, plus:",
       "Payments, invoices & receipts — unlimited",
       "AI assistant — 1,000 replies / mo, follow-ups & lead scoring",
       "Customer payment portal & statements",
@@ -150,7 +158,7 @@ export const PLANS: PlanDef[] = [
       "Unlimited team members · unlimited updates",
     ],
     featureFlags: {
-      planName: "Automate",
+      planName: "Hive",
       setupFee: 999,
       monthlyFee: 179,
       maxPages: 12,
@@ -190,8 +198,8 @@ export const PLANS: PlanDef[] = [
 export const PRICING_NOTE =
   "Payment processing fees are charged separately by Stripe. SMS and AI usage include generous monthly limits; sustained heavy usage may be billed separately. “Unlimited” means fair-use.";
 
-// PLANS is ordered ascending (Launch < Connect < Automate) — used for tier comparisons.
-const PLAN_ORDER: PlanName[] = ["LAUNCH", "CONNECT", "AUTOMATE"];
+// PLANS is ordered ascending (Nectar < Honey < Hive) — used for tier comparisons.
+const PLAN_ORDER: PlanName[] = ["NECTAR", "HONEY", "HIVE"];
 
 /** Look up a plan definition by its canonical name. */
 export function planByName(name: string): PlanDef | undefined {

@@ -35,6 +35,7 @@ export function PlanComparison({ currentPlan }: { currentPlan: string }) {
                 <span className="absolute -top-2.5 left-5 rounded-full bg-amber-400 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-950">Current plan</span>
               )}
               <p className="font-display text-xl text-stone-900">{p.label}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">{p.cardSubtitle}</p>
               <p className="mt-0.5 text-sm text-stone-500">{p.tagline}</p>
               <p className="mt-3">
                 <span className="font-display text-3xl text-stone-900">${Math.round(p.monthlyFee / 100)}</span>

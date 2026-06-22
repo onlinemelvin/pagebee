@@ -4,6 +4,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { planForFlag, nextTier } from "@/lib/plans";
 import { autoReleaseStalePreview } from "@/lib/modules/website";
 import { TEAM_AREAS, areaForNavKey, canView, canManage } from "@/lib/modules/team/permissions";
+import { isTestModeEligible } from "@/lib/auth/policy";
 
 export interface PreviewInfo {
   status: string; // PreviewStatus or "NONE"
@@ -137,6 +138,8 @@ export interface ClientWorkspace {
   role: string; // "owner" | "staff"
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
+  testMode: boolean; // global Test Mode ON (stubs/replays generation, simulates domain buys)
+  testModeEligible: boolean; // may toggle Test Mode (testers/owner only)
   caps: { forms: boolean; booking: boolean; invoices: boolean; ai: boolean; customDomain: boolean; maxPages: number; teamSeats: number; teamSeatsUnlimited: boolean };
   permissions: string[]; // raw capability keys ([] for owners, who hold all)
   access: Record<string, { view: boolean; manage: boolean }>; // per team-area, resolved for this member
@@ -371,11 +374,16 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
     };
   });
 
+  const testModeEligible = isTestModeEligible(ctx.email);
+  const testMode = testModeEligible && (await isTestMode(client.id));
+
   return {
     email: ctx.email,
     role: membership.role,
     client: { id: client.id, businessName: client.businessName, ownerName: client.ownerName, isTest: client.isTest },
     planName: client.subscription?.plan.name ?? "—",
+    testMode,
+    testModeEligible,
     caps,
     permissions: membership.permissions,
     access: Object.fromEntries(
@@ -407,4 +415,20 @@ export async function setClientFeature(clientId: string, key: string, enabled: b
     update: { enabled },
     create: { clientId, key, enabled },
   });
+}
+
+/** Read a per-client FeatureFlag (false when absent). */
+export async function isClientFeature(clientId: string, key: string): Promise<boolean> {
+  const f = await prisma.featureFlag
+    .findUnique({ where: { clientId_key: { clientId, key } }, select: { enabled: true } })
+    .catch(() => null);
+  return f?.enabled === true;
+}
+
+/** Global Test Mode flag key — gates LLM-stub/replay generation + domain dry-run. */
+export const TEST_MODE_KEY = "testMode";
+
+/** Whether Test Mode is currently ON for a client. */
+export function isTestMode(clientId: string): Promise<boolean> {
+  return isClientFeature(clientId, TEST_MODE_KEY);
 }

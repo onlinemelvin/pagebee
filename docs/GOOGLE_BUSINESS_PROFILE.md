@@ -1,13 +1,13 @@
 # Google Business Profile (GBP) — Feature Spec
 
 Status: **proposed** (design). Adds a Google Business Profile capability split across
-**Connect** and **Automate**. The SEO/local-ranking layer is explicitly **out of scope
+**Honey** and **Hive**. The SEO/local-ranking layer is explicitly **out of scope
 for v1** and tracked as a future enhancement (§10).
 
 > Naming: this feature manages a client's **Google Business Profile** (GBP, formerly
 > Google My Business) — the listing that appears on Google Maps and in local Search.
 > In user-facing copy say "Google Business Profile" / "your Google listing", never
-> "tier". Plan names are **Connect** and **Automate** (uppercase plan names per
+> "tier". Plan names are **Honey** and **Hive** (uppercase plan names per
 > existing copy conventions).
 
 ---
@@ -39,7 +39,7 @@ by the sales discount rules in FEATURE_FLAGS.md → "Reps may never offer").
 
 ## 2. Plan split
 
-| Capability | Launch | Connect | Automate |
+| Capability | Nectar | Honey | Hive |
 | --- | :--: | :--: | :--: |
 | GBP guided setup + claim wizard | ❌ | ✅ | ✅ |
 | Profile sync (NAP, hours, website/domain, categories) | ❌ | ✅ | ✅ |
@@ -51,10 +51,10 @@ by the sales discount rules in FEATURE_FLAGS.md → "Reps may never offer").
 | Google Posts publishing | ❌ | ❌ | ✅ (future-adjacent, see §10) |
 | SEO / local-ranking service | ❌ | ❌ | 🔜 future (§10) |
 
-Rationale: **Connect** = mostly self-serve software + light support (low marginal cost,
-strong upsell hook). **Automate** = recurring AI + active management work (real per-client
+Rationale: **Honey** = mostly self-serve software + light support (low marginal cost,
+strong upsell hook). **Hive** = recurring AI + active management work (real per-client
 cost → correctly the premium tier), consistent with how AI assistant / AI follow-ups are
-already Automate-only.
+already Hive-only.
 
 ---
 
@@ -64,13 +64,13 @@ New canonical flags (added to `plans.featureFlags` JSON in FEATURE_FLAGS.md; per
 overrides via the `feature_flags` table as usual). Gating is by **flag**, never plan name.
 
 ```jsonc
-// CONNECT — add:
+// HONEY — add:
 "gbpEnabled": true,            // setup wizard + sync + read-only reviews
 "gbpReviewReplies": false,
 "gbpAiReplies": false,
 "gbpMetrics": false
 
-// AUTOMATE — add:
+// HIVE — add:
 "gbpEnabled": true,
 "gbpReviewReplies": true,      // publish replies back to Google
 "gbpAiReplies": true,          // AI-composed drafts
@@ -126,7 +126,7 @@ model GbpAccount {
   @@map("gbp_accounts")
 }
 
-// Mirror of a Google review so we can surface (Connect) and reply (Automate) without
+// Mirror of a Google review so we can surface (Honey) and reply (Hive) without
 // re-fetching every render. Source of truth stays Google; we sync.
 model GbpReview {
   id            String   @id @default(cuid())
@@ -140,7 +140,7 @@ model GbpReview {
   comment       String?
   createReTime  DateTime?       // when the reviewer posted
 
-  // Reply state (Automate).
+  // Reply state (Hive).
   replyText     String?
   replyDraft    String?         // AI-composed, awaiting owner approval
   replyStatus   String   @default("none") // none | draft | published | failed
@@ -152,7 +152,7 @@ model GbpReview {
   @@map("gbp_reviews")
 }
 
-// Daily performance snapshot (Automate). Pulled from the Performance API.
+// Daily performance snapshot (Hive). Pulled from the Performance API.
 model GbpMetricDaily {
   id           String   @id @default(cuid())
   clientId     String
@@ -225,7 +225,7 @@ never the body.
 | `POST /client/gbp/location` | gbpEnabled | link a chosen location |
 | `POST /client/gbp/sync` | gbpEnabled | manual "push my info now" |
 | `GET  /client/gbp/verification` | gbpEnabled | refresh + return verification state |
-| `GET  /client/gbp/reviews` | gbpEnabled | list synced reviews (read-only on Connect) |
+| `GET  /client/gbp/reviews` | gbpEnabled | list synced reviews (read-only on Honey) |
 | `POST /client/gbp/reviews/{id}/draft` | gbpAiReplies | AI-compose a reply draft |
 | `POST /client/gbp/reviews/{id}/reply` | gbpReviewReplies | publish reply to Google |
 | `GET  /client/gbp/metrics` | gbpMetrics | performance series for dashboard |
@@ -268,9 +268,9 @@ Follow existing worker-sweep conventions (see media/leads/scheduling workers):
 - **gbp-sync** (e.g. daily): for each verified `GbpAccount`, push profile diffs
   (NAP/hours/domain/photos from Media where `inGallery`/`kind=logo`), pull verification
   state, update `lastSyncedAt`.
-- **gbp-reviews** (e.g. hourly): pull new reviews → upsert `GbpReview`; on Automate with
+- **gbp-reviews** (e.g. hourly): pull new reviews → upsert `GbpReview`; on Hive with
   AI enabled, optionally pre-generate `replyDraft` (still owner-approved before publish).
-- **gbp-metrics** (daily): pull yesterday's performance into `GbpMetricDaily` (Automate).
+- **gbp-metrics** (daily): pull yesterday's performance into `GbpMetricDaily` (Hive).
 
 Token refresh handled in `google-client.ts`; on hard auth failure set `status="error"` +
 `lastError`, surface a "reconnect Google" prompt in the dashboard.
@@ -280,22 +280,22 @@ Token refresh handled in `google-client.ts`; on hard auth failure set `status="e
 ## 9. UI
 
 - **Client nav:** new **Google** tab (`src/app/(client)/client/google/`), visible to all
-  tiers; Connect sees setup + read-only reviews; Automate-only panels (reply, metrics) are
+  tiers; Honey sees setup + read-only reviews; Hive-only panels (reply, metrics) are
   locked behind UpgradeGate for lower tiers.
-- **Reviews panel:** list with rating/comment; Automate adds reply box + "Draft with AI"
+- **Reviews panel:** list with rating/comment; Hive adds reply box + "Draft with AI"
   button (shows usage against `gbpAiRepliesIncludedMonthly`).
-- **Metrics panel (Automate):** calls / directions / website clicks / views over time.
+- **Metrics panel (Hive):** calls / directions / website clicks / views over time.
 - **Admin:** surface `GbpAccount.status` + `lastError` per client for support triage.
 
 ---
 
 ## 10. Out of scope for v1 (future enhancements)
 
-- **SEO / local-ranking service** (the "Automate gets SEO" idea): ongoing local keyword &
+- **SEO / local-ranking service** (the "Hive gets SEO" idea): ongoing local keyword &
   category optimization, citation building, review-velocity strategy, reporting. Decision
   to make later: **AI-driven with a human review gate** (scalable, fits ai-model-tiers) vs
   human-managed (expensive, doesn't scale). Recommended: AI-driven + human gate.
-- **Google Posts** publishing cadence (adjacent; easy to add to Automate after v1).
+- **Google Posts** publishing cadence (adjacent; easy to add to Hive after v1).
 - **Multi-location** GBP per client (only relevant if we ever sell multi-location plans).
 
 ---
@@ -316,10 +316,10 @@ GBP_TOKEN_ENC_KEY=          # app-layer encryption for stored refresh tokens
 
 1. **Schema + flags + module skeleton** — Prisma models, flag additions in
    FEATURE_FLAGS.md, `gbp` module with `GbpError` + DTOs, encrypted-token storage.
-2. **OAuth + linking + wizard** — routes, `google-client.ts`, the §7 state machine, Connect
+2. **OAuth + linking + wizard** — routes, `google-client.ts`, the §7 state machine, Honey
    read-only reviews.
-3. **Sync workers** — profile + reviews sync (Connect), verification polling.
-4. **Automate layer** — reply publish, AI compose (+ usage metering), metrics ingestion +
+3. **Sync workers** — profile + reviews sync (Honey), verification polling.
+4. **Hive layer** — reply publish, AI compose (+ usage metering), metrics ingestion +
    dashboard.
 5. **Admin triage + observability polish.**
 6. *(future)* SEO service + Google Posts.
@@ -331,7 +331,7 @@ GBP_TOKEN_ENC_KEY=          # app-layer encryption for stored refresh tokens
 - **Google API access approval** is a real-world prerequisite and gates phases 2+. File the
   GBP API access request early — it can take weeks and is not guaranteed.
 - AI reply monthly allowance numbers (`gbpAiRepliesIncludedMonthly`) — placeholder 200;
-  confirm against Automate margin.
+  confirm against Hive margin.
 - Whether AI drafts auto-generate on sync vs on-demand (cost vs convenience).
 </content>
 </invoke>

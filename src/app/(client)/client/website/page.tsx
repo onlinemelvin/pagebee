@@ -1,16 +1,14 @@
 import { redirect } from "next/navigation";
 import { Wand2, Eye, Rocket, MessageSquareHeart, ExternalLink } from "lucide-react";
-import { getClientWebsite, getLatestJobStatus, getDomainState, isDomainBuyDryRun } from "@/lib/modules/website";
+import { getClientWebsite, getLatestJobStatus, getDomainState } from "@/lib/modules/website";
 import { CustomDomainPanel } from "@/components/client/CustomDomainPanel";
 import { getClientWorkspace } from "@/lib/modules/client";
-import { isDomainDryRunEligible } from "@/lib/auth/policy";
 import { prisma } from "@/lib/db";
 import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateSection } from "@/components/client/RegenerateSection";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
 import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
-import { CheckoutButton } from "@/components/client/BillingActions";
 import { PreviewCover } from "@/components/client/PreviewCover";
 import { extractAccentColor } from "@/lib/site/accent";
 import { LogoMark } from "@/components/brand/Logo";
@@ -34,15 +32,11 @@ export default async function ClientWebsitePage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
   if (!ws.access.website.view) redirect("/client"); // staff without website access
-  // Test-only domain "dry-run" toggle — eligibility decided ONLY here on the server (by email), so
-  // the capability never reaches a real customer's page. Its on/off state lives in a server flag.
-  const dryRunEligible = ws.caps.customDomain && isDomainDryRunEligible(ws.email);
-  const [website, job, contactRow, domainState, dryRunEnabled] = await Promise.all([
+  const [website, job, contactRow, domainState] = await Promise.all([
     getClientWebsite(ws.client.id),
     getLatestJobStatus(ws.client.id),
     prisma.client.findUnique({ where: { id: ws.client.id }, select: { ownerEmail: true, ownerPhone: true } }),
     ws.caps.customDomain ? getDomainState(ws.client.id) : Promise.resolve(null),
-    dryRunEligible ? isDomainBuyDryRun(ws.client.id) : Promise.resolve(false),
   ]);
   const contactDefaults = { email: contactRow?.ownerEmail ?? ws.email, phone: contactRow?.ownerPhone ?? undefined };
   const latest = website?.versions[0];
@@ -94,7 +88,9 @@ export default async function ClientWebsitePage() {
                 publishes, your domain connects, and your features turn on right away.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <CheckoutButton kind="setup" label="Pay &amp; launch your site" />
+                <a href="/client/launch" className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700">
+                  <Rocket size={16} /> Continue to launch
+                </a>
                 <a href="/client/billing" className="text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
                   Billing details
                 </a>
@@ -265,7 +261,7 @@ export default async function ClientWebsitePage() {
 
       {/* Custom domain — owners on a plan that includes it, once a site exists. */}
       {!awaitingSetup && latest && isOwner && ws.caps.customDomain && (
-        <CustomDomainPanel initial={domainState} dryRunEligible={dryRunEligible} dryRunEnabled={dryRunEnabled} />
+        <CustomDomainPanel initial={domainState} testModeActive={ws.testMode} />
       )}
 
       {!awaitingSetup && latest && isOwner && (

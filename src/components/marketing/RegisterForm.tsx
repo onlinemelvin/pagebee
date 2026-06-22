@@ -139,6 +139,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
                     </span>
 
                     <h2 className="font-display text-2xl text-stone-900">{p.label}</h2>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-amber-700">{p.cardSubtitle}</p>
                     <p className="mt-2 min-h-12 text-sm text-stone-600">{p.tagline}</p>
 
                     <div className="mt-6">

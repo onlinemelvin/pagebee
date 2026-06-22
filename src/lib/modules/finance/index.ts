@@ -22,6 +22,7 @@ export {
   bookingInvoiceStatuses,
   decideByToken,
   generateStatement,
+  listStatements,
   getFinanceDashboard,
   getTaxReport,
   getIncomeReport,

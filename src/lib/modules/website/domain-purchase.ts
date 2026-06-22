@@ -30,11 +30,13 @@ async function siteIdFor(clientId: string): Promise<string | null> {
 // have it on. Used by executePurchase and surfaced to the page for the toggle's current state.
 const DRY_RUN_KEY = "domainBuyDryRun";
 
+// Driven by the unified global Test Mode flag ("testMode"); the legacy per-card
+// "domainBuyDryRun" flag is still honored for back-compat.
 export async function isDomainBuyDryRun(clientId: string): Promise<boolean> {
-  const f = await prisma.featureFlag
-    .findUnique({ where: { clientId_key: { clientId, key: DRY_RUN_KEY } }, select: { enabled: true } })
-    .catch(() => null);
-  return f?.enabled === true;
+  const rows = await prisma.featureFlag
+    .findMany({ where: { clientId, key: { in: ["testMode", DRY_RUN_KEY] }, enabled: true }, select: { id: true }, take: 1 })
+    .catch(() => []);
+  return rows.length > 0;
 }
 const dryRunEnabledFor = isDomainBuyDryRun;
 

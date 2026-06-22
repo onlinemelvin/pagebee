@@ -13,8 +13,8 @@ export default async function ClientAppointmentsPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
   if (!ws.access.appointments.view) redirect("/client"); // staff without appointments access
-  // Booking is a Connect+ feature; surfaced to every tier in the nav, gated here for lower plans.
-  if (!ws.caps.booking) return <UpgradeGate title="Appointments" flag="booking" blurb="Let customers book and reschedule online, with availability and walk-in management — available on the CONNECT plan and up." />;
+  // Booking is a Honey+ feature; surfaced to every tier in the nav, gated here for lower plans.
+  if (!ws.caps.booking) return <UpgradeGate title="Appointments" flag="booking" blurb="Let customers book and reschedule online, with availability and walk-in management — available on the HONEY plan and up." />;
 
   const [bookings, settings, catalog] = await Promise.all([
     listBookings(ws.client.id),

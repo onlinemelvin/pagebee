@@ -12,8 +12,8 @@ export default async function ClientInquiriesPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
   if (!ws.access.inquiries.view) redirect("/client"); // staff without inquiries access
-  // Lead capture (and this inbox) is a Connect+ feature; the nav shows it to every tier as an upsell.
-  if (!ws.caps.forms) return <UpgradeGate title="Inquiries" flag="contactForm" blurb="Capture leads from your website and manage every inquiry in one inbox — available on the CONNECT plan and up." />;
+  // Lead capture (and this inbox) is a Honey+ feature; the nav shows it to every tier as an upsell.
+  if (!ws.caps.forms) return <UpgradeGate title="Inquiries" flag="contactForm" blurb="Capture leads from your website and manage every inquiry in one inbox — available on the HONEY plan and up." />;
 
   const [leads, website] = await Promise.all([
     listLeads({ clientId: ws.client.id }),

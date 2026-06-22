@@ -7,6 +7,6 @@ export type PlanBadge = { label: string; className: string };
  * Kept here so both surfaces stay in sync. Not every plan has a badge.
  */
 export const PLAN_BADGES: Partial<Record<PlanName, PlanBadge>> = {
-  CONNECT: { label: "Most popular", className: "bg-amber-400 text-stone-950" },
-  AUTOMATE: { label: "Most value", className: "bg-emerald-500 text-white" },
+  HONEY: { label: "Most popular", className: "bg-amber-400 text-stone-950" },
+  HIVE: { label: "Most value", className: "bg-emerald-500 text-white" },
 };

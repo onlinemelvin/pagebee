@@ -28,12 +28,12 @@ export default async function PreviewPage() {
         <div className="max-w-md rounded-2xl border border-amber-400 bg-amber-50 p-8 text-center">
           <h1 className="font-display text-2xl text-stone-900">You approved your preview 🎉</h1>
           <p className="mt-2 text-stone-600">
-            Pay the one-time setup fee to launch your site, connect your domain, and activate your
-            features. (Card payments are connecting soon.)
+            Complete your one-time setup payment to launch your site, connect your domain, and activate
+            your features. Secure checkout by Stripe — your site goes live as soon as you pay.
           </p>
           <div className="mt-5 flex justify-center gap-3">
-            <Link href="/client/billing">
-              <Button size="lg">Go to billing</Button>
+            <Link href="/client/launch">
+              <Button size="lg">Pay &amp; launch ↗</Button>
             </Link>
             <Link href="/client">
               <Button size="lg" variant="ghost">

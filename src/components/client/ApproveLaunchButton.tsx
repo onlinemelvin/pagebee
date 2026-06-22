@@ -30,22 +30,11 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
       }
       const result = (await res.json().catch(() => ({}))) as { launched?: boolean; awaitingPayment?: boolean };
 
-      // Real accounts: approval moves to the setup-fee step — take them straight into Stripe Checkout
-      // (one-time setup fee + first month). The webhook launches the site once payment succeeds.
+      // Real accounts: approval moves to the setup-fee step — send them to the dedicated launch page,
+      // which summarizes the setup fee + first month and continues to Stripe. The webhook launches
+      // the site once payment succeeds.
       if (result.awaitingPayment) {
-        const co = await fetch("/api/v1/client/billing/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "setup" }),
-        });
-        const body = (await co.json().catch(() => null)) as { url?: string } | null;
-        if (co.ok && body?.url) {
-          window.location.href = body.url; // off to Stripe
-          return;
-        }
-        // Checkout couldn't start (e.g. Stripe not configured) — fall back to the billing page,
-        // which shows the pay-to-launch CTA and the current status.
-        router.push("/client/billing");
+        router.push("/client/launch");
         return;
       }
 

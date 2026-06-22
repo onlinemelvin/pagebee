@@ -193,7 +193,7 @@ export async function prepareGeneration(jobId: string): Promise<void> {
       configCreate,
       pagesCreate,
       jobOutput: result.config as unknown as Prisma.InputJsonValue,
-      planName: job.website.client.subscription?.plan.name ?? "LAUNCH",
+      planName: job.website.client.subscription?.plan.name ?? "NECTAR",
       configEngine: result.engine,
       htmlPrompt: htmlPromptDebug(built),
     };

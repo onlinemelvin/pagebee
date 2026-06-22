@@ -2,8 +2,18 @@ import Stripe from "stripe";
 
 /**
  * Platform Stripe client + Connect helpers. All money movement is via Stripe Connect: the platform
- * creates charges and takes an application fee, funds settle to the client's connected account
- * (Express = "use ours", Standard via OAuth = "bring your own"). PageBee never custodies funds.
+ * creates charges and takes an application fee, funds settle to the client's connected account.
+ * Two connect modes:
+ *   - "use ours"      → Custom connected accounts (white-label; PageBee collects all KYC and owns the
+ *                       onboarding UX — see payments/onboarding.ts). PageBee is the platform of record
+ *                       and carries dispute / negative-balance liability for these accounts.
+ *   - "bring your own" → Standard accounts linked via OAuth (payments/service.ts startConnect).
+ * Charges are DESTINATION charges (created on the platform, funds transferred to the connected
+ * account), so saved cards / Customers for off-session billing live on the PLATFORM. PageBee never
+ * custodies funds.
+ *
+ * NOTE (open decision): Custom carries materially more liability than Express. Confirm the account
+ * type with Stripe's risk team before scaling; keep docs + code in sync with whatever is chosen.
  *
  * Everything is guarded on `STRIPE_SECRET_KEY` so the app runs fine before Stripe is configured.
  */

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function RecurringPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
-  if (!ws.caps.invoices) return <UpgradeGate title="Recurring billing" flag="invoices" blurb="Bill repeat customers automatically — lawn care, cleaning, retainers — on the AUTOMATE plan." />;
+  if (!ws.caps.invoices) return <UpgradeGate title="Recurring billing" flag="invoices" blurb="Bill repeat customers automatically — lawn care, cleaning, retainers — on the HIVE plan." />;
 
   const [plans, services, customerRows] = await Promise.all([
     listRecurringPlans(ws.client.id),

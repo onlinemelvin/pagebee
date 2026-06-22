@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/modules/email";
 import * as notify from "@/lib/modules/email/notifications";
 import * as customerNotify from "@/lib/modules/email/customer-notifications";
 import { upsertCustomerFromLead } from "@/lib/modules/customer";
+import { createNotification, isGroupEmailAllowed } from "@/lib/modules/notification";
 import type { Lead, Booking } from "@prisma/client";
 
 // Escape user-supplied values before embedding in notification HTML.
@@ -46,19 +47,30 @@ if (!globalForSubs.__pagebeeSubscribers) {
       });
     }
 
-    // Notify the actual business owner (falls back to the platform inbox only if none on file).
-    await sendEmail({
-      to: await ownerInbox(lead.clientId),
-      subject: `New ${lead.type.toLowerCase().replace("_", " ")} lead: ${lead.name}`,
-      html: `
-        <h2>New lead captured</h2>
-        <p><strong>Name:</strong> ${esc(lead.name)}</p>
-        <p><strong>Email:</strong> ${esc(lead.email)}</p>
-        <p><strong>Phone:</strong> ${esc(lead.phone)}</p>
-        <p><strong>Message:</strong> ${esc(lead.message)}</p>
-        <p><strong>Source:</strong> ${esc(lead.source)}</p>
-      `,
+    // In-app notification for the owner (always — the bell isn't gated by email prefs).
+    await createNotification({
+      clientId: lead.clientId,
+      type: "lead.created",
+      title: `New inquiry from ${lead.name || "a visitor"}`,
+      body: lead.message ? lead.message.slice(0, 120) : "Respond from your inquiries inbox.",
     });
+
+    // Notify the actual business owner by email — gated by their opt-in (falls back to the
+    // platform inbox only if none on file).
+    if (await isGroupEmailAllowed(lead.clientId, "inquiries")) {
+      await sendEmail({
+        to: await ownerInbox(lead.clientId),
+        subject: `New ${lead.type.toLowerCase().replace("_", " ")} lead: ${lead.name}`,
+        html: `
+          <h2>New lead captured</h2>
+          <p><strong>Name:</strong> ${esc(lead.name)}</p>
+          <p><strong>Email:</strong> ${esc(lead.email)}</p>
+          <p><strong>Phone:</strong> ${esc(lead.phone)}</p>
+          <p><strong>Message:</strong> ${esc(lead.message)}</p>
+          <p><strong>Source:</strong> ${esc(lead.source)}</p>
+        `,
+      });
+    }
   });
 
   // Platform → client: the website preview has been released for the owner to
@@ -73,18 +85,43 @@ if (!globalForSubs.__pagebeeSubscribers) {
       booking: Booking;
       customer: { name: string; email?: string; phone?: string };
     };
-    await sendEmail({
-      to: await ownerInbox(booking.clientId),
-      subject: `New appointment request: ${booking.serviceName}`,
-      html: `
-        <h2>New appointment request</h2>
-        <p><strong>Service:</strong> ${esc(booking.serviceName)}</p>
-        <p><strong>When:</strong> ${esc(booking.startAt.toLocaleString())}</p>
-        <p><strong>Name:</strong> ${esc(customer.name)}</p>
-        <p><strong>Email:</strong> ${esc(customer.email)}</p>
-        <p><strong>Phone:</strong> ${esc(customer.phone)}</p>
-        <p><strong>Notes:</strong> ${esc(booking.notes)}</p>
-      `,
+
+    // In-app notification for the owner (always).
+    await createNotification({
+      clientId: booking.clientId,
+      type: "booking.created",
+      title: `New appointment request: ${booking.serviceName}`,
+      body: `${customer.name || "A customer"} · ${booking.startAt.toLocaleString()}`,
     });
+
+    // Email the owner — gated by their opt-in.
+    if (await isGroupEmailAllowed(booking.clientId, "appointments")) {
+      await sendEmail({
+        to: await ownerInbox(booking.clientId),
+        subject: `New appointment request: ${booking.serviceName}`,
+        html: `
+          <h2>New appointment request</h2>
+          <p><strong>Service:</strong> ${esc(booking.serviceName)}</p>
+          <p><strong>When:</strong> ${esc(booking.startAt.toLocaleString())}</p>
+          <p><strong>Name:</strong> ${esc(customer.name)}</p>
+          <p><strong>Email:</strong> ${esc(customer.email)}</p>
+          <p><strong>Phone:</strong> ${esc(customer.phone)}</p>
+          <p><strong>Notes:</strong> ${esc(booking.notes)}</p>
+        `,
+      });
+    }
+  });
+
+  // Platform → client: a purchased/connected custom domain is now serving the
+  // live site. Mirrors the website "domain live" milestone.
+  on("domain.active", async (payload) => {
+    const { clientId, domain } = payload as { clientId?: string; domain?: string };
+    if (clientId) {
+      await createNotification({
+        clientId,
+        type: "domain_active",
+        body: domain ? `${domain} is now serving your website.` : "Your custom domain is now live.",
+      });
+    }
   });
 }

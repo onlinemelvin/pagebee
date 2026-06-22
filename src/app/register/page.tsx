@@ -3,11 +3,11 @@ import { RegisterForm } from "@/components/marketing/RegisterForm";
 import type { PlanName } from "@/lib/plans";
 
 export const metadata: Metadata = {
-  title: "Get started — PageBee",
-  description: "Choose a plan and create your PageBee account.",
+  title: "Get started",
+  description: "Choose a plan and create your PageBee account — see your new website free, no card required.",
 };
 
-const PLAN_NAMES = ["LAUNCH", "CONNECT", "AUTOMATE"];
+const PLAN_NAMES = ["NECTAR", "HONEY", "HIVE"];
 
 export default async function RegisterPage({
   searchParams,
