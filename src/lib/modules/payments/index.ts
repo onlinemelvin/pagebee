@@ -14,6 +14,7 @@ export {
   getPlanAuthContext,
   createPlanSetupIntent,
   savePlanCard,
+  createTaxDocumentsSession,
   PaymentError,
 } from "./service";
 export type { PaymentStatus, StripeMode, PlanAuthContext } from "./service";
