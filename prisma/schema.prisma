@@ -2340,6 +2340,21 @@ model WebsiteVisit {
   @@map("website_visits")
 }
 
+// Pre-launch waitlist signups from the public "coming soon" gate. Platform-level
+// (not tenant-scoped) — these are prospective PageBee customers, captured before launch.
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  business  String?
+  source    String? // path/referrer the signup came from
+  ipHash    String? // coarse dedupe/abuse signal; never the raw IP
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("waitlist_entries")
+}
+
 model ConversionEvent {
   id        String   @id @default(cuid())
   clientId  String?
