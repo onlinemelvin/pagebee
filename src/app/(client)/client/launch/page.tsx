@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Rocket, Check, ExternalLink, ShieldCheck } from "lucide-react";
+import { Rocket, ExternalLink, ShieldCheck } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { prisma } from "@/lib/db";
-import { planByName } from "@/lib/plans";
+import { planByName, planLimitRows } from "@/lib/plans";
 import { formatUsd } from "@/lib/utils";
-import { CheckoutButton, LaunchReconcile } from "@/components/client/BillingActions";
+import { LaunchReconcile } from "@/components/client/BillingActions";
 
 export const dynamic = "force-dynamic";
 
@@ -99,23 +99,32 @@ export default async function LaunchPage({ searchParams }: { searchParams: Promi
         <p className="mt-2 text-xs text-stone-400">Then {formatUsd(monthly)}/month. Cancel anytime.</p>
       </div>
 
-      <ul className="mt-5 w-full max-w-md space-y-2 text-left text-sm text-stone-700">
-        {["Your site publishes immediately", "Your custom domain connects (if set up)", "Your plan features turn on"].map((t) => (
-          <li key={t} className="flex items-start gap-2.5"><Check size={17} className="mt-0.5 shrink-0 text-amber-500" /> {t}</li>
-        ))}
-      </ul>
+      {/* Everything the selected tier includes. */}
+      <div className="mt-5 w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-card">
+        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Your {plan?.label ?? ws.planName} plan includes</p>
+        <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+          {plan && planLimitRows(plan).map((r) => (
+            <li key={r.label} className="flex items-center justify-between">
+              <span className="text-stone-500">{r.label}</span>
+              <span className="font-semibold text-stone-800">{r.value}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="mt-6 flex w-full max-w-md flex-col items-stretch gap-3">
-        <CheckoutButton kind="setup" label={`Continue to secure checkout — ${formatUsd(dueToday)}`} />
+        <Link href="/client/launch/payment" className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-700">
+          Next — add payment details
+        </Link>
         {/* Still free to change your mind on the plan before paying. */}
-        <Link href="/client/billing" className="text-center text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
-          Want a different plan? Change it free before you pay
+        <Link href="/client/website" className="text-center text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
+          Want a different plan? Switch it free first
         </Link>
         <Link href="/client/website" className="text-center text-sm text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline">
           Not yet — back to my website
         </Link>
       </div>
-      <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-stone-400"><ShieldCheck size={14} /> Secure payment by Stripe</p>
+      <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-stone-400"><ShieldCheck size={14} /> Secure payment by Stripe · your card is saved for monthly billing</p>
     </Shell>
   );
 }

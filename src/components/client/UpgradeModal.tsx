@@ -42,22 +42,18 @@ export function UpgradeModal({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/client/website/preview-tier", {
+      // No-regen switch: the site already exists at the top tier; this just reveals the higher tier.
+      const res = await fetch("/api/v1/client/website/tier-view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan: toPlan }),
       });
       if (!res.ok) {
-        const d = (await res.json().catch(() => null)) as { error?: string } | null;
-        setError(
-          d?.error === "no_prior_generation"
-            ? "Generate your website first, then you can preview other tiers."
-            : "Couldn't switch — please try again.",
-        );
+        setError("Couldn't switch — please try again.");
         setBusy(false);
         return;
       }
-      router.push("/client/website"); // watch it rebuild at the new tier
+      router.push("/client/website"); // see it on the new tier
     } catch {
       setError("Couldn't switch — please try again.");
       setBusy(false);
@@ -72,7 +68,7 @@ export function UpgradeModal({
       onMouseDown={() => onClose()}
     >
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-        <h2 className="font-display text-xl text-stone-900">Preview {plan.label} on your site</h2>
+        <h2 className="font-display text-xl text-stone-900">See your site on {plan.label}</h2>
         <p className="mt-1 text-sm text-stone-600">{plan.tagline}</p>
 
         <ul className="mt-3 space-y-1.5 text-sm text-stone-700">
@@ -90,7 +86,7 @@ export function UpgradeModal({
         </div>
 
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-          This is <strong>free</strong> — we&apos;ll rebuild your preview on {plan.label} so you can try it. You only pay
+          This is <strong>free</strong> — your site instantly shows the {plan.label} features (no rebuild). You only pay
           the setup fee + first month when you <strong>approve &amp; launch</strong>.
         </p>
 
@@ -102,7 +98,7 @@ export function UpgradeModal({
           </Button>
           <Button onClick={confirm} disabled={busy}>
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
-            {busy ? "Rebuilding…" : `Preview ${plan.label} free`}
+            {busy ? "Switching…" : `See it on ${plan.label}`}
           </Button>
         </div>
       </div>

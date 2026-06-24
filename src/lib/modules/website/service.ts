@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
-import type { Prisma, PlanName } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { PlanName } from "@prisma/client";
 import { planByName, planRank, topPlan } from "@/lib/plans";
+import { listSiteBlocks, type SiteBlock } from "@/lib/site/tier-view";
 import { writeAudit } from "@/lib/modules/audit";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 import { emit } from "@/lib/events";
@@ -1276,6 +1278,62 @@ export async function getPreviewPlanOverride(
   if (!selected) return undefined;
   const showcase = sub ? planRank(selected.name) > planRank(sub.plan.name) : true;
   return { flags: selected.featureFlags as Record<string, unknown>, showcase };
+}
+
+/** The site's content blocks (parsed from the latest generated HTML) + the client's current view
+ *  tier and kept-block choice — for the tier switcher / keep-picker UI. */
+export async function getSiteBlocks(
+  clientId: string,
+): Promise<{ blocks: SiteBlock[]; selectedPlan: string; keptSections: string[] | null }> {
+  const [site, preview] = await Promise.all([
+    prisma.website.findFirst({
+      where: { clientId },
+      select: { versions: { orderBy: { version: "desc" }, take: 1, select: { generatedHtml: true } } },
+    }),
+    prisma.preview.findFirst({
+      where: { clientId },
+      orderBy: { generatedAt: "desc" },
+      select: { selectedPlan: true, keptSections: true },
+    }),
+  ]);
+  const blocks = listSiteBlocks(site?.versions[0]?.generatedHtml ?? "");
+  return {
+    blocks,
+    selectedPlan: preview?.selectedPlan ?? "NECTAR",
+    keptSections: (preview?.keptSections as string[] | null) ?? null,
+  };
+}
+
+/**
+ * Switch the VIEW tier with NO regeneration — just record the selected plan and (when the tier allows
+ * fewer blocks than the site has) the owner's kept-block choice. The serve pipeline hides the rest.
+ * Validates the kept set against the real blocks and the tier's page allowance; the first block
+ * (hero/home) is always kept. Persists keptSections only when the tier actually hides something.
+ */
+export async function setTierView(
+  clientId: string,
+  planName: string,
+  keptSections?: string[] | null,
+): Promise<{ ok: true; kept: string[] | null }> {
+  const plan = planByName(planName);
+  if (!plan) throw new Error("invalid_plan");
+
+  const { blocks } = await getSiteBlocks(clientId);
+  let kept: string[] | null = null;
+  if (blocks.length > plan.maxPages) {
+    const firstSlug = blocks[0]?.slug;
+    const valid = (keptSections ?? []).filter((s) => blocks.some((b) => b.slug === s));
+    let chosen = valid.length ? valid : blocks.slice(0, plan.maxPages).map((b) => b.slug);
+    if (firstSlug && !chosen.includes(firstSlug)) chosen = [firstSlug, ...chosen];
+    kept = chosen.slice(0, plan.maxPages);
+  }
+
+  await prisma.preview.updateMany({
+    where: { clientId },
+    data: { selectedPlan: planName as PlanName, keptSections: kept ?? Prisma.JsonNull },
+  });
+  await writeAudit({ action: "preview.tier_switched", entityType: "Client", entityId: clientId, clientId, metadata: { plan: planName, kept: kept?.length ?? null } });
+  return { ok: true, kept };
 }
 
 /** The client's website with its latest version's metadata. Narrow select — no generatedHtml. */

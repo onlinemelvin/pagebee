@@ -8,6 +8,7 @@ import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateSection } from "@/components/client/RegenerateSection";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
+import { TierSwitcher } from "@/components/client/TierSwitcher";
 import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
 import { PreviewCover } from "@/components/client/PreviewCover";
 import { extractAccentColor } from "@/lib/site/accent";
@@ -201,6 +202,11 @@ export default async function ClientWebsitePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tier switcher — pick a plan in preview mode; no charge, no regen (serve-time show/hide). */}
+      {viewable && isOwner && !isPublished && !awaitingPayment && (
+        <TierSwitcher currentTierFallback={ws.planName} />
       )}
 
       {/* How it works — first-time only */}

@@ -29,22 +29,18 @@ export function PreviewTierButton({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/client/website/preview-tier", {
+      // No-regen switch: reveal the higher tier on the existing site (built at the top tier).
+      const res = await fetch("/api/v1/client/website/tier-view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan }),
       });
       if (!res.ok) {
-        const d = (await res.json().catch(() => null)) as { error?: string } | null;
-        setError(
-          d?.error === "no_prior_generation"
-            ? "Generate your website first, then you can preview other tiers."
-            : "Couldn't start the preview — please try again.",
-        );
+        setError("Couldn't switch — please try again.");
         setBusy(false);
         return;
       }
-      router.push("/client/website"); // shows the generation progress → preview
+      router.push("/client/website"); // see it on the new tier
     } catch {
       setError("Couldn't start the preview — please try again.");
       setBusy(false);
