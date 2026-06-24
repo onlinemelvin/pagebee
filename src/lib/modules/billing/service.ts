@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getStripe, appBaseUrl, stripeConfigured } from "@/lib/stripe/client";
-import { planByName, planRank, type PlanDef, type PlanName } from "@/lib/plans";
+import { planByName, planRank, setupFeeDelta, type PlanDef, type PlanName } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { launchPreview } from "@/lib/modules/preview";
 import { requestUpgrade } from "@/lib/modules/subscription";
@@ -156,7 +156,19 @@ async function tryInPlaceUpgrade(clientId: string, toPlanName: string): Promise<
   if (!itemId) return false;
 
   const prices = await ensurePrices(stripe, target);
-  // Swap the recurring price in place; invoice the prorated difference now so the upgrade is paid for.
+  // One-time, NON-REFUNDABLE setup-fee difference between tiers — queue it as an invoice item so the
+  // always_invoice update below bills it now alongside the prorated monthly difference.
+  const delta = setupFeeDelta(sub.plan.name, target.name);
+  if (delta > 0) {
+    await stripe.invoiceItems.create({
+      customer: stripeSub.customer as string,
+      subscription: sub.stripeSubscriptionId,
+      amount: delta,
+      currency: "usd",
+      description: `Setup fee difference — upgrade to PageBee ${target.label}`,
+    });
+  }
+  // Swap the recurring price in place; invoice the prorated monthly difference + setup delta now.
   await stripe.subscriptions.update(sub.stripeSubscriptionId, {
     items: [{ id: itemId, price: prices.monthly }],
     proration_behavior: "always_invoice",
@@ -254,7 +266,13 @@ export async function createBillingIntent(
   if (!stripeConfigured()) throw new BillingError(503, "stripe_not_configured");
   const sub = await prisma.subscription.findUnique({ where: { clientId: client.id }, include: { plan: true } });
   if (!sub) throw new BillingError(404, "no_subscription");
-  const plan = planByName(sub.plan.name as PlanName);
+  // Pre-launch plan selection: if the client picked a different starting plan, switch to it first so
+  // the setup fee + first month reflect the chosen tier.
+  if (toPlan && toPlan !== sub.plan.name) {
+    if (!planByName(toPlan)) throw new BillingError(400, "invalid_plan");
+    await switchPlan(client.id, toPlan);
+  }
+  const plan = planByName((toPlan ?? sub.plan.name) as PlanName);
   if (!plan) throw new BillingError(400, "invalid_plan");
   const { clientSecret, amountCents } = await createIncompleteSubscription(client.id, plan, "setup");
   return { kind: "card", clientSecret, amountCents, planLabel: plan.label, flow: "setup" };
@@ -456,6 +474,12 @@ export async function reconcileFromStripe(clientId: string): Promise<{ changed: 
     changed = true;
   }
 
+  // A scheduled downgrade that has now landed (Stripe bills the lower price) → clear the pending flag.
+  if (sub.pendingPlan && target?.name === sub.pendingPlan) {
+    await prisma.subscription.update({ where: { clientId }, data: { pendingPlan: null } });
+    changed = true;
+  }
+
   // A paid subscription with a preview still awaiting payment → launch it now (mirrors the webhook).
   const preview = await prisma.preview.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { id: true, status: true } });
   if (preview && (preview.status === "APPROVED" || preview.status === "SETUP_FEE_PENDING")) {
@@ -465,6 +489,190 @@ export async function reconcileFromStripe(clientId: string): Promise<{ changed: 
 
   if (changed) await writeAudit({ action: "billing.reconciled_from_stripe", entityType: "Subscription", entityId: sub.id, clientId, metadata: { plan: target?.name ?? sub.plan.name } });
   return { changed };
+}
+
+// ── Terms acceptance, saved card, billing history, downgrade, retention ──────────────────────────
+
+/** Current billing-terms version recorded on acceptance. Bump when the terms copy changes. */
+export const BILLING_TERMS_VERSION = "2026-06-23";
+
+/** Record an immutable acceptance of the billing terms (incl. the non-refundable setup fee). Fail-soft. */
+export async function recordBillingAgreement(args: {
+  clientId: string;
+  plan: string;
+  amountCents: number;
+  ip?: string | null;
+  userAgent?: string | null;
+}): Promise<void> {
+  await prisma.billingAgreement
+    .create({
+      data: {
+        clientId: args.clientId,
+        version: BILLING_TERMS_VERSION,
+        plan: args.plan,
+        amountCents: args.amountCents,
+        ip: args.ip ?? null,
+        userAgent: args.userAgent ?? null,
+      },
+    })
+    .catch((e) => console.error("[billing] agreement record failed", e));
+}
+
+/** The client's saved default card for PageBee billing (brand + last4), or null if none on file. */
+export async function getSavedCard(
+  clientId: string,
+): Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null> {
+  if (!stripeConfigured()) return null;
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { stripeCustomerId: true } });
+  if (!sub?.stripeCustomerId) return null;
+  const stripe = getStripe();
+  const customer = await stripe.customers.retrieve(sub.stripeCustomerId);
+  if (customer.deleted) return null;
+  const dpm = customer.invoice_settings?.default_payment_method;
+  const pmId = typeof dpm === "string" ? dpm : (dpm?.id ?? null);
+  if (!pmId) return null;
+  const pm = await stripe.paymentMethods.retrieve(pmId);
+  if (!pm.card) return null;
+  return { brand: pm.card.brand, last4: pm.card.last4, expMonth: pm.card.exp_month, expYear: pm.card.exp_year };
+}
+
+/** Create a SetupIntent so the client can add/replace their card via the embedded Payment Element. */
+export async function createCardSetupIntent(clientId: string): Promise<{ clientSecret: string }> {
+  if (!stripeConfigured()) throw new BillingError(503, "stripe_not_configured");
+  const stripe = getStripe();
+  const customer = await ensureCustomer(stripe, clientId);
+  const si = await stripe.setupIntents.create({
+    customer,
+    payment_method_types: ["card"],
+    usage: "off_session",
+    metadata: { clientId },
+  });
+  if (!si.client_secret) throw new BillingError(502, "intent_failed");
+  return { clientSecret: si.client_secret };
+}
+
+/** After a SetupIntent confirms, make its card the customer's + subscription's default for billing. */
+export async function setDefaultCardFromSetupIntent(clientId: string, setupIntentId: string): Promise<{ ok: true }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({
+    where: { clientId },
+    select: { stripeCustomerId: true, stripeSubscriptionId: true },
+  });
+  if (!sub?.stripeCustomerId) throw new BillingError(404, "no_subscription");
+  const si = await stripe.setupIntents.retrieve(setupIntentId);
+  if (si.metadata?.clientId !== clientId) throw new BillingError(403, "not_your_intent");
+  const pmId = typeof si.payment_method === "string" ? si.payment_method : (si.payment_method?.id ?? null);
+  if (!pmId) throw new BillingError(400, "no_payment_method");
+  await stripe.paymentMethods.attach(pmId, { customer: sub.stripeCustomerId }).catch(() => {});
+  await stripe.customers.update(sub.stripeCustomerId, { invoice_settings: { default_payment_method: pmId } });
+  if (sub.stripeSubscriptionId) {
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, { default_payment_method: pmId }).catch(() => {});
+  }
+  await writeAudit({ action: "billing.card_updated", entityType: "Client", entityId: clientId, clientId });
+  return { ok: true };
+}
+
+/** PageBee billing history (the platform's invoices to this client) for the billing screen. */
+export async function listBillingInvoices(clientId: string): Promise<
+  Array<{ id: string; date: string; amountCents: number; status: string; url: string | null; pdf: string | null; description: string }>
+> {
+  if (!stripeConfigured()) return [];
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { stripeCustomerId: true } });
+  if (!sub?.stripeCustomerId) return [];
+  const stripe = getStripe();
+  const list = await stripe.invoices.list({ customer: sub.stripeCustomerId, limit: 12 });
+  return list.data.map((inv) => ({
+    id: inv.id ?? "",
+    date: new Date((inv.created ?? 0) * 1000).toLocaleDateString("en-US", { dateStyle: "medium" }),
+    amountCents: inv.amount_paid || inv.amount_due || inv.total || 0,
+    status: inv.status ?? "open",
+    url: inv.hosted_invoice_url ?? null,
+    pdf: inv.invoice_pdf ?? null,
+    description: inv.lines.data[0]?.description ?? "PageBee subscription",
+  }));
+}
+
+/**
+ * Schedule a DOWNGRADE to a lower tier at the end of the current billing period (no refund — the
+ * setup fee is non-refundable and the current month is already paid). A Stripe subscription schedule
+ * keeps the current price until period end (phase 1), then starts the lower price (phase 2); the
+ * client keeps current features until it lands and reconcile flips the local plan. Also DROPS any
+ * retention discount — downgrading forfeits it.
+ */
+export async function scheduleDowngrade(clientId: string, toPlanName: string): Promise<{ effectiveAt: string | null }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, include: { plan: true } });
+  if (!sub) throw new BillingError(404, "no_subscription");
+  if (!sub.stripeSubscriptionId) throw new BillingError(409, "no_active_subscription");
+  const target = planByName(toPlanName);
+  if (!target) throw new BillingError(400, "invalid_plan");
+  if (planRank(target.name) >= planRank(sub.plan.name)) throw new BillingError(400, "not_a_downgrade");
+
+  const prices = await ensurePrices(stripe, target);
+
+  // Downgrading forfeits the retention discount.
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, { discounts: [] }).catch(() => {});
+
+  const schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.stripeSubscriptionId });
+  const p0 = schedule.phases[0];
+  await stripe.subscriptionSchedules.update(schedule.id, {
+    end_behavior: "release",
+    phases: [
+      {
+        items: p0.items.map((i) => ({ price: typeof i.price === "string" ? i.price : i.price.id, quantity: i.quantity ?? 1 })),
+        start_date: p0.start_date,
+        end_date: p0.end_date,
+      },
+      { items: [{ price: prices.monthly, quantity: 1 }] },
+    ],
+  });
+
+  const effectiveAt = sub.currentPeriodEnd ?? (p0.end_date ? new Date(p0.end_date * 1000) : null);
+  await prisma.subscription.update({ where: { clientId }, data: { pendingPlan: target.name } });
+  await writeAudit({ action: "subscription.downgrade_scheduled", entityType: "Subscription", entityId: sub.id, clientId, metadata: { toPlan: target.name } });
+  return { effectiveAt: effectiveAt?.toLocaleDateString("en-US", { dateStyle: "long" }) ?? null };
+}
+
+/** Whether the client is still eligible for the one-time retention offer (never claimed). */
+export async function retentionOfferAvailable(clientId: string): Promise<boolean> {
+  const sub = await prisma.subscription.findUnique({ where: { clientId }, select: { retentionOfferUsedAt: true } });
+  return Boolean(sub) && !sub?.retentionOfferUsedAt;
+}
+
+/**
+ * The one-time cancel-flow retention offer: 50% off the CURRENT plan for 3 billing cycles. Halts any
+ * scheduled cancellation (the client stays), applies the coupon, and marks it used so it's never
+ * offered again. Forfeited if the client later downgrades.
+ */
+export async function applyRetentionDiscount(clientId: string): Promise<{ ok: true }> {
+  const stripe = getStripe();
+  const sub = await prisma.subscription.findUnique({
+    where: { clientId },
+    select: { id: true, stripeSubscriptionId: true, retentionOfferUsedAt: true },
+  });
+  if (!sub?.stripeSubscriptionId) throw new BillingError(409, "no_active_subscription");
+  if (sub.retentionOfferUsedAt) throw new BillingError(409, "offer_already_used");
+
+  const couponId = "pagebee_retention_50_3mo";
+  try {
+    await stripe.coupons.retrieve(couponId);
+  } catch {
+    await stripe.coupons.create({
+      id: couponId,
+      percent_off: 50,
+      duration: "repeating",
+      duration_in_months: 3,
+      name: "PageBee loyalty — 50% off for 3 months",
+    });
+  }
+
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+    discounts: [{ coupon: couponId }],
+    cancel_at_period_end: false,
+  });
+  await prisma.subscription.update({ where: { clientId }, data: { retentionOfferUsedAt: new Date(), cancelAt: null } });
+  await writeAudit({ action: "subscription.retention_discount_applied", entityType: "Subscription", entityId: sub.id, clientId });
+  return { ok: true };
 }
 
 /** Process a verified Stripe billing webhook event. Idempotent — dedupes redeliveries by event id

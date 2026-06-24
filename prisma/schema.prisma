@@ -931,6 +931,7 @@ model Client {
   userInvites     ClientUserInvite[]
   usageRecords    UsageRecord[]
   sendingDomains  SendingDomain[]
+  billingAgreements BillingAgreement[]
 
   @@index([status])
   @@map("clients")
@@ -1065,11 +1066,37 @@ model Subscription {
   cancelledAt        DateTime?
   failedPaymentCount Int       @default(0)
 
+  // Scheduled downgrade: the lower plan to take effect at currentPeriodEnd (a Stripe subscription
+  // schedule handles the price swap + billing; reconcile flips the local plan when it lands). Null
+  // when no downgrade is pending.
+  pendingPlan String?
+
+  // One-time cancel-flow retention discount (50% off for 3 cycles) — set when claimed so it can
+  // never be offered/applied again. The discount itself lives on the Stripe subscription.
+  retentionOfferUsedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
   @@map("subscriptions")
+}
+
+// An immutable record that a client accepted the PageBee billing terms (incl. the non-refundable
+// setup fee) at a point in time. Kept for legal/audit; one row per acceptance, never updated.
+model BillingAgreement {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  version     String // terms version accepted (e.g. "2026-06-23")
+  plan        String // plan name at acceptance
+  amountCents Int // total charged at acceptance (setup + first month, or setup delta) in cents
+  acceptedAt  DateTime @default(now())
+  ip          String?
+  userAgent   String?
+
+  @@index([clientId])
+  @@map("billing_agreements")
 }
 
 // Per-client overrides on top of the plan's canonical flags (add-ons, custom deals).

@@ -7,8 +7,10 @@ import { prisma } from "@/lib/db";
 import { planByName, planLimitRows, PLANS, PRICING_NOTE } from "@/lib/plans";
 import { SectionCard } from "@/components/client/ui/SectionCard";
 import { PlanComparison } from "@/components/client/PlanComparison";
-import { reconcileFromStripe } from "@/lib/modules/billing";
+import { reconcileFromStripe, retentionOfferAvailable } from "@/lib/modules/billing";
 import { CheckoutButton, CancelPlanButton, CheckoutStatusBanner } from "@/components/client/BillingActions";
+import { PaymentMethodCard } from "@/components/client/PaymentMethodCard";
+import { BillingHistory } from "@/components/client/BillingHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -83,13 +85,15 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
     plan.quotas.aiReplies ? getMonthlyUsage(ws.client.id, "aiReplies") : Promise.resolve(0),
     plan.quotas.sms ? getMonthlyUsage(ws.client.id, "sms") : Promise.resolve(0),
     plan.quotas.email ? getMonthlyUsage(ws.client.id, "email") : Promise.resolve(0),
-    prisma.subscription.findUnique({ where: { clientId: ws.client.id }, select: { stripeSubscriptionId: true, cancelAt: true, currentPeriodEnd: true } }),
+    prisma.subscription.findUnique({ where: { clientId: ws.client.id }, select: { stripeSubscriptionId: true, stripeCustomerId: true, cancelAt: true, currentPeriodEnd: true, pendingPlan: true } }),
   ]);
   const seatsUsed = memberCount + inviteCount;
   // A live subscription the owner can cancel (or un-cancel if already scheduled).
   const hasActiveSub = Boolean(subRow?.stripeSubscriptionId) && ws.preview.live;
+  const hasBilling = Boolean(subRow?.stripeCustomerId);
   const cancelScheduled = Boolean(subRow?.cancelAt);
   const accessUntil = (subRow?.cancelAt ?? subRow?.currentPeriodEnd)?.toLocaleDateString("en-US", { dateStyle: "long" }) ?? null;
+  const retentionAvail = hasActiveSub ? await retentionOfferAvailable(ws.client.id) : false;
 
   return (
     <div className="space-y-6">
@@ -164,9 +168,17 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
           <Sparkles size={16} className="text-amber-500" />
           <h2 className="font-display text-lg text-stone-900">Compare plans</h2>
         </div>
-        <PlanComparison currentPlan={plan.name} />
+        <PlanComparison currentPlan={plan.name} mode={ws.preview.live ? "manage" : "select"} pendingPlan={subRow?.pendingPlan} />
         <p className="mt-3 text-xs text-stone-400">{PRICING_NOTE}</p>
       </div>
+
+      {/* Saved card + billing history (once a billing customer exists) */}
+      {hasBilling && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <PaymentMethodCard />
+          <BillingHistory />
+        </div>
+      )}
 
       {/* Payment / launch CTA */}
       <div className="anim-rise overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-card">
@@ -191,7 +203,13 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
           )}
           {hasActiveSub && (
             <div className="mt-6 w-full max-w-md border-t border-stone-100 pt-5">
-              <CancelPlanButton cancelScheduled={cancelScheduled} accessUntil={accessUntil} />
+              <CancelPlanButton
+                cancelScheduled={cancelScheduled}
+                accessUntil={accessUntil}
+                retentionAvailable={retentionAvail}
+                planLabel={plan.label}
+                monthlyCents={plan.monthlyFee}
+              />
             </div>
           )}
         </div>

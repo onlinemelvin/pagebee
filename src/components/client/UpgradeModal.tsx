@@ -24,14 +24,10 @@ export function UpgradeModal({
 }) {
   const router = useRouter();
   const plan = planByName(toPlan);
-  const [step, setStep] = React.useState<"confirm" | "pay">("confirm");
   const [result, setResult] = React.useState<"applied" | "requested" | null>(null);
 
   React.useEffect(() => {
-    if (open) {
-      setStep("confirm");
-      setResult(null);
-    }
+    if (open) setResult(null);
   }, [open]);
 
   if (!open) return null;
@@ -71,17 +67,6 @@ export function UpgradeModal({
               Done
             </Button>
           </div>
-        ) : step === "pay" ? (
-          <>
-            <h2 className="font-display text-xl text-stone-900">Upgrade to {plan?.label}</h2>
-            <p className="mt-1 text-sm text-stone-600">Enter your card to switch to {priceMo}.</p>
-            <div className="mt-4">
-              <BillingCardStep flow="upgrade" toPlan={toPlan} reason={reason} onResolved={onResolved} />
-            </div>
-            <button onClick={onClose} className="mt-4 w-full text-center text-sm text-stone-500 hover:text-stone-700">
-              Cancel
-            </button>
-          </>
         ) : (
           <>
             <h2 className="font-display text-xl text-stone-900">Upgrade to {plan?.label}</h2>
@@ -96,13 +81,13 @@ export function UpgradeModal({
                 ))}
               </ul>
             )}
-            <p className="mt-3 text-sm font-medium text-stone-900">{priceMo}</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button onClick={() => setStep("pay")}>Continue to payment</Button>
+            <p className="mt-3 text-sm font-medium text-stone-900">{priceMo} · plus the non-refundable setup-fee difference</p>
+            <div className="mt-4">
+              <BillingCardStep flow="upgrade" toPlan={toPlan} reason={reason} onResolved={onResolved} />
             </div>
+            <button onClick={onClose} className="mt-3 w-full text-center text-sm text-stone-500 hover:text-stone-700">
+              Cancel
+            </button>
           </>
         )}
       </div>
