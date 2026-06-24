@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma, PlanName } from "@prisma/client";
-import { planByName, planRank } from "@/lib/plans";
+import { planByName, planRank, topPlan } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 import { emit } from "@/lib/events";
@@ -32,26 +32,19 @@ import type { WebsiteIntakeForm } from "./schema";
 export type GenerationForm = WebsiteIntakeForm & { revisionEdits?: HtmlEditRequest[]; previewPlan?: PlanName };
 
 /**
- * The plan whose capabilities a generation should build at. When `previewPlan` is set (a free
- * tier-preview), the site is built at that tier and `showcase` is true — the marquee features it
- * unlocks (forms/booking/payments) default ON so the preview actually demonstrates them, regardless
- * of the owner's per-feature toggles. Otherwise it's the paid plan with normal opt-in gating.
+ * Generation ALWAYS builds the full site at the TOP tier (max pages, every section + feature) so a
+ * tier switch never needs a regeneration — lower view-tiers just hide what they don't include. The
+ * returned `planName` is the VIEW tier recorded on the preview (`previewPlan` ?? paid ?? Nectar);
+ * `flags`/`maxPages` are the top tier's and `showcase` is always true so forms/booking/payments are
+ * all generated, then gated at serve time by the view tier.
  */
 export function effectivePlanForGeneration(
   paidPlan: { name: PlanName; featureFlags: Prisma.JsonValue; maxPages: number } | null | undefined,
   previewPlan: PlanName | undefined,
 ): { flags: Record<string, unknown>; maxPages: number; planName: PlanName; showcase: boolean } {
-  const override = previewPlan ? planByName(previewPlan) : null;
-  if (override) {
-    const showcase = paidPlan ? planRank(override.name) > planRank(paidPlan.name) : true;
-    return { flags: override.featureFlags as Record<string, unknown>, maxPages: override.maxPages, planName: override.name, showcase };
-  }
-  return {
-    flags: (paidPlan?.featureFlags ?? {}) as Record<string, unknown>,
-    maxPages: paidPlan?.maxPages ?? 5,
-    planName: paidPlan?.name ?? "NECTAR",
-    showcase: false,
-  };
+  const top = topPlan();
+  const viewTier = (previewPlan ?? paidPlan?.name ?? "NECTAR") as PlanName;
+  return { flags: top.featureFlags as Record<string, unknown>, maxPages: top.maxPages, planName: viewTier, showcase: true };
 }
 
 
@@ -1177,6 +1170,10 @@ export interface ServeSite {
   leadForm?: LeadFormMeta;
   // Booking-widget state (trigger section + enabled), inlined so the booking section paints instantly.
   booking?: BookingMeta | null;
+  // The view tier governing which pages/sections show (live → paid plan; preview → selected tier),
+  // and the owner's explicit kept-block choice (null → keep the first maxPages by order).
+  viewTier?: string;
+  keptSections?: string[] | null;
 }
 
 /** Resolve a PUBLISHED site by host part, for the public renderer. Previews are NOT
@@ -1188,11 +1185,22 @@ async function getServeSite(where: { subdomain?: string; id?: string }): Promise
   });
   const html = site?.publishedVersion?.generatedHtml;
   if (!site || !html) return null;
-  const [leadForm, booking] = await Promise.all([
+  // Live site: the view tier is the PAID plan; kept-block choice comes from the preview record.
+  const [leadForm, booking, sub, preview] = await Promise.all([
     getLeadFormMeta(site.clientId),
     getBookingMeta(site.clientId, site.publishedVersion?.bookingHtml ?? null),
+    prisma.subscription.findUnique({ where: { clientId: site.clientId }, select: { plan: { select: { name: true } } } }),
+    prisma.preview.findFirst({ where: { clientId: site.clientId }, orderBy: { generatedAt: "desc" }, select: { keptSections: true } }),
   ]);
-  return { kind: "published", siteToken: site.siteToken, html, leadForm, booking };
+  return {
+    kind: "published",
+    siteToken: site.siteToken,
+    html,
+    leadForm,
+    booking,
+    viewTier: sub?.plan.name,
+    keptSections: (preview?.keptSections as string[] | null) ?? null,
+  };
 }
 
 export function getServeSiteBySubdomain(subdomain: string) {
@@ -1230,13 +1238,24 @@ export async function getPreviewSiteForClient(clientId: string): Promise<ServeSi
   const html = site?.versions[0]?.generatedHtml;
   if (!site || !html) return null;
 
-  // Gate the preview's features by the tier it was GENERATED at, not the paid plan (free tier-preview).
-  const planOverride = await getPreviewPlanOverride(clientId);
+  // Gate the preview's features by the SELECTED view tier (free tier switching, no regen).
+  const [planOverride, previewRow] = await Promise.all([
+    getPreviewPlanOverride(clientId),
+    prisma.preview.findFirst({ where: { clientId }, orderBy: { generatedAt: "desc" }, select: { selectedPlan: true, keptSections: true } }),
+  ]);
   const [leadForm, booking] = await Promise.all([
     getLeadFormMeta(clientId, planOverride),
     getBookingMeta(clientId, site.versions[0]?.bookingHtml ?? null, planOverride),
   ]);
-  return { kind: "preview", siteToken: site.siteToken, html, leadForm, booking };
+  return {
+    kind: "preview",
+    siteToken: site.siteToken,
+    html,
+    leadForm,
+    booking,
+    viewTier: previewRow?.selectedPlan,
+    keptSections: (previewRow?.keptSections as string[] | null) ?? null,
+  };
 }
 
 /**

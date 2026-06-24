@@ -206,6 +206,61 @@ export function planByName(name: string): PlanDef | undefined {
   return PLANS.find((p) => p.name === name);
 }
 
+/** The highest tier — every site is GENERATED at this tier so all pages/sections/features exist;
+ *  lower view-tiers just hide what they don't include (no regeneration on a tier switch). */
+export function topPlan(): PlanDef {
+  return PLANS[PLANS.length - 1];
+}
+
+/** The plan feature flags that map to a visible website capability, with a human label. Used to
+ *  compute the gain/loss diff when switching tiers (e.g. "lead capture form", "online booking"). */
+export const FEATURE_LABELS: { flag: string; label: string }[] = [
+  { flag: "contactForm", label: "Lead capture form" },
+  { flag: "booking", label: "Online appointment booking" },
+  { flag: "chat", label: "Website chat" },
+  { flag: "payments", label: "Invoices & payments" },
+  { flag: "aiAssistant", label: "AI assistant & follow-ups" },
+];
+
+/**
+ * What changes moving from `fromName` to `toName`: pages allowed (max content units), the features
+ * gained/lost, and the monthly + setup cost difference (cents). Powers the "you'll lose / you'll
+ * gain" switch UI. `pagesNow` is the site's actual content-unit count so we can say "lose N pages".
+ */
+export function tierDiff(fromName: string, toName: string, pagesNow?: number) {
+  const from = planByName(fromName);
+  const to = planByName(toName);
+  if (!from || !to) return null;
+  const direction = planRank(to.name) > planRank(from.name) ? "upgrade" : planRank(to.name) < planRank(from.name) ? "downgrade" : "same";
+
+  const gained: string[] = [];
+  const lost: string[] = [];
+  for (const { flag, label } of FEATURE_LABELS) {
+    const had = from.featureFlags[flag] === true;
+    const has = to.featureFlags[flag] === true;
+    if (has && !had) gained.push(label);
+    if (had && !has) lost.push(label);
+  }
+
+  // Page allowance change. When we know the current page count, report how many overflow on a
+  // downgrade ("lose N pages") or how much more room an upgrade frees up.
+  const visibleNow = pagesNow ?? from.maxPages;
+  const pagesOver = Math.max(0, visibleNow - to.maxPages); // must be hidden on a downgrade
+
+  return {
+    direction,
+    fromPlan: from,
+    toPlan: to,
+    gained,
+    lost,
+    maxPagesFrom: from.maxPages,
+    maxPagesTo: to.maxPages,
+    pagesOver,
+    monthlyDeltaCents: to.monthlyFee - from.monthlyFee,
+    setupDeltaCents: Math.max(0, to.setupFee - from.setupFee),
+  };
+}
+
 /** The next higher tier above `name`, or null if already on the top tier. */
 export function nextTier(name: string): PlanDef | null {
   const i = PLAN_ORDER.indexOf(name as PlanName);

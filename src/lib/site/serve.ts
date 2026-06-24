@@ -3,6 +3,7 @@ import type { ServeSite } from "@/lib/modules/website";
 import type { LeadFormMeta } from "@/lib/site/lead-goals";
 import { withLeadFormFeed } from "@/lib/site/lead-form";
 import { withBookingFeed, type BookingMeta } from "@/lib/site/booking";
+import { withTierView } from "@/lib/site/tier-view";
 import { extractAccentColor } from "@/lib/site/accent";
 
 // Generated tenant sites are served as the REAL HTML document (not an iframe) so
@@ -420,6 +421,9 @@ export function serveTenant(site: ServeSite | null, req: Request, path?: string[
   doc = withLeadFormFeed(doc, site.siteToken, site.leadForm, isPreview);
   doc = withBookingFeed(doc, site.siteToken, site.booking, isPreview);
   doc = withThemeAccent(doc, site.html); // tint platform components to the site's accent
+  // Tier view: hide pages/sections the view tier doesn't include (must run BEFORE the router so it
+  // never routes to a removed page). No-op when nothing is hidden.
+  doc = withTierView(doc, site.viewTier, site.keptSections);
   // Published sites live at the host root → real sub-page paths. Previews are served
   // at the single /preview URL → hash routing, which survives refresh without 404s.
   doc = withClientRouter(doc, site.kind === "preview" ? "hash" : "path");

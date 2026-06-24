@@ -1397,6 +1397,10 @@ model Preview {
   client       Client?       @relation("ClientPreviews", fields: [clientId], references: [id], onDelete: Cascade)
   websiteId    String?       @unique // the Website generated for this preview
   selectedPlan PlanName
+  // The content blocks (data-pb-section slugs) the owner chose to KEEP when the selected tier allows
+  // fewer pages than the (top-tier) generated site has. Null → keep the first maxPages in order. The
+  // site itself is never regenerated on a tier switch; this just drives serve-time visibility.
+  keptSections Json?
   status       PreviewStatus @default(INTAKE_STARTED)
 
   previewUrl   String? // temporary host, e.g. {token}.preview.pagebee.com
