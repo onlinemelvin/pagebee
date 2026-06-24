@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { Lock, Check } from "lucide-react";
 import { planForFlag } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 import { planAccent } from "./plan-accent";
-import { PreviewTierButton } from "./PreviewTierButton";
+import { LockedUpgradeCTA } from "./LockedUpgradeCTA";
 
 /** Shown in place of a feature's page when the current plan doesn't include it. The nav surfaces
  *  every feature to every plan (as an upsell); opening a locked one lands here. `flag` is the plan
@@ -36,14 +35,11 @@ export function UpgradeGate({ title, flag, blurb }: { title: string; flag: strin
           </ul>
         ) : null}
 
-        {/* Preview-first: see the higher tier on your own site for free; pay only when you launch it. */}
+        {/* Same plan-switch experience as billing: switch the tier (free pre-launch) right here. */}
         <div className="mt-7 flex flex-col items-center gap-3">
-          {plan && <PreviewTierButton plan={plan.name} label={`See it on ${plan.label} — free preview`} />}
-          <Link href="/client/billing" className="text-xs font-medium text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline">
-            Or upgrade to {planName} now
-          </Link>
+          {plan && <LockedUpgradeCTA planName={plan.name} planLabel={plan.label} />}
         </div>
-        <p className="mt-3 text-xs text-stone-400">Preview is free — you only pay the setup &amp; first month when you launch it.</p>
+        <p className="mt-3 text-xs text-stone-400">Switching is free — you only pay the setup &amp; first month when you approve &amp; launch.</p>
       </div>
     </div>
   );

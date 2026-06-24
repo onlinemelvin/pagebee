@@ -5,6 +5,7 @@ import { getSiteBlocks, setTierView } from "@/lib/modules/website";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// (tier switching is no-regen; the old regen-based preview-tier route was removed)
 
 /** GET — the site's content blocks + current view tier + kept-block choice (for the tier switcher). */
 export async function GET() {

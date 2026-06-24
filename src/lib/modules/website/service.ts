@@ -1310,14 +1310,35 @@ export async function getSiteBlocks(
  * Validates the kept set against the real blocks and the tier's page allowance; the first block
  * (hero/home) is always kept. Persists keptSections only when the tier actually hides something.
  */
+export type TierSwitchResult =
+  | { mode: "switched"; kept: string[] | null }
+  | { mode: "payment"; direction: "upgrade" | "downgrade" };
+
 export async function setTierView(
   clientId: string,
   planName: string,
   keptSections?: string[] | null,
-): Promise<{ ok: true; kept: string[] | null }> {
+): Promise<TierSwitchResult> {
   const plan = planByName(planName);
   if (!plan) throw new Error("invalid_plan");
 
+  const [website, sub, client] = await Promise.all([
+    prisma.website.findFirst({ where: { clientId }, select: { status: true, publishedVersionId: true } }),
+    prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } }),
+    prisma.client.findUnique({ where: { id: clientId }, select: { isTest: true } }),
+  ]);
+
+  // A LIVE, real (non-test) site means the tier change is MONETARY — never silently switch their paid
+  // plan. Signal the caller to collect payment (upgrade) or schedule the change (downgrade) instead.
+  const live = website?.status === "published" || Boolean(website?.publishedVersionId);
+  if (live && !client?.isTest) {
+    const direction = planRank(planName) > planRank(sub?.plan.name ?? "NECTAR") ? "upgrade" : "downgrade";
+    return { mode: "payment", direction };
+  }
+
+  // Pre-launch (or a test account): switch the WORKING plan in the background — free, no redirect, no
+  // payment (that happens at launch). Changing the subscription plan unlocks the tier's dashboard
+  // features; the kept-block choice + selected tier drive the website's serve-time view.
   const { blocks } = await getSiteBlocks(clientId);
   let kept: string[] | null = null;
   if (blocks.length > plan.maxPages) {
@@ -1328,12 +1349,19 @@ export async function setTierView(
     kept = chosen.slice(0, plan.maxPages);
   }
 
+  const planRow = await prisma.plan.findUnique({ where: { name: planName as PlanName } });
+  if (planRow) {
+    await prisma.subscription.update({
+      where: { clientId },
+      data: { planId: planRow.id, agreedSetupFee: planRow.setupFee, agreedMonthlyFee: planRow.monthlyFee },
+    });
+  }
   await prisma.preview.updateMany({
     where: { clientId },
     data: { selectedPlan: planName as PlanName, keptSections: kept ?? Prisma.JsonNull },
   });
   await writeAudit({ action: "preview.tier_switched", entityType: "Client", entityId: clientId, clientId, metadata: { plan: planName, kept: kept?.length ?? null } });
-  return { ok: true, kept };
+  return { mode: "switched", kept };
 }
 
 /** The client's website with its latest version's metadata. Narrow select — no generatedHtml. */
