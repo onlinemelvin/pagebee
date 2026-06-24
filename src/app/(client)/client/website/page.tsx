@@ -5,7 +5,7 @@ import { CustomDomainPanel } from "@/components/client/CustomDomainPanel";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { prisma } from "@/lib/db";
 import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
-import { RegenerateSection } from "@/components/client/RegenerateSection";
+import { RegenerateButton } from "@/components/client/RegenerateButton";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
 import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
@@ -133,6 +133,9 @@ export default async function ClientWebsitePage() {
                   <Eye size={16} /> View your preview
                 </a>
                 {ws.preview.ready && isOwner && <ApproveLaunchButton isUpdate={false} />}
+                {isOwner && (
+                  <RegenerateButton maxPages={ws.caps.maxPages} canBook={ws.caps.booking && ws.choices.booking === true} canUseForms={ws.caps.forms} />
+                )}
               </div>
               {reviewing && (
                 <p className="mt-3 rounded-xl bg-stone-50 p-3 text-sm text-stone-600">
@@ -227,7 +230,9 @@ export default async function ClientWebsitePage() {
       {/* ───────────────── TOOLS: only for a settled site the owner manages ───────────────── */}
       {showTools && (
         <>
-          {isPublished ? (
+          {/* Live sites change through the quota-aware update/regenerate surface; previews regenerate
+              straight from the card button above. */}
+          {isPublished && (
             <ClientWebsiteChanges
               quota={ws.quota}
               planName={ws.planName}
@@ -235,17 +240,16 @@ export default async function ClientWebsitePage() {
               canBook={ws.caps.booking && ws.choices.booking === true}
               canUseForms={ws.caps.forms}
             />
-          ) : (
-            <RegenerateSection
-              maxPages={ws.caps.maxPages}
-              canBook={ws.caps.booking && ws.choices.booking === true}
-              canUseForms={ws.caps.forms}
-            />
           )}
 
-          <FeatureCards features={ws.features} title="Add features" />
-
-          {ws.caps.customDomain && <CustomDomainPanel initial={domainState} testModeActive={ws.testMode} />}
+          {/* Add features — custom domain is the first card, then the toggleable feature grid. */}
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">Add features</h2>
+            <div className="mt-3 space-y-4">
+              {ws.caps.customDomain && <CustomDomainPanel initial={domainState} testModeActive={ws.testMode} />}
+              <FeatureCards features={ws.features} hideTitle />
+            </div>
+          </div>
         </>
       )}
 
