@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,8 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
   const [busy, setBusy] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
 
   const cta = isUpdate ? "Approve & update" : "Approve & launch";
 
@@ -58,7 +61,8 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
         <Rocket size={16} /> {cta}
       </button>
 
-      {open && (
+      {open && mounted &&
+        createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4"
           role="dialog"
@@ -93,8 +97,9 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </>
   );
 }
