@@ -262,17 +262,20 @@ export async function createBillingIntent(
     return { kind: "card", clientSecret, amountCents, planLabel: plan.label, flow: "upgrade" };
   }
 
-  // setup (first launch): always card via the embedded element.
+  // setup (first launch): always card via the embedded element. Charge for the tier the preview was
+  // GENERATED at (Preview.selectedPlan) — selecting/previewing a tier is free; payment lands here at
+  // launch. The dashboard stays on the paid plan until the post-payment reconcile switches it (which it
+  // does from the incomplete subscription's price), so previewing never unlocks paid features for free.
   if (!stripeConfigured()) throw new BillingError(503, "stripe_not_configured");
   const sub = await prisma.subscription.findUnique({ where: { clientId: client.id }, include: { plan: true } });
   if (!sub) throw new BillingError(404, "no_subscription");
-  // Pre-launch plan selection: if the client picked a different starting plan, switch to it first so
-  // the setup fee + first month reflect the chosen tier.
-  if (toPlan && toPlan !== sub.plan.name) {
-    if (!planByName(toPlan)) throw new BillingError(400, "invalid_plan");
-    await switchPlan(client.id, toPlan);
-  }
-  const plan = planByName((toPlan ?? sub.plan.name) as PlanName);
+  const preview = await prisma.preview.findFirst({
+    where: { clientId: client.id },
+    orderBy: { generatedAt: "desc" },
+    select: { selectedPlan: true },
+  });
+  const planName = (toPlan ?? preview?.selectedPlan ?? sub.plan.name) as PlanName;
+  const plan = planByName(planName);
   if (!plan) throw new BillingError(400, "invalid_plan");
   const { clientSecret, amountCents } = await createIncompleteSubscription(client.id, plan, "setup");
   return { kind: "card", clientSecret, amountCents, planLabel: plan.label, flow: "setup" };

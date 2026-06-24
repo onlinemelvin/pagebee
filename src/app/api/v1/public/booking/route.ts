@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
 import { rateLimited } from "@/lib/ratelimit";
 import { bookingEnabled } from "@/lib/modules/booking";
+import { getPreviewPlanOverride } from "@/lib/modules/website";
 import { defaultBookingHtml } from "@/lib/site/booking";
 
 export const runtime = "nodejs";
@@ -39,7 +40,10 @@ export async function GET(req: Request) {
 
   try {
     const NO_CACHE = { "Cache-Control": "no-store" };
-    const enabled = await bookingEnabled(site.clientId);
+    // In a PREVIEW (hydrator adds ?preview=1) gate by the previewed tier; live (no param) = paid plan.
+    const isPreview = new URL(req.url).searchParams.get("preview") === "1";
+    const planOverride = isPreview ? await getPreviewPlanOverride(site.clientId) : undefined;
+    const enabled = await bookingEnabled(site.clientId, planOverride);
     if (!enabled) return json({ enabled: false }, 200, NO_CACHE);
 
     const web = await prisma.website.findFirst({

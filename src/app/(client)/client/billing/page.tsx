@@ -71,7 +71,13 @@ export default async function ClientBillingPage({ searchParams }: { searchParams
     }
   }
 
-  const plan = planByName(ws.planName) ?? PLANS[0];
+  // Pre-launch, the displayed plan follows the SELECTED tier (a free preview can be at a higher tier
+  // than the paid plan) so the setup-fee CTA + pricing match what they'll actually be charged at
+  // launch. Once live, the paid plan governs.
+  const previewSel = !ws.preview.live
+    ? await prisma.preview.findFirst({ where: { clientId: ws.client.id }, orderBy: { generatedAt: "desc" }, select: { selectedPlan: true } })
+    : null;
+  const plan = planByName(previewSel?.selectedPlan ?? ws.planName) ?? PLANS[0];
   const awaiting = ws.preview.awaitingPayment;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));

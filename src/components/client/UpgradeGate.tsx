@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { Lock, ArrowUpRight, Check } from "lucide-react";
+import { Lock, Check } from "lucide-react";
 import { planForFlag } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 import { planAccent } from "./plan-accent";
+import { PreviewTierButton } from "./PreviewTierButton";
 
 /** Shown in place of a feature's page when the current plan doesn't include it. The nav surfaces
  *  every feature to every plan (as an upsell); opening a locked one lands here. `flag` is the plan
@@ -35,12 +36,14 @@ export function UpgradeGate({ title, flag, blurb }: { title: string; flag: strin
           </ul>
         ) : null}
 
-        <Link
-          href="/client/billing"
-          className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-semibold text-stone-900 shadow-sm transition hover:bg-amber-300"
-        >
-          <ArrowUpRight size={16} /> Upgrade to {planName} plan
-        </Link>
+        {/* Preview-first: see the higher tier on your own site for free; pay only when you launch it. */}
+        <div className="mt-7 flex flex-col items-center gap-3">
+          {plan && <PreviewTierButton plan={plan.name} label={`See it on ${plan.label} — free preview`} />}
+          <Link href="/client/billing" className="text-xs font-medium text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline">
+            Or upgrade to {planName} now
+          </Link>
+        </div>
+        <p className="mt-3 text-xs text-stone-400">Preview is free — you only pay the setup &amp; first month when you launch it.</p>
       </div>
     </div>
   );

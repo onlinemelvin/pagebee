@@ -54,19 +54,30 @@ export async function createLead({ clientId, input, ip }: CreateLeadParams) {
  * on-plan client is enabled (matches the feature catalog's `defaultOn: true` for "forms"). Used by
  * the public form-status feed (live show/hide on the site) and to gate public submissions.
  */
-export async function leadCaptureEnabled(clientId: string): Promise<boolean> {
-  const [client, override] = await Promise.all([
-    prisma.client.findUnique({
+/**
+ * `planOverride` (used when serving a PREVIEW generated at a different tier): gate against those
+ * flags instead of the client's paid plan, and when `showcase` (previewing a HIGHER tier) show the
+ * form regardless of the owner's toggle so the preview demonstrates the capability. Live serving
+ * passes no override and keeps the paid-plan + opt-in behavior.
+ */
+export async function leadCaptureEnabled(
+  clientId: string,
+  planOverride?: { flags: Record<string, unknown>; showcase: boolean },
+): Promise<boolean> {
+  const override = await prisma.featureFlag.findUnique({
+    where: { clientId_key: { clientId, key: "contactForm" } },
+    select: { enabled: true },
+  });
+  let planFlags = planOverride?.flags;
+  if (!planFlags) {
+    const client = await prisma.client.findUnique({
       where: { id: clientId },
       select: { subscription: { select: { plan: { select: { featureFlags: true } } } } },
-    }),
-    prisma.featureFlag.findUnique({
-      where: { clientId_key: { clientId, key: "contactForm" } },
-      select: { enabled: true },
-    }),
-  ]);
-  const planFlags = (client?.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
-  if (!planFlags.contactForm) return false; // not on this plan
+    });
+    planFlags = (client?.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
+  }
+  if (!planFlags.contactForm) return false; // not on this (previewed or paid) plan
+  if (planOverride?.showcase) return true; // previewing a higher tier — showcase the capability
   return override?.enabled !== false; // default-on unless explicitly disabled
 }
 
@@ -75,10 +86,13 @@ export async function leadCaptureEnabled(clientId: string): Promise<boolean> {
  * type, and form copy implied by the owner's chosen goal (Website.leadFormGoal). Shared by the public
  * lead-form endpoint (reconcile) and the serve pipeline (inlined for flicker-free first paint).
  */
-export async function getLeadFormMeta(clientId: string): Promise<LeadFormMeta> {
+export async function getLeadFormMeta(
+  clientId: string,
+  planOverride?: { flags: Record<string, unknown>; showcase: boolean },
+): Promise<LeadFormMeta> {
   const [web, enabled] = await Promise.all([
     prisma.website.findFirst({ where: { clientId }, select: { leadFormGoal: true } }),
-    leadCaptureEnabled(clientId),
+    leadCaptureEnabled(clientId, planOverride),
   ]);
   const goal = web?.leadFormGoal;
   return {

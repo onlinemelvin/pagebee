@@ -91,13 +91,25 @@ export function ClientPreviewReview({
         const b = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error((b?.error && ERR[b.error]) || b?.error || "Something went wrong");
       }
-      const result = (await res.json().catch(() => ({}))) as { launched?: boolean; awaitingPayment?: boolean };
+      const result = (await res.json().catch(() => ({}))) as {
+        launched?: boolean;
+        awaitingPayment?: boolean;
+        awaitingUpgrade?: boolean;
+        toPlan?: string;
+      };
 
       // Real accounts: approval moves to the setup-fee step — send them to the dedicated launch page
       // (setup fee + first month summary → Stripe). The webhook launches the site once payment
       // succeeds. Mirrors ApproveLaunchButton so the preview footer doesn't dead-end.
       if (result.awaitingPayment) {
         router.push("/client/launch");
+        return;
+      }
+
+      // This was a free preview of a HIGHER tier — publishing it requires upgrading first (setup-fee
+      // delta + prorated monthly). Send them to billing with the upgrade pre-opened.
+      if (result.awaitingUpgrade) {
+        router.push(`/client/billing?upgrade=${result.toPlan ?? ""}`);
         return;
       }
 

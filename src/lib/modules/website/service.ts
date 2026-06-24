@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PlanName } from "@prisma/client";
+import { planByName, planRank } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 import { emit } from "@/lib/events";
@@ -24,8 +25,34 @@ import { seedServicesFromNames, listWebsiteServices, serviceDurationLabel } from
 import type { WebsiteIntakeForm } from "./schema";
 
 /** Stored generation input: the client intake plus revision context the client never sends
- *  directly — the revision note and the structured pins that drive surgical HTML editing. */
-export type GenerationForm = WebsiteIntakeForm & { revisionEdits?: HtmlEditRequest[] };
+ *  directly — the revision note and the structured pins that drive surgical HTML editing.
+ *  `previewPlan` lets a client preview a DIFFERENT (usually higher) tier's website capabilities for
+ *  free — generation builds the site at that tier and records it as the preview's selectedPlan; the
+ *  charge only happens at launch/approve. Absent → build at the client's current paid plan. */
+export type GenerationForm = WebsiteIntakeForm & { revisionEdits?: HtmlEditRequest[]; previewPlan?: PlanName };
+
+/**
+ * The plan whose capabilities a generation should build at. When `previewPlan` is set (a free
+ * tier-preview), the site is built at that tier and `showcase` is true — the marquee features it
+ * unlocks (forms/booking/payments) default ON so the preview actually demonstrates them, regardless
+ * of the owner's per-feature toggles. Otherwise it's the paid plan with normal opt-in gating.
+ */
+export function effectivePlanForGeneration(
+  paidPlan: { name: PlanName; featureFlags: Prisma.JsonValue; maxPages: number } | null | undefined,
+  previewPlan: PlanName | undefined,
+): { flags: Record<string, unknown>; maxPages: number; planName: PlanName; showcase: boolean } {
+  const override = previewPlan ? planByName(previewPlan) : null;
+  if (override) {
+    const showcase = paidPlan ? planRank(override.name) > planRank(paidPlan.name) : true;
+    return { flags: override.featureFlags as Record<string, unknown>, maxPages: override.maxPages, planName: override.name, showcase };
+  }
+  return {
+    flags: (paidPlan?.featureFlags ?? {}) as Record<string, unknown>,
+    maxPages: paidPlan?.maxPages ?? 5,
+    planName: paidPlan?.name ?? "NECTAR",
+    showcase: false,
+  };
+}
 
 
 function generateSiteToken(): string {
@@ -164,17 +191,19 @@ export async function runGenerationJob(jobId: string): Promise<void> {
   await setJobStage(job.id, 8, "Preparing your details");
 
   try {
-    const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
-    const limits = planLimits(flags, client.subscription?.plan.maxPages ?? 5);
+    // Build at the previewed tier when set (free tier-preview), else the paid plan.
+    const { flags, maxPages, showcase } = effectivePlanForGeneration(client.subscription?.plan, form.previewPlan);
+    const limits = planLimits(flags, maxPages);
 
     // Per-client feature overrides (mirrors the dashboard cards): lead capture is on by default
     // (tier 2+) unless turned off; booking / payments are explicit opt-ins (off until enabled).
+    // In showcase mode (previewing a higher tier) the tier's features default ON so the preview demos them.
     const overrides = await prisma.featureFlag.findMany({ where: { clientId } });
     const notDisabled = (k: string) => overrides.find((c) => c.key === k)?.enabled !== false;
     const isEnabled = (k: string) => overrides.find((c) => c.key === k)?.enabled === true;
-    limits.forms = limits.forms && notDisabled("contactForm");
-    limits.booking = limits.booking && isEnabled("booking");
-    limits.payments = limits.payments && isEnabled("invoices");
+    limits.forms = limits.forms && (showcase || notDisabled("contactForm"));
+    limits.booking = limits.booking && (showcase || isEnabled("booking"));
+    limits.payments = limits.payments && (showcase || isEnabled("invoices"));
 
     // Photo gallery follows the owner's choice: shown when they supplied gallery photos and haven't
     // turned it off. Persist the resulting state so the dashboard card reflects the creation choice.
@@ -436,7 +465,7 @@ export async function runGenerationJob(jobId: string): Promise<void> {
   if (!alreadyLaunched) {
     await prisma.website.update({ where: { id: website.id }, data: { status: "preview" } });
   }
-  const planName = client.subscription?.plan.name ?? "NECTAR";
+  const planName = form.previewPlan ?? client.subscription?.plan.name ?? "NECTAR";
   await prisma.preview.upsert({
     where: { websiteId: website.id },
     update: { status: "IN_REVIEW", generatedAt: new Date(), selectedPlan: planName, clientId },
@@ -1200,11 +1229,34 @@ export async function getPreviewSiteForClient(clientId: string): Promise<ServeSi
   });
   const html = site?.versions[0]?.generatedHtml;
   if (!site || !html) return null;
+
+  // Gate the preview's features by the tier it was GENERATED at, not the paid plan (free tier-preview).
+  const planOverride = await getPreviewPlanOverride(clientId);
   const [leadForm, booking] = await Promise.all([
-    getLeadFormMeta(clientId),
-    getBookingMeta(clientId, site.versions[0]?.bookingHtml ?? null),
+    getLeadFormMeta(clientId, planOverride),
+    getBookingMeta(clientId, site.versions[0]?.bookingHtml ?? null, planOverride),
   ]);
   return { kind: "preview", siteToken: site.siteToken, html, leadForm, booking };
+}
+
+/**
+ * The feature-gating override for serving a client's PREVIEW: the flags of the tier the preview was
+ * generated at (Preview.selectedPlan), with `showcase` true when that tier is above the paid plan
+ * (so the preview demonstrates the higher-tier features regardless of opt-in toggles). Returns
+ * undefined when there's no preview / no recorded tier → callers fall back to the paid plan. Used by
+ * the preview serve path and the public lead-form/booking feeds (when called with ?preview=1).
+ */
+export async function getPreviewPlanOverride(
+  clientId: string,
+): Promise<{ flags: Record<string, unknown>; showcase: boolean } | undefined> {
+  const [previewRow, sub] = await Promise.all([
+    prisma.preview.findFirst({ where: { clientId }, orderBy: { generatedAt: "desc" }, select: { selectedPlan: true } }),
+    prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } }),
+  ]);
+  const selected = previewRow?.selectedPlan ? planByName(previewRow.selectedPlan) : null;
+  if (!selected) return undefined;
+  const showcase = sub ? planRank(selected.name) > planRank(sub.plan.name) : true;
+  return { flags: selected.featureFlags as Record<string, unknown>, showcase };
 }
 
 /** The client's website with its latest version's metadata. Narrow select — no generatedHtml. */

@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { X, CheckCircle2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { PLANS, planByName, planRank, planLimitRows } from "@/lib/plans";
 import { Button } from "@/components/ui/button";
 import { UpgradeModal } from "./UpgradeModal";
-import { BillingCardStep } from "./BillingCardStep";
+import { PreviewTierButton } from "./PreviewTierButton";
 
 /**
  * Plan picker for the billing page.
@@ -26,10 +25,17 @@ export function PlanComparison({
   pendingPlan?: string | null;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [upgradeTo, setUpgradeTo] = React.useState<string | null>(null);
-  const [selectTo, setSelectTo] = React.useState<string | null>(null);
   const [downgradeTo, setDowngradeTo] = React.useState<string | null>(null);
   const currentRank = planRank(currentPlan);
+
+  // Approving a higher-tier preview routes here as ?upgrade=PLAN — pre-open the upgrade modal so they
+  // can pay the delta and publish.
+  React.useEffect(() => {
+    const want = searchParams.get("upgrade");
+    if (want && planByName(want) && planRank(want) > currentRank) setUpgradeTo(want);
+  }, [searchParams, currentRank]);
 
   return (
     <>
@@ -77,15 +83,20 @@ export function PlanComparison({
                 ))}
               </ul>
 
-              <div className="mt-5">
+              <div className="mt-5 space-y-2">
                 {isCurrent ? (
                   <Button variant="outline" className="w-full" disabled>
                     {mode === "select" ? "Selected plan" : "Your plan"}
                   </Button>
                 ) : mode === "select" ? (
-                  <Button className="w-full" onClick={() => setSelectTo(p.name)}>Select {p.label}</Button>
+                  // Pre-launch: selecting a tier is FREE — it regenerates the preview at that tier; you
+                  // pay setup + first month only when you Approve & launch.
+                  <PreviewTierButton plan={p.name} label={`Select ${p.label} — free preview`} className="w-full" />
                 ) : isUpgrade ? (
-                  <Button className="w-full" onClick={() => setUpgradeTo(p.name)}>Upgrade to {p.label}</Button>
+                  <>
+                    <Button className="w-full" onClick={() => setUpgradeTo(p.name)}>Upgrade to {p.label}</Button>
+                    <PreviewTierButton plan={p.name} label={`Preview ${p.label} free`} variant="subtle" className="w-full" />
+                  </>
                 ) : (
                   <Button variant="ghost" className="w-full text-stone-500" onClick={() => setDowngradeTo(p.name)}>Downgrade to {p.label}</Button>
                 )}
@@ -97,10 +108,6 @@ export function PlanComparison({
 
       <UpgradeModal open={upgradeTo !== null} onClose={() => setUpgradeTo(null)} toPlan={upgradeTo ?? ""} reason="billing page" />
 
-      {selectTo && (
-        <SelectPlanModal planName={selectTo} onClose={() => setSelectTo(null)} onDone={() => { setSelectTo(null); router.refresh(); }} />
-      )}
-
       {downgradeTo && (
         <DowngradeModal planName={downgradeTo} onClose={() => setDowngradeTo(null)} onDone={() => { setDowngradeTo(null); router.refresh(); }} />
       )}
@@ -109,39 +116,6 @@ export function PlanComparison({
 }
 
 /** Pre-launch plan selection → pays setup + first month for the chosen tier and launches. */
-function SelectPlanModal({ planName, onClose, onDone }: { planName: string; onClose: () => void; onDone: () => void }) {
-  const plan = planByName(planName);
-  const [done, setDone] = React.useState(false);
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4" role="dialog" aria-modal="true" onMouseDown={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <h2 className="font-display text-xl text-stone-900">{done ? "Payment received" : `Get started on ${plan?.label}`}</h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600" aria-label="Close"><X size={18} /></button>
-        </div>
-        {done ? (
-          <div className="py-4 text-center">
-            <CheckCircle2 size={36} className="mx-auto text-emerald-500" />
-            <p className="mt-3 text-sm text-stone-600">We&apos;re launching your site now.</p>
-          </div>
-        ) : (
-          <>
-            {plan && (
-              <p className="mt-1 text-sm text-stone-600">
-                ${Math.round(plan.setupFee / 100)} one-time setup + ${Math.round(plan.monthlyFee / 100)}/mo. The setup fee is non-refundable.
-              </p>
-            )}
-            <div className="mt-4">
-              <BillingCardStep flow="setup" toPlan={planName} onResolved={(r) => { if (r === "applied") setDone(true); setTimeout(onDone, 1300); }} />
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /** Confirm a downgrade (effective at period end, no refund). */
 function DowngradeModal({ planName, onClose, onDone }: { planName: string; onClose: () => void; onDone: () => void }) {
   const plan = planByName(planName);
