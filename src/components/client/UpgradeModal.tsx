@@ -2,40 +2,66 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { planByName } from "@/lib/plans";
-import { BillingCardStep } from "./BillingCardStep";
 
 /**
- * Confirm-upgrade modal. Existing subscribers and test accounts apply instantly; not-yet-subscribed
- * real accounts collect a card via our own embedded Payment Element (no hosted Checkout redirect);
- * without Stripe configured the upgrade is captured as a request. Driven by parent `open`/`onClose`.
+ * FREE plan-switch modal (the default everywhere a higher tier is offered: locked features, "out of
+ * updates/edits" upsells, the plan grid). Switching is NOT a payment — it rebuilds the preview at the
+ * chosen tier so the owner can see what it looks like on their site. They pay only at Approve &
+ * Launch. To actually CHARGE for an upgrade (the post-approve delta), use UpgradePaymentModal.
+ * Driven by parent `open`/`onClose`.
  */
 export function UpgradeModal({
   open,
   onClose,
   toPlan,
-  reason,
 }: {
   open: boolean;
   onClose: () => void;
   toPlan: string;
+  /** Accepted for call-site compatibility; not used by the free switch. */
   reason?: string;
 }) {
   const router = useRouter();
   const plan = planByName(toPlan);
-  const [result, setResult] = React.useState<"applied" | "requested" | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (open) setResult(null);
+    if (open) {
+      setBusy(false);
+      setError(null);
+    }
   }, [open]);
 
-  if (!open) return null;
-  const priceMo = plan ? `$${Math.round(plan.monthlyFee / 100)}/mo` : "";
+  if (!open || !plan) return null;
 
-  function onResolved(r: "applied" | "requested") {
-    setResult(r);
-    if (r === "applied") router.refresh();
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/client/website/preview-tier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: toPlan }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(
+          d?.error === "no_prior_generation"
+            ? "Generate your website first, then you can preview other tiers."
+            : "Couldn't switch — please try again.",
+        );
+        setBusy(false);
+        return;
+      }
+      router.push("/client/website"); // watch it rebuild at the new tier
+    } catch {
+      setError("Couldn't switch — please try again.");
+      setBusy(false);
+    }
   }
 
   return (
@@ -46,50 +72,39 @@ export function UpgradeModal({
       onMouseDown={() => onClose()}
     >
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-        {result === "applied" ? (
-          <div className="text-center">
-            <h2 className="font-display text-xl text-stone-900">You&apos;re on {plan?.label} 🎉</h2>
-            <p className="mt-2 text-sm text-stone-600">
-              Your new features are unlocked. Turn on the ones you want, then request an update to add
-              them to your live site.
-            </p>
-            <Button className="mt-5" onClick={onClose}>
-              Done
-            </Button>
-          </div>
-        ) : result === "requested" ? (
-          <div className="text-center">
-            <h2 className="font-display text-xl text-stone-900">Request received</h2>
-            <p className="mt-2 text-sm text-stone-600">
-              Thanks! Our team will reach out to confirm your upgrade to {plan?.label} and get you set up.
-            </p>
-            <Button className="mt-5" onClick={onClose}>
-              Done
-            </Button>
-          </div>
-        ) : (
-          <>
-            <h2 className="font-display text-xl text-stone-900">Upgrade to {plan?.label}</h2>
-            <p className="mt-1 text-sm text-stone-600">{plan?.tagline}</p>
-            {plan && (
-              <ul className="mt-3 space-y-1.5 text-sm text-stone-700">
-                {plan.highlights.slice(0, 4).map((h, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="text-amber-500">✓</span>
-                    {h}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="mt-3 text-sm font-medium text-stone-900">{priceMo} · plus the non-refundable setup-fee difference</p>
-            <div className="mt-4">
-              <BillingCardStep flow="upgrade" toPlan={toPlan} reason={reason} onResolved={onResolved} />
-            </div>
-            <button onClick={onClose} className="mt-3 w-full text-center text-sm text-stone-500 hover:text-stone-700">
-              Cancel
-            </button>
-          </>
-        )}
+        <h2 className="font-display text-xl text-stone-900">Preview {plan.label} on your site</h2>
+        <p className="mt-1 text-sm text-stone-600">{plan.tagline}</p>
+
+        <ul className="mt-3 space-y-1.5 text-sm text-stone-700">
+          {plan.highlights.slice(0, 4).map((h, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="text-amber-500">✓</span>
+              {h}
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-4 flex items-center justify-between rounded-xl bg-stone-50 px-3 py-2.5 text-sm">
+          <span className="text-stone-600">${Math.round(plan.setupFee / 100)} setup + ${Math.round(plan.monthlyFee / 100)}/mo</span>
+          <span className="text-xs font-medium text-stone-400">billed at launch</span>
+        </div>
+
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          This is <strong>free</strong> — we&apos;ll rebuild your preview on {plan.label} so you can try it. You only pay
+          the setup fee + first month when you <strong>approve &amp; launch</strong>.
+        </p>
+
+        {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={confirm} disabled={busy}>
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
+            {busy ? "Rebuilding…" : `Preview ${plan.label} free`}
+          </Button>
+        </div>
       </div>
     </div>
   );

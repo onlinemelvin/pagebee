@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Rocket, Check, ExternalLink, ShieldCheck } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
+import { prisma } from "@/lib/db";
 import { planByName } from "@/lib/plans";
 import { formatUsd } from "@/lib/utils";
 import { CheckoutButton, LaunchReconcile } from "@/components/client/BillingActions";
@@ -54,7 +55,14 @@ export default async function LaunchPage({ searchParams }: { searchParams: Promi
   // Nothing to pay (not approved / setup fee not due) — send them back to the site page.
   if (!ws.preview.awaitingPayment) redirect("/client/website");
 
-  const plan = planByName(ws.planName);
+  // Charge for the tier the preview was generated at (a free tier-switch can be above the paid plan),
+  // so the summary matches what they'll actually pay.
+  const previewSel = await prisma.preview.findFirst({
+    where: { clientId: ws.client.id },
+    orderBy: { generatedAt: "desc" },
+    select: { selectedPlan: true },
+  });
+  const plan = planByName(previewSel?.selectedPlan ?? ws.planName);
   const setup = plan?.setupFee ?? 0;
   const monthly = plan?.monthlyFee ?? 0;
   const dueToday = setup + monthly;
@@ -99,7 +107,11 @@ export default async function LaunchPage({ searchParams }: { searchParams: Promi
 
       <div className="mt-6 flex w-full max-w-md flex-col items-stretch gap-3">
         <CheckoutButton kind="setup" label={`Continue to secure checkout — ${formatUsd(dueToday)}`} />
-        <Link href="/client/website" className="text-center text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
+        {/* Still free to change your mind on the plan before paying. */}
+        <Link href="/client/billing" className="text-center text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
+          Want a different plan? Change it free before you pay
+        </Link>
+        <Link href="/client/website" className="text-center text-sm text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline">
           Not yet — back to my website
         </Link>
       </div>
