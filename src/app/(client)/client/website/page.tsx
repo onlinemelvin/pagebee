@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Wand2, Eye, Rocket, MessageSquareHeart, ExternalLink, CreditCard } from "lucide-react";
 import { getClientWebsite, getLatestJobStatus, getDomainState } from "@/lib/modules/website";
-import { CustomDomainPanel } from "@/components/client/CustomDomainPanel";
+import { DomainCard } from "@/components/client/DomainCard";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { prisma } from "@/lib/db";
 import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
@@ -242,14 +242,12 @@ export default async function ClientWebsitePage() {
             />
           )}
 
-          {/* Add features — custom domain is the first card, then the toggleable feature grid. */}
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">Add features</h2>
-            <div className="mt-3 space-y-4">
-              {ws.caps.customDomain && <CustomDomainPanel initial={domainState} testModeActive={ws.testMode} />}
-              <FeatureCards features={ws.features} hideTitle />
-            </div>
-          </div>
+          {/* Add features — custom domain is the first card in the grid (opens its flows in a modal). */}
+          <FeatureCards
+            features={ws.features}
+            title="Add features"
+            prepend={ws.caps.customDomain ? <DomainCard initial={domainState} testModeActive={ws.testMode} /> : null}
+          />
         </>
       )}
 

@@ -20,10 +20,13 @@ const TLD_OPTIONS = ["com", "biz", "us", "net", "org", "co"];
 export function CustomDomainPanel({
   initial,
   testModeActive = false,
+  bare = false,
 }: {
   initial: DomainState | null;
   /** Global Test Mode is on — domain purchases are simulated (toggle lives in the top nav). */
   testModeActive?: boolean;
+  /** Render without the outer card chrome + heading — for embedding inside a modal (DomainCard). */
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [state, setState] = React.useState<DomainState | null>(initial);
@@ -61,16 +64,18 @@ export function CustomDomainPanel({
   const secondary = state?.hosts?.find((h) => !h.isPrimary);
 
   return (
-    <div className="anim-rise mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
-      <div className="flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700">
-          <Globe size={18} />
-        </span>
-        <div>
-          <h2 className="font-display text-xl text-stone-900">Custom domain</h2>
-          <p className="text-sm text-stone-500">Use your own domain name instead of your free address.</p>
+    <div className={bare ? "" : "anim-rise mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card"}>
+      {!bare && (
+        <div className="flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700">
+            <Globe size={18} />
+          </span>
+          <div>
+            <h2 className="font-display text-xl text-stone-900">Custom domain</h2>
+            <p className="text-sm text-stone-500">Use your own domain name instead of your free address.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Passive indicator — the toggle lives in the top nav now (Test Mode). */}
       {testModeActive && (
