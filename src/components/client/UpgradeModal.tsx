@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,9 @@ export function UpgradeModal({
   const [done, setDone] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
 
+  React.useEffect(() => setMounted(true), []);
   React.useEffect(() => {
     if (open) {
       setStep("confirm");
@@ -43,7 +46,7 @@ export function UpgradeModal({
     }
   }, [open]);
 
-  if (!open || !plan) return null;
+  if (!open || !plan || !mounted) return null;
 
   async function confirm() {
     setBusy(true);
@@ -69,11 +72,11 @@ export function UpgradeModal({
         setBusy(false);
         return;
       }
-      // Pre-launch background switch — stay on the page; the dashboard + preview now reflect the tier.
-      router.refresh();
+      // Pre-launch background switch applied server-side. Show the success state and KEEP the modal
+      // open until the owner clicks Okay — the page refresh happens then (refreshing now would unmount
+      // this modal on a locked-feature gate, since the gate page itself is replaced).
       setDone(true);
       setBusy(false);
-      setTimeout(() => onClose(), 1500);
     } catch {
       setError("Couldn't switch — please try again.");
       setBusy(false);
@@ -81,21 +84,26 @@ export function UpgradeModal({
   }
 
   function onPaid(r: "applied" | "requested") {
-    if (r === "applied") {
-      setDone(true);
-      router.refresh();
-    }
+    if (r === "applied") setDone(true);
   }
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4" role="dialog" aria-modal="true" onMouseDown={() => !busy && onClose()}>
+  // Dismissing the success state is when the page behind refreshes to reflect the new tier.
+  function finishAndClose() {
+    router.refresh();
+    onClose();
+  }
+
+  // Portal to <body> so the full-screen overlay escapes any transformed/blurred ancestor (e.g. the
+  // UpgradeGate card's backdrop-blur), which would otherwise confine `fixed inset-0` to that box.
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4" role="dialog" aria-modal="true" onMouseDown={() => !busy && (done ? finishAndClose() : onClose())}>
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
         {done ? (
           <div className="py-4 text-center">
             <CheckCircle2 size={40} className="mx-auto text-emerald-500" />
             <p className="mt-3 font-display text-xl text-stone-900">You&apos;re on {plan.label}</p>
             <p className="mt-1 text-sm text-stone-600">Your {plan.label} features are unlocked. You only pay when you approve &amp; launch.</p>
-            <Button className="mt-5" onClick={onClose}>Done</Button>
+            <Button className="mt-5" onClick={finishAndClose}>Okay</Button>
           </div>
         ) : step === "pay" ? (
           <>
@@ -134,6 +142,7 @@ export function UpgradeModal({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
