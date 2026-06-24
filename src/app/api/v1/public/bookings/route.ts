@@ -3,6 +3,7 @@ import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
 import { rateLimited } from "@/lib/ratelimit";
 import { createBooking, bookingEnabled, bookingInputSchema, BookingError } from "@/lib/modules/booking";
 import "@/lib/events/subscribers"; // register booking.created handlers
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,15 @@ export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   try {
     const booking = await createBooking({ clientId: site.clientId, input: parsed.data, ip });
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: `client:${site.clientId}`,
+      event: "booking_created",
+      properties: {
+        clientId: site.clientId,
+        bookingStatus: booking.status,
+      },
+    });
     return json({ id: booking.id, status: booking.status, startAt: booking.startAt }, 201);
   } catch (err) {
     if (err instanceof BookingError) return json({ error: err.code }, err.status);

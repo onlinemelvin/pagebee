@@ -13,6 +13,7 @@ import { PLANS, type PlanName } from "@/lib/plans";
 import { PLAN_BADGES } from "@/lib/planBadges";
 import { cn, formatUsd } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/Logo";
+import posthog from "posthog-js";
 
 const ERROR_COPY: Record<string, string> = {
   email_taken: "An account with this email already exists. Try signing in.",
@@ -30,6 +31,11 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
 
   const testMode = isTestEmail(email);
   const selectedPlan = PLANS.find((p) => p.name === plan);
+
+  function handlePlanSelect(planName: PlanName) {
+    setPlan(planName);
+    posthog.capture("plan_selected", { plan: planName });
+  }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,9 +75,19 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
         router.push("/login");
         return;
       }
+      posthog.identify(payload.email, {
+        email: payload.email,
+        businessName: payload.businessName,
+        plan: payload.plan,
+      });
+      posthog.capture("client_registered", {
+        plan: payload.plan,
+        businessType: payload.businessType,
+      });
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
+      posthog.captureException(err);
       setError(err instanceof Error ? err.message : "Something went wrong");
       setLoading(false);
     }
@@ -110,7 +126,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
                   <button
                     type="button"
                     key={p.name}
-                    onClick={() => setPlan(p.name)}
+                    onClick={() => handlePlanSelect(p.name)}
                     aria-pressed={selected}
                     className={cn(
                       "lift relative flex flex-col rounded-3xl border bg-white p-8 text-left transition-all",

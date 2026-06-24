@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { rateLimited } from "@/lib/ratelimit";
 import { registerClient, registerSchema, RegistrationError } from "@/lib/modules/registration";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,16 @@ export async function POST(req: Request) {
 
   try {
     const result = await registerClient(parsed.data);
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: parsed.data.email,
+      event: "client_registered",
+      properties: {
+        plan: parsed.data.plan,
+        businessType: parsed.data.businessType,
+        isTest: parsed.data.email.endsWith("@test.com"),
+      },
+    });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof RegistrationError) {
