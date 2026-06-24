@@ -20,7 +20,7 @@ export function UpgradeGate({ title, flag, blurb }: { title: string; flag: strin
         <span className={cn("mx-auto grid h-14 w-14 place-items-center rounded-2xl", accent.gateIcon)}>
           <Lock size={26} />
         </span>
-        <h1 className="mt-5 font-display text-2xl text-stone-900">{title} is a {planName} feature</h1>
+        <h1 className="mt-5 font-display text-2xl text-stone-900">{title} is a {planName} plan feature</h1>
         <p className="mx-auto mt-2 max-w-sm text-sm text-stone-500">
           {blurb ?? `Switch to ${planName} to unlock ${title.toLowerCase()} — preview it free, pay only when you launch.`}
         </p>
