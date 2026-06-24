@@ -101,11 +101,13 @@ export const BOOKING_CSS =
  * lead-form feed: inlined INIT state for flicker-free first paint, then a no-store reconcile fetch so
  * a dashboard toggle reflects on the next load of a cached page.
  */
-export function bookingFeedScript(token: string, meta?: BookingMeta | null): string {
+export function bookingFeedScript(token: string, meta?: BookingMeta | null, preview?: boolean): string {
   return (
     "<script>(function(){try{" +
     "var TOKEN=" + JSON.stringify(token) + ";" +
     "var BINIT=" + JSON.stringify(meta ?? null) + ";" +
+    // In preview, ask the status feed for the PREVIEWED tier's state; empty on the live site.
+    "var PVQS=" + JSON.stringify(preview ? "?preview=1" : "") + ";" +
     SUCCESS_CHECK_JS +
     // ── helpers ──
     // Inject the trigger section into the page slot (or build one before the footer for older sites).
@@ -182,15 +184,15 @@ export function bookingFeedScript(token: string, meta?: BookingMeta | null): str
     "function pbBooked(){try{return !!sessionStorage.getItem('pb_book_'+TOKEN);}catch(_){return false;}}" +
     // First paint from inlined state, then reconcile against the live status (cached pages).
     "if(BINIT){if(BINIT.enabled&&BINIT.html){pbInject(BINIT.html);if(pbBooked())pbMarkRequested(false);}else if(BINIT.enabled===false){pbDisable();}}" +
-    "fetch('/api/v1/public/booking',{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json();}).then(function(d){if(!d)return;if(d.enabled===true){pbInject(d.html);if(pbBooked()){pbMarkRequested(false);}else{[].forEach.call(document.querySelectorAll('[data-pb-book-open]'),function(b){b.style.display='';});scheduleWarm();}}else{pbDisable();}}).catch(function(){});" +
+    "fetch('/api/v1/public/booking'+PVQS,{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json();}).then(function(d){if(!d)return;if(d.enabled===true){pbInject(d.html);if(pbBooked()){pbMarkRequested(false);}else{[].forEach.call(document.querySelectorAll('[data-pb-book-open]'),function(b){b.style.display='';});scheduleWarm();}}else{pbDisable();}}).catch(function(){});" +
     "}catch(e){}})();</script>"
   );
 }
 
 /** Inject the booking CSS (into <head>) + the runtime (before </body>) into a served document. */
-export function withBookingFeed(doc: string, token: string, meta?: BookingMeta | null): string {
+export function withBookingFeed(doc: string, token: string, meta?: BookingMeta | null, preview?: boolean): string {
   let out = doc.includes("</head>") ? doc.replace("</head>", `${BOOKING_CSS}</head>`) : `${BOOKING_CSS}${doc}`;
-  const script = bookingFeedScript(token, meta);
+  const script = bookingFeedScript(token, meta, preview);
   out = out.includes("</body>") ? out.replace("</body>", `${script}</body>`) : out + script;
   return out;
 }

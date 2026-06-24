@@ -416,8 +416,9 @@ export function serveTenant(site: ServeSite | null, req: Request, path?: string[
   doc = withMotionFailsafe(doc);
   doc = withServicesFeed(doc, site.siteToken);
   doc = withGalleryFeed(doc, site.siteToken);
-  doc = withLeadFormFeed(doc, site.siteToken, site.leadForm);
-  doc = withBookingFeed(doc, site.siteToken, site.booking);
+  const isPreview = site.kind === "preview";
+  doc = withLeadFormFeed(doc, site.siteToken, site.leadForm, isPreview);
+  doc = withBookingFeed(doc, site.siteToken, site.booking, isPreview);
   doc = withThemeAccent(doc, site.html); // tint platform components to the site's accent
   // Published sites live at the host root → real sub-page paths. Previews are served
   // at the single /preview URL → hash routing, which survives refresh without 404s.

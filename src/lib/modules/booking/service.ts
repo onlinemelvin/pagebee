@@ -36,19 +36,24 @@ async function assertBookingEnabled(clientId: string) {
  * hasn't turned it off via the feature card. Mirrors leadCaptureEnabled — used by the public booking
  * status feed (serve-time show/hide) and to gate public booking submissions. Default-on when on-plan.
  */
-export async function bookingEnabled(clientId: string): Promise<boolean> {
-  const [client, override] = await Promise.all([
-    prisma.client.findUnique({
+export async function bookingEnabled(
+  clientId: string,
+  planOverride?: { flags: Record<string, unknown>; showcase: boolean },
+): Promise<boolean> {
+  const override = await prisma.featureFlag.findUnique({
+    where: { clientId_key: { clientId, key: "booking" } },
+    select: { enabled: true },
+  });
+  let planFlags = planOverride?.flags;
+  if (!planFlags) {
+    const client = await prisma.client.findUnique({
       where: { id: clientId },
       select: { subscription: { select: { plan: { select: { featureFlags: true } } } } },
-    }),
-    prisma.featureFlag.findUnique({
-      where: { clientId_key: { clientId, key: "booking" } },
-      select: { enabled: true },
-    }),
-  ]);
-  const planFlags = (client?.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
-  if (!planFlags.booking) return false; // not on this plan
+    });
+    planFlags = (client?.subscription?.plan.featureFlags ?? {}) as Record<string, unknown>;
+  }
+  if (!planFlags.booking) return false; // not on this (previewed or paid) plan
+  if (planOverride?.showcase) return true; // previewing a higher tier — showcase the capability
   return override?.enabled !== false; // default-on unless explicitly disabled
 }
 
@@ -59,8 +64,12 @@ export async function bookingEnabled(clientId: string): Promise<boolean> {
  * Returns null only for sites that can never show booking (not on plan / owner-off AND no stored
  * section), so the serve pipeline injects nothing there.
  */
-export async function getBookingMeta(clientId: string, bookingHtml: string | null): Promise<BookingMeta | null> {
-  const enabled = await bookingEnabled(clientId);
+export async function getBookingMeta(
+  clientId: string,
+  bookingHtml: string | null,
+  planOverride?: { flags: Record<string, unknown>; showcase: boolean },
+): Promise<BookingMeta | null> {
+  const enabled = await bookingEnabled(clientId, planOverride);
   if (!enabled && !bookingHtml) return null;
   return { enabled, html: bookingHtml ?? defaultBookingHtml() };
 }

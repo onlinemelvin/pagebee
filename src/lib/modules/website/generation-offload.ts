@@ -9,7 +9,6 @@ import {
   markNoGallery,
   htmlPromptDebug,
   type WebsiteIntake,
-  type PlanLimits,
   type BuiltHtmlPrompt,
 } from "@/lib/ai/website-generator";
 import { AI_FORCE_STUB } from "@/lib/ai/models";
@@ -18,7 +17,7 @@ import { splitLeadForm } from "@/lib/site/lead-form";
 import { splitBookingSection } from "@/lib/site/booking";
 import { isLeadGoal } from "@/lib/site/lead-goals";
 import { listWebsiteServices, serviceDurationLabel } from "@/lib/modules/service";
-import { planLimits, buildComponents, formatBusinessHours, runGenerationJob, type GenerationForm } from "./service";
+import { planLimits, buildComponents, formatBusinessHours, runGenerationJob, effectivePlanForGeneration, type GenerationForm } from "./service";
 
 /**
  * VERCEL-SAFE GENERATION OFFLOAD.
@@ -59,15 +58,17 @@ async function resolveInputs(job: GenerationJob) {
   const clientId = client.id;
   const form = (job.inputIntake ?? {}) as unknown as GenerationForm;
 
-  const flags = (client.subscription?.plan.featureFlags ?? {}) as unknown as Record<string, unknown>;
-  const limits = planLimits(flags, client.subscription?.plan.maxPages ?? 5);
+  // Build at the previewed tier when set (free tier-preview), else the paid plan.
+  const { flags, maxPages, showcase } = effectivePlanForGeneration(client.subscription?.plan, form.previewPlan);
+  const limits = planLimits(flags, maxPages);
 
+  // Showcase mode (previewing a higher tier) defaults the tier's features ON so the preview demos them.
   const overrides = await prisma.featureFlag.findMany({ where: { clientId } });
   const notDisabled = (k: string) => overrides.find((c) => c.key === k)?.enabled !== false;
   const isEnabled = (k: string) => overrides.find((c) => c.key === k)?.enabled === true;
-  limits.forms = limits.forms && notDisabled("contactForm");
-  limits.booking = limits.booking && isEnabled("booking");
-  limits.payments = limits.payments && isEnabled("invoices");
+  limits.forms = limits.forms && (showcase || notDisabled("contactForm"));
+  limits.booking = limits.booking && (showcase || isEnabled("booking"));
+  limits.payments = limits.payments && (showcase || isEnabled("invoices"));
 
   const galleryDisabled = overrides.find((c) => c.key === "gallery")?.enabled === false;
   const useGallery = !galleryDisabled && Boolean(form.galleryImageUrls?.length);
@@ -193,7 +194,7 @@ export async function prepareGeneration(jobId: string): Promise<void> {
       configCreate,
       pagesCreate,
       jobOutput: result.config as unknown as Prisma.InputJsonValue,
-      planName: job.website.client.subscription?.plan.name ?? "NECTAR",
+      planName: form.previewPlan ?? job.website.client.subscription?.plan.name ?? "NECTAR",
       configEngine: result.engine,
       htmlPrompt: htmlPromptDebug(built),
     };

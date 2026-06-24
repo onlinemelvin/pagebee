@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireReview, AuthError } from "@/lib/auth/session";
 import { publishUpdate } from "@/lib/modules/website";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   try {
     await publishUpdate(id, ctx.userId);
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: ctx.userId,
+      event: "website_update_published",
+      properties: { versionId: id, reviewerId: ctx.userId },
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[POST /api/v1/admin/websites/[id]/approve]", err);

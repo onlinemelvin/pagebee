@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DEMO_SITE_TOKEN } from "@/lib/constants";
+import posthog from "posthog-js";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
@@ -43,6 +44,7 @@ export function ContactForm() {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `Request failed (${res.status})`);
       }
+      posthog.capture("contact_form_submitted");
       form.reset();
       setStatus("success");
     } catch (err) {

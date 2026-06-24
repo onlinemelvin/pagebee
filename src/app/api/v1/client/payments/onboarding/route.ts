@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { requireOwner, AuthError } from "@/lib/auth/session";
 import { submitOnboarding, getOnboardingState, PaymentError } from "@/lib/modules/payments";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +21,9 @@ export async function GET() {
 
 /** POST — submit the white-label onboarding (creates/updates the Custom account). */
 export async function POST(req: Request) {
-  let client;
+  let client, ctx;
   try {
-    ({ client } = await requireOwner());
+    ({ client, ctx } = await requireOwner());
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -31,6 +32,12 @@ export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null;
   try {
     const state = await submitOnboarding(client.id, body, ip);
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: ctx.userId,
+      event: "payment_onboarding_submitted",
+      properties: { clientId: client.id, onboardingStatus: state },
+    });
     return NextResponse.json({ state });
   } catch (err) {
     if (err instanceof ZodError) return NextResponse.json({ error: "validation_error", issues: err.flatten() }, { status: 400 });

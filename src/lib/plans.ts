@@ -218,6 +218,19 @@ export function planRank(name: string): number {
   return PLAN_ORDER.indexOf(name as PlanName);
 }
 
+/**
+ * One-time setup-fee difference (cents) owed when UPGRADING from `fromName` to `toName`. Each tier's
+ * setup fee is cumulative, so an upgrade only pays the gap between tiers (never the full higher fee
+ * again). Returns 0 for same-tier or downgrades. The setup fee — original or delta — is
+ * non-refundable per the billing terms.
+ */
+export function setupFeeDelta(fromName: string, toName: string): number {
+  const from = planByName(fromName);
+  const to = planByName(toName);
+  if (!from || !to) return 0;
+  return Math.max(0, to.setupFee - from.setupFee);
+}
+
 /** The cheapest plan whose feature flags enable `flag` (e.g. "booking" → Connect). */
 export function planForFlag(flag: string): PlanDef | undefined {
   return PLANS.find((p) => p.featureFlags[flag] === true);

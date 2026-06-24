@@ -4,11 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { planByName } from "@/lib/plans";
+import { BillingCardStep } from "./BillingCardStep";
 
 /**
- * Confirm-upgrade modal. Posts to /api/v1/client/subscription/upgrade — test accounts apply
- * instantly (then we refresh so the new plan's features unlock); real accounts get a captured
- * request the team will action. Driven by parent `open`/`onClose`.
+ * Confirm-upgrade modal. Existing subscribers and test accounts apply instantly; not-yet-subscribed
+ * real accounts collect a card via our own embedded Payment Element (no hosted Checkout redirect);
+ * without Stripe configured the upgrade is captured as a request. Driven by parent `open`/`onClose`.
  */
 export function UpgradeModal({
   open,
@@ -23,42 +24,18 @@ export function UpgradeModal({
 }) {
   const router = useRouter();
   const plan = planByName(toPlan);
-  const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<"applied" | "requested" | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (open) {
-      setResult(null);
-      setError(null);
-    }
+    if (open) setResult(null);
   }, [open]);
 
   if (!open) return null;
   const priceMo = plan ? `$${Math.round(plan.monthlyFee / 100)}/mo` : "";
 
-  async function confirm() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/v1/client/subscription/upgrade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toPlan, reason }),
-      });
-      const data = (await res.json().catch(() => null)) as { applied?: boolean; checkoutUrl?: string; error?: string } | null;
-      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
-      if (data?.checkoutUrl) {
-        window.location.href = data.checkoutUrl; // real account → Stripe Checkout
-        return;
-      }
-      setResult(data?.applied ? "applied" : "requested");
-      if (data?.applied) router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setBusy(false);
-    }
+  function onResolved(r: "applied" | "requested") {
+    setResult(r);
+    if (r === "applied") router.refresh();
   }
 
   return (
@@ -66,7 +43,7 @@ export function UpgradeModal({
       className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4"
       role="dialog"
       aria-modal="true"
-      onMouseDown={() => !busy && onClose()}
+      onMouseDown={() => onClose()}
     >
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
         {result === "applied" ? (
@@ -104,16 +81,13 @@ export function UpgradeModal({
                 ))}
               </ul>
             )}
-            <p className="mt-3 text-sm font-medium text-stone-900">{priceMo}</p>
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" disabled={busy} onClick={onClose}>
-                Cancel
-              </Button>
-              <Button disabled={busy} onClick={confirm}>
-                {busy ? "Upgrading…" : `Upgrade to ${plan?.label}`}
-              </Button>
+            <p className="mt-3 text-sm font-medium text-stone-900">{priceMo} · plus the non-refundable setup-fee difference</p>
+            <div className="mt-4">
+              <BillingCardStep flow="upgrade" toPlan={toPlan} reason={reason} onResolved={onResolved} />
             </div>
+            <button onClick={onClose} className="mt-3 w-full text-center text-sm text-stone-500 hover:text-stone-700">
+              Cancel
+            </button>
           </>
         )}
       </div>
