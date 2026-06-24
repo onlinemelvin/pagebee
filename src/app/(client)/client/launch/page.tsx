@@ -69,63 +69,71 @@ export default async function LaunchPage({ searchParams }: { searchParams: Promi
   const cancelled = checkout === "cancel";
 
   return (
-    <Shell>
-      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-100 text-amber-700"><Rocket size={30} /></span>
-      <h1 className="mt-5 font-display text-3xl text-stone-900">Launch {ws.client.businessName}</h1>
-      <p className="mt-2 max-w-md text-stone-600">
-        Your preview is approved. Complete checkout to publish your site, connect your domain, and turn on your{" "}
-        <strong>{plan?.label ?? ws.planName}</strong> features.
-      </p>
+    <div className="mx-auto max-w-lg px-6 py-12">
+      <div className="anim-rise rounded-2xl border border-stone-200 bg-white p-6 shadow-card sm:p-8">
+        <div className="text-center">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-100 text-amber-700"><Rocket size={30} /></span>
+          <h1 className="mt-5 font-display text-3xl text-stone-900">Launch {ws.client.businessName}</h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-stone-600">
+            Your preview is approved. Complete checkout to publish your site, connect your domain, and turn on your{" "}
+            <strong>{plan?.label ?? ws.planName}</strong> features.
+          </p>
+        </div>
 
-      {cancelled && (
-        <p className="mt-4 w-full max-w-md rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-          Checkout was cancelled — no charge was made. You can complete it whenever you&apos;re ready.
+        {cancelled && (
+          <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            Checkout was cancelled — no charge was made. You can complete it whenever you&apos;re ready.
+          </p>
+        )}
+
+        {/* Pricing summary */}
+        <div className="mt-6 rounded-xl bg-stone-50 p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-stone-600">One-time setup</span>
+            <span className="font-semibold text-stone-900">{formatUsd(setup)}</span>
+          </div>
+          <div className="mt-2.5 flex items-center justify-between text-sm">
+            <span className="text-stone-600">{plan?.label ?? ws.planName} — first month</span>
+            <span className="font-semibold text-stone-900">{formatUsd(monthly)}</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-stone-200 pt-3">
+            <span className="font-semibold text-stone-900">Due today</span>
+            <span className="font-display text-xl text-stone-900">{formatUsd(dueToday)}</span>
+          </div>
+          <p className="mt-2 text-xs text-stone-400">Then {formatUsd(monthly)}/month. Cancel anytime.</p>
+        </div>
+
+        {/* What the selected tier includes */}
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Your {plan?.label ?? ws.planName} plan includes</p>
+          <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+            {plan && planLimitRows(plan).map((r) => (
+              <li key={r.label} className="flex items-center justify-between">
+                <span className="text-stone-500">{r.label}</span>
+                <span className="font-semibold text-stone-800">{r.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-6 flex flex-col gap-3">
+          <Link href="/client/launch/payment" className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-700">
+            Next — add payment details
+          </Link>
+          <Link href="/client/website" className="text-center text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
+            Want a different plan? Switch it free first
+          </Link>
+          <Link href="/client/website" className="text-center text-sm text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline">
+            Not yet — back to my website
+          </Link>
+        </div>
+
+        <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-stone-400">
+          <ShieldCheck size={14} /> Secure payment by Stripe · your card is saved for monthly billing
         </p>
-      )}
-
-      <div className="mt-6 w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-card">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-stone-600">One-time setup</span>
-          <span className="font-semibold text-stone-900">{formatUsd(setup)}</span>
-        </div>
-        <div className="mt-2.5 flex items-center justify-between text-sm">
-          <span className="text-stone-600">{plan?.label ?? ws.planName} — first month</span>
-          <span className="font-semibold text-stone-900">{formatUsd(monthly)}</span>
-        </div>
-        <div className="mt-3 border-t border-stone-100 pt-3 flex items-center justify-between">
-          <span className="font-semibold text-stone-900">Due today</span>
-          <span className="font-display text-xl text-stone-900">{formatUsd(dueToday)}</span>
-        </div>
-        <p className="mt-2 text-xs text-stone-400">Then {formatUsd(monthly)}/month. Cancel anytime.</p>
       </div>
-
-      {/* Everything the selected tier includes. */}
-      <div className="mt-5 w-full max-w-md rounded-2xl border border-stone-200 bg-white p-5 text-left shadow-card">
-        <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Your {plan?.label ?? ws.planName} plan includes</p>
-        <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-          {plan && planLimitRows(plan).map((r) => (
-            <li key={r.label} className="flex items-center justify-between">
-              <span className="text-stone-500">{r.label}</span>
-              <span className="font-semibold text-stone-800">{r.value}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="mt-6 flex w-full max-w-md flex-col items-stretch gap-3">
-        <Link href="/client/launch/payment" className="inline-flex items-center justify-center gap-2 rounded-xl bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-700">
-          Next — add payment details
-        </Link>
-        {/* Still free to change your mind on the plan before paying. */}
-        <Link href="/client/website" className="text-center text-sm font-semibold text-stone-500 underline-offset-2 hover:text-stone-800 hover:underline">
-          Want a different plan? Switch it free first
-        </Link>
-        <Link href="/client/website" className="text-center text-sm text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline">
-          Not yet — back to my website
-        </Link>
-      </div>
-      <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-stone-400"><ShieldCheck size={14} /> Secure payment by Stripe · your card is saved for monthly billing</p>
-    </Shell>
+    </div>
   );
 }
 
