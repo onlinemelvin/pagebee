@@ -1285,7 +1285,7 @@ export async function getPreviewPlanOverride(
 export async function getSiteBlocks(
   clientId: string,
 ): Promise<{ blocks: SiteBlock[]; selectedPlan: string; keptSections: string[] | null }> {
-  const [site, preview] = await Promise.all([
+  const [site, preview, sub] = await Promise.all([
     prisma.website.findFirst({
       where: { clientId },
       select: { versions: { orderBy: { version: "desc" }, take: 1, select: { generatedHtml: true } } },
@@ -1295,11 +1295,12 @@ export async function getSiteBlocks(
       orderBy: { generatedAt: "desc" },
       select: { selectedPlan: true, keptSections: true },
     }),
+    prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } }),
   ]);
   const blocks = listSiteBlocks(site?.versions[0]?.generatedHtml ?? "");
   return {
     blocks,
-    selectedPlan: preview?.selectedPlan ?? "NECTAR",
+    selectedPlan: preview?.selectedPlan ?? sub?.plan.name ?? "NECTAR",
     keptSections: (preview?.keptSections as string[] | null) ?? null,
   };
 }
