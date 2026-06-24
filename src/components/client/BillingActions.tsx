@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { CreditCard, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { CreditCard, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { BillingCardStep } from "./BillingCardStep";
 
 const ERR: Record<string, string> = {
   stripe_not_configured: "Card billing isn't set up yet — please check back soon.",
@@ -11,7 +12,11 @@ const ERR: Record<string, string> = {
   no_active_subscription: "Your plan isn't active yet, so there's nothing to cancel.",
 };
 
-/** Starts a Stripe Checkout session (setup fee + subscription, or an upgrade) and redirects. */
+/**
+ * Opens our own white-label card form (embedded Stripe Payment Element, in a modal) to pay the setup
+ * fee + first month — no redirect to hosted Checkout. On success the subscription activates, the site
+ * launches, and we refresh so the page reflects it.
+ */
 export function CheckoutButton({
   kind,
   toPlan,
@@ -23,44 +28,60 @@ export function CheckoutButton({
   label: string;
   className?: string;
 }) {
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [done, setDone] = React.useState<"applied" | "requested" | null>(null);
 
-  async function go() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/v1/client/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, toPlan }),
-      });
-      const data = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
-      if (res.ok && data?.url) {
-        window.location.href = data.url;
-        return;
-      }
-      setError(ERR[data?.error ?? ""] ?? "Couldn't start checkout — please try again.");
-      setBusy(false);
-    } catch {
-      setError("Couldn't start checkout — please try again.");
-      setBusy(false);
-    }
+  function onResolved(r: "applied" | "requested") {
+    setDone(r);
+    if (r === "applied") router.refresh();
   }
 
   return (
     <div className="flex flex-col items-center">
       <button
-        onClick={go}
-        disabled={busy}
+        onClick={() => {
+          setDone(null);
+          setOpen(true);
+        }}
         className={cn(
           "inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-300 disabled:opacity-60",
           className,
         )}
       >
-        <CreditCard size={16} /> {busy ? "Starting checkout…" : label}
+        <CreditCard size={16} /> {label}
       </button>
-      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={() => setOpen(false)}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h2 className="font-display text-xl text-stone-900">
+                {done === "applied" ? "Payment received" : "Pay & launch"}
+              </h2>
+              <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600" aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+
+            {done === "applied" ? (
+              <div className="py-4 text-center">
+                <CheckCircle2 size={36} className="mx-auto text-emerald-500" />
+                <p className="mt-3 text-sm text-stone-600">Your payment went through — we&apos;re launching your site now.</p>
+              </div>
+            ) : (
+              <div className="mt-4">
+                <BillingCardStep flow={kind} toPlan={toPlan} onResolved={onResolved} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

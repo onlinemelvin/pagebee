@@ -5,6 +5,7 @@ import { getStripe, appBaseUrl, stripeConfigured } from "@/lib/stripe/client";
 import { planByName, planRank, type PlanDef, type PlanName } from "@/lib/plans";
 import { writeAudit } from "@/lib/modules/audit";
 import { launchPreview } from "@/lib/modules/preview";
+import { requestUpgrade } from "@/lib/modules/subscription";
 import * as notify from "@/lib/modules/email/notifications";
 
 // PageBee's own subscription billing — we charge the CLIENT for their plan (monthly) + the
@@ -127,10 +128,12 @@ function isModifiable(status: Stripe.Subscription.Status): boolean {
  * Falls back to Checkout when there's no usable subscription yet (collects a payment method).
  * Returns `{ applied: true }` for an in-place upgrade, or `{ url }` to redirect to Checkout.
  */
-export async function upgradeSubscription(
-  clientId: string,
-  toPlanName: string,
-): Promise<{ applied: true } | { url: string }> {
+/**
+ * Swap an existing subscriber to a higher tier IN PLACE (prorated, invoiced now) using their
+ * already-saved card. Returns true when applied; false when there's no usable live subscription yet
+ * (the caller then collects a card). Throws on a non-upgrade / invalid plan.
+ */
+async function tryInPlaceUpgrade(clientId: string, toPlanName: string): Promise<boolean> {
   const stripe = getStripe();
   const sub = await prisma.subscription.findUnique({ where: { clientId }, include: { plan: true } });
   if (!sub) throw new BillingError(404, "no_subscription");
@@ -139,19 +142,18 @@ export async function upgradeSubscription(
   if (!target) throw new BillingError(400, "invalid_plan");
   if (planRank(target.name) <= planRank(sub.plan.name)) throw new BillingError(400, "not_an_upgrade");
 
-  // No live Stripe subscription yet (e.g. setup fee unpaid) → Checkout collects payment + subscribes.
-  if (!sub.stripeSubscriptionId) return createBillingCheckout(clientId, "upgrade", toPlanName);
+  if (!sub.stripeSubscriptionId) return false; // no live sub yet → needs a card
 
   let stripeSub: Stripe.Subscription;
   try {
     stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
   } catch {
-    return createBillingCheckout(clientId, "upgrade", toPlanName); // sub vanished on Stripe → re-subscribe
+    return false; // sub vanished on Stripe → re-subscribe with a card
   }
-  if (!isModifiable(stripeSub.status)) return createBillingCheckout(clientId, "upgrade", toPlanName);
+  if (!isModifiable(stripeSub.status)) return false;
 
   const itemId = stripeSub.items.data[0]?.id;
-  if (!itemId) return createBillingCheckout(clientId, "upgrade", toPlanName);
+  if (!itemId) return false;
 
   const prices = await ensurePrices(stripe, target);
   // Swap the recurring price in place; invoice the prorated difference now so the upgrade is paid for.
@@ -170,7 +172,92 @@ export async function upgradeSubscription(
     clientId,
     metadata: { fromPlan, toPlan: target.name, via: "stripe", inPlace: true },
   });
-  return { applied: true };
+  return true;
+}
+
+export async function upgradeSubscription(
+  clientId: string,
+  toPlanName: string,
+): Promise<{ applied: true } | { url: string }> {
+  if (await tryInPlaceUpgrade(clientId, toPlanName)) return { applied: true };
+  // No usable live subscription → hosted Checkout collects a card + subscribes (legacy path).
+  return createBillingCheckout(clientId, "upgrade", toPlanName);
+}
+
+/**
+ * Create a Stripe subscription in `default_incomplete` and return the first invoice's client secret,
+ * so the card is collected by our OWN embedded Payment Element (white-label, PCI SAQ A) instead of
+ * hosted Checkout. The setup flow adds the one-time setup fee to that first invoice. Card-only (no
+ * Link/wallets) for a clean in-house look. The subscription id is intentionally NOT stored yet — it's
+ * still incomplete; `reconcileFromStripe` links it once the payment activates it.
+ */
+async function createIncompleteSubscription(
+  clientId: string,
+  plan: PlanDef,
+  flow: "setup" | "upgrade",
+): Promise<{ clientSecret: string; amountCents: number }> {
+  const stripe = getStripe();
+  const prices = await ensurePrices(stripe, plan);
+  const customer = await ensureCustomer(stripe, clientId);
+
+  const subscription = await stripe.subscriptions.create({
+    customer,
+    items: [{ price: prices.monthly }],
+    add_invoice_items: flow === "setup" ? [{ price: prices.setup }] : [],
+    payment_behavior: "default_incomplete",
+    payment_settings: { save_default_payment_method: "on_subscription", payment_method_types: ["card"] },
+    expand: ["latest_invoice.confirmation_secret"],
+    metadata: { clientId, kind: flow, toPlan: plan.name },
+  });
+
+  const invoice = subscription.latest_invoice as Stripe.Invoice | null;
+  const clientSecret = invoice?.confirmation_secret?.client_secret;
+  if (!clientSecret) throw new BillingError(502, "intent_failed");
+  const amountCents = invoice?.amount_due ?? (flow === "setup" ? plan.setupFee + plan.monthlyFee : plan.monthlyFee);
+  return { clientSecret, amountCents };
+}
+
+/** What a billing intent resolves to: applied instantly, captured as a request, or needs a card. */
+export type BillingIntent =
+  | { kind: "applied" }
+  | { kind: "requested" }
+  | { kind: "card"; clientSecret: string; amountCents: number; planLabel: string; flow: "setup" | "upgrade" };
+
+/**
+ * Decide how to collect payment for a setup or upgrade and, when a card is needed, hand back a
+ * client secret for the embedded Payment Element. Preserves every existing fallback: test accounts /
+ * no-Stripe upgrades apply-or-request as before; existing subscribers upgrade in place with no card.
+ */
+export async function createBillingIntent(
+  client: { id: string; isTest: boolean },
+  flow: "setup" | "upgrade",
+  toPlan?: string,
+  reason?: string,
+): Promise<BillingIntent> {
+  if (flow === "upgrade") {
+    if (!toPlan) throw new BillingError(400, "invalid_plan");
+    // Test accounts and the no-Stripe case keep their existing instant-apply / admin-request behavior.
+    if (client.isTest || !stripeConfigured()) {
+      const res = await requestUpgrade(client.id, toPlan, reason);
+      return res.applied ? { kind: "applied" } : { kind: "requested" };
+    }
+    // Existing subscriber → swap in place using their saved card (no entry needed).
+    if (await tryInPlaceUpgrade(client.id, toPlan)) return { kind: "applied" };
+    // Not subscribed yet → collect a card via an incomplete subscription.
+    const plan = planByName(toPlan);
+    if (!plan) throw new BillingError(400, "invalid_plan");
+    const { clientSecret, amountCents } = await createIncompleteSubscription(client.id, plan, "upgrade");
+    return { kind: "card", clientSecret, amountCents, planLabel: plan.label, flow: "upgrade" };
+  }
+
+  // setup (first launch): always card via the embedded element.
+  if (!stripeConfigured()) throw new BillingError(503, "stripe_not_configured");
+  const sub = await prisma.subscription.findUnique({ where: { clientId: client.id }, include: { plan: true } });
+  if (!sub) throw new BillingError(404, "no_subscription");
+  const plan = planByName(sub.plan.name as PlanName);
+  if (!plan) throw new BillingError(400, "invalid_plan");
+  const { clientSecret, amountCents } = await createIncompleteSubscription(client.id, plan, "setup");
+  return { kind: "card", clientSecret, amountCents, planLabel: plan.label, flow: "setup" };
 }
 
 /**
@@ -394,6 +481,19 @@ export async function processBillingEvent(event: Stripe.Event): Promise<void> {
   switch (event.type) {
     case "checkout.session.completed": {
       await applyCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+      break;
+    }
+    case "invoice.paid": {
+      // First payment of an embedded-element subscription (no Checkout session fires). Reconcile from
+      // Stripe's truth: links the now-active subscription, marks the setup fee paid + launches the
+      // site, or applies an upgrade's plan switch. Gated to the initial invoice so renewals are no-ops.
+      const inv = event.data.object as Stripe.Invoice;
+      if (inv.billing_reason !== "subscription_create") break;
+      const customerId = typeof inv.customer === "string" ? inv.customer : (inv.customer?.id ?? null);
+      if (customerId) {
+        const row = await prisma.subscription.findFirst({ where: { stripeCustomerId: customerId }, select: { clientId: true } });
+        if (row) await reconcileFromStripe(row.clientId).catch((e) => console.error("[billing] invoice.paid reconcile failed", e));
+      }
       break;
     }
     case "customer.subscription.updated": {
