@@ -175,11 +175,43 @@ export default async function ClientWebsitePage() {
                 </span>
                 Live website
               </span>
-              {liveUrl && (
-                <a href={liveUrl} target="_blank" rel="noreferrer" className="group mt-2 flex w-fit items-center gap-1.5 text-base font-semibold text-blue-600 underline decoration-blue-300 underline-offset-4 transition hover:text-blue-700 hover:decoration-blue-500">
-                  {liveUrl.replace(/^https?:\/\//, "")}
-                  <ExternalLink size={14} className="text-blue-500 transition group-hover:text-blue-600" />
-                </a>
+              {/* Address + monthly-update count on the same line */}
+              <div className="mt-2 flex flex-col gap-x-3 gap-y-1 sm:flex-row sm:flex-wrap sm:items-baseline">
+                {liveUrl && (
+                  <a href={liveUrl} target="_blank" rel="noreferrer" className="group flex w-fit items-center gap-1.5 text-base font-semibold text-blue-600 underline decoration-blue-300 underline-offset-4 transition hover:text-blue-700 hover:decoration-blue-500">
+                    {liveUrl.replace(/^https?:\/\//, "")}
+                    <ExternalLink size={14} className="text-blue-500 transition group-hover:text-blue-600" />
+                  </a>
+                )}
+                {isOwner && !viewable && (
+                  <span className="text-sm text-stone-500">
+                    <strong className="font-semibold text-stone-700">{ws.quota.used} of {ws.quota.allowance}</strong> update
+                    {ws.quota.allowance === 1 ? "" : "s"} used this month. Pin small tweaks with{" "}
+                    <strong className="font-semibold text-stone-700">Preview / Request edits</strong>, or rebuild from scratch with{" "}
+                    <strong className="font-semibold text-stone-700">Regenerate</strong>.
+                  </span>
+                )}
+              </div>
+
+              {/* Actions — beside the preview box, right below the address line */}
+              {!viewable && isOwner && (
+                <>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
+                      <Eye size={16} /> Preview / Request edits
+                    </a>
+                    {ws.quota.remaining > 0 && (
+                      <RegenerateButton
+                        maxPages={ws.caps.maxPages}
+                        canBook={ws.caps.booking && ws.choices.booking === true}
+                        canUseForms={ws.caps.forms}
+                        label="Regenerate from scratch"
+                        submitLabel="Regenerate from scratch"
+                      />
+                    )}
+                  </div>
+                  <ClientWebsiteChanges quota={ws.quota} planName={ws.planName} />
+                </>
               )}
 
               {/* Pending update to the live site */}
@@ -206,35 +238,6 @@ export default async function ClientWebsitePage() {
               )}
             </div>
           </div>
-
-          {/* Make changes — quota sentence with both actions grouped directly beneath it */}
-          {isOwner && (
-            <div className="mt-5 border-t border-stone-100 pt-5">
-              <ClientWebsiteChanges
-                quota={ws.quota}
-                planName={ws.planName}
-                bare
-                actions={
-                  !viewable ? (
-                    <>
-                      <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
-                        <Eye size={16} /> Preview / Request edits
-                      </a>
-                      {ws.quota.remaining > 0 && (
-                        <RegenerateButton
-                          maxPages={ws.caps.maxPages}
-                          canBook={ws.caps.booking && ws.choices.booking === true}
-                          canUseForms={ws.caps.forms}
-                          label="Regenerate from scratch"
-                          submitLabel="Regenerate from scratch"
-                        />
-                      )}
-                    </>
-                  ) : null
-                }
-              />
-            </div>
-          )}
         </div>
       )}
 
