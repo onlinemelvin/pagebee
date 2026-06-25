@@ -163,7 +163,7 @@ export default async function ClientWebsitePage() {
       {!awaitingSetup && isPublished && latest && (
         <div className="anim-rise rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
           {/* Site identity — cover + live badge + address */}
-          <div className="flex flex-col gap-5 sm:flex-row">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="w-full shrink-0 sm:w-56">
               <PreviewCover businessName={ws.client.businessName} accent={accent} copy={copy} href={liveUrl ?? undefined} />
             </div>
