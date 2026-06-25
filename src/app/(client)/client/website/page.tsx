@@ -184,12 +184,22 @@ export default async function ClientWebsitePage() {
                 </a>
               )}
 
-              {/* View & comment on the live site to request a change (no pending update in flight). */}
+              {/* Live-site actions on one line: pin edits on the live site, or rebuild from scratch
+                  (rebuild hidden once the monthly update quota is spent — the right column upsells). */}
               {!viewable && isOwner && (
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
                     <Eye size={16} /> Preview / Request edits
                   </a>
+                  {ws.quota.remaining > 0 && (
+                    <RegenerateButton
+                      maxPages={ws.caps.maxPages}
+                      canBook={ws.caps.booking && ws.choices.booking === true}
+                      canUseForms={ws.caps.forms}
+                      label="Regenerate from scratch"
+                      submitLabel="Regenerate from scratch"
+                    />
+                  )}
                 </div>
               )}
 
@@ -222,14 +232,7 @@ export default async function ClientWebsitePage() {
             {/* RIGHT — make changes, sharing the card width with the live site */}
             {isOwner && (
               <div className="mt-5 border-t border-stone-100 pt-5 lg:mt-0 lg:flex-1 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-                <ClientWebsiteChanges
-                  quota={ws.quota}
-                  planName={ws.planName}
-                  maxPages={ws.caps.maxPages}
-                  canBook={ws.caps.booking && ws.choices.booking === true}
-                  canUseForms={ws.caps.forms}
-                  bare
-                />
+                <ClientWebsiteChanges quota={ws.quota} planName={ws.planName} bare />
               </div>
             )}
           </div>
