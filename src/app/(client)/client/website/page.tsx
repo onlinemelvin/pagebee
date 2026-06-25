@@ -160,11 +160,14 @@ export default async function ClientWebsitePage() {
       {/* Live site */}
       {!awaitingSetup && isPublished && latest && (
         <div className="anim-rise rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
-          <div className="flex flex-col gap-5 sm:flex-row">
-            <div className="w-full shrink-0 sm:w-56">
-              <PreviewCover businessName={ws.client.businessName} accent={accent} copy={copy} href={liveUrl ?? undefined} />
-            </div>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            {/* LEFT — the live site + its address */}
             <div className="min-w-0 flex-1">
+              <div className="flex flex-col gap-5 sm:flex-row">
+                <div className="w-full shrink-0 sm:w-56">
+                  <PreviewCover businessName={ws.client.businessName} accent={accent} copy={copy} href={liveUrl ?? undefined} />
+                </div>
+                <div className="min-w-0 flex-1">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
@@ -201,20 +204,24 @@ export default async function ClientWebsitePage() {
                   We&apos;re preparing your requested changes — your live site stays up until the new version is ready to review.
                 </p>
               )}
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Make changes — folded into the top card, alongside the live site. */}
-          {isOwner && (
-            <ClientWebsiteChanges
-              quota={ws.quota}
-              planName={ws.planName}
-              maxPages={ws.caps.maxPages}
-              canBook={ws.caps.booking && ws.choices.booking === true}
-              canUseForms={ws.caps.forms}
-              bare
-            />
-          )}
+            {/* RIGHT — make changes, alongside the live site */}
+            {isOwner && (
+              <div className="mt-5 border-t border-stone-100 pt-5 lg:mt-0 lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                <ClientWebsiteChanges
+                  quota={ws.quota}
+                  planName={ws.planName}
+                  maxPages={ws.caps.maxPages}
+                  canBook={ws.caps.booking && ws.choices.booking === true}
+                  canUseForms={ws.caps.forms}
+                  bare
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 

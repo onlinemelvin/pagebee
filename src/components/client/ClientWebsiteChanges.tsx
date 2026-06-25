@@ -67,7 +67,7 @@ export function ClientWebsiteChanges({
   }
 
   return (
-    <div className={bare ? "mt-5 border-t border-stone-100 pt-5" : "mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-card"}>
+    <div className={bare ? "" : "mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-card"}>
       <div>
         <h2 className={bare ? "font-display text-lg text-stone-900" : "font-display text-xl text-stone-900"}>Make changes to your website</h2>
         <p className="mt-1 text-sm text-stone-500">
