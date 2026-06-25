@@ -1,7 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
-import type { Prisma, PlanName } from "@prisma/client";
-import { planByName, planRank } from "@/lib/plans";
+import { Prisma } from "@prisma/client";
+import type { PlanName } from "@prisma/client";
+import { planByName, planRank, topPlan } from "@/lib/plans";
+import { listSiteBlocks, type SiteBlock } from "@/lib/site/tier-view";
+import { slugify } from "@/lib/slug";
 import { writeAudit } from "@/lib/modules/audit";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 import { emit } from "@/lib/events";
@@ -32,26 +35,19 @@ import type { WebsiteIntakeForm } from "./schema";
 export type GenerationForm = WebsiteIntakeForm & { revisionEdits?: HtmlEditRequest[]; previewPlan?: PlanName };
 
 /**
- * The plan whose capabilities a generation should build at. When `previewPlan` is set (a free
- * tier-preview), the site is built at that tier and `showcase` is true — the marquee features it
- * unlocks (forms/booking/payments) default ON so the preview actually demonstrates them, regardless
- * of the owner's per-feature toggles. Otherwise it's the paid plan with normal opt-in gating.
+ * Generation ALWAYS builds the full site at the TOP tier (max pages, every section + feature) so a
+ * tier switch never needs a regeneration — lower view-tiers just hide what they don't include. The
+ * returned `planName` is the VIEW tier recorded on the preview (`previewPlan` ?? paid ?? Nectar);
+ * `flags`/`maxPages` are the top tier's and `showcase` is always true so forms/booking/payments are
+ * all generated, then gated at serve time by the view tier.
  */
 export function effectivePlanForGeneration(
   paidPlan: { name: PlanName; featureFlags: Prisma.JsonValue; maxPages: number } | null | undefined,
   previewPlan: PlanName | undefined,
 ): { flags: Record<string, unknown>; maxPages: number; planName: PlanName; showcase: boolean } {
-  const override = previewPlan ? planByName(previewPlan) : null;
-  if (override) {
-    const showcase = paidPlan ? planRank(override.name) > planRank(paidPlan.name) : true;
-    return { flags: override.featureFlags as Record<string, unknown>, maxPages: override.maxPages, planName: override.name, showcase };
-  }
-  return {
-    flags: (paidPlan?.featureFlags ?? {}) as Record<string, unknown>,
-    maxPages: paidPlan?.maxPages ?? 5,
-    planName: paidPlan?.name ?? "NECTAR",
-    showcase: false,
-  };
+  const top = topPlan();
+  const viewTier = (previewPlan ?? paidPlan?.name ?? "NECTAR") as PlanName;
+  return { flags: top.featureFlags as Record<string, unknown>, maxPages: top.maxPages, planName: viewTier, showcase: true };
 }
 
 
@@ -1177,6 +1173,10 @@ export interface ServeSite {
   leadForm?: LeadFormMeta;
   // Booking-widget state (trigger section + enabled), inlined so the booking section paints instantly.
   booking?: BookingMeta | null;
+  // The view tier governing which pages/sections show (live → paid plan; preview → selected tier),
+  // and the owner's explicit kept-block choice (null → keep the first maxPages by order).
+  viewTier?: string;
+  keptSections?: string[] | null;
 }
 
 /** Resolve a PUBLISHED site by host part, for the public renderer. Previews are NOT
@@ -1188,11 +1188,22 @@ async function getServeSite(where: { subdomain?: string; id?: string }): Promise
   });
   const html = site?.publishedVersion?.generatedHtml;
   if (!site || !html) return null;
-  const [leadForm, booking] = await Promise.all([
+  // Live site: the view tier is the PAID plan; kept-block choice comes from the preview record.
+  const [leadForm, booking, sub, preview] = await Promise.all([
     getLeadFormMeta(site.clientId),
     getBookingMeta(site.clientId, site.publishedVersion?.bookingHtml ?? null),
+    prisma.subscription.findUnique({ where: { clientId: site.clientId }, select: { plan: { select: { name: true } } } }),
+    prisma.preview.findFirst({ where: { clientId: site.clientId }, orderBy: { generatedAt: "desc" }, select: { keptSections: true } }),
   ]);
-  return { kind: "published", siteToken: site.siteToken, html, leadForm, booking };
+  return {
+    kind: "published",
+    siteToken: site.siteToken,
+    html,
+    leadForm,
+    booking,
+    viewTier: sub?.plan.name,
+    keptSections: (preview?.keptSections as string[] | null) ?? null,
+  };
 }
 
 export function getServeSiteBySubdomain(subdomain: string) {
@@ -1230,13 +1241,24 @@ export async function getPreviewSiteForClient(clientId: string): Promise<ServeSi
   const html = site?.versions[0]?.generatedHtml;
   if (!site || !html) return null;
 
-  // Gate the preview's features by the tier it was GENERATED at, not the paid plan (free tier-preview).
-  const planOverride = await getPreviewPlanOverride(clientId);
+  // Gate the preview's features by the SELECTED view tier (free tier switching, no regen).
+  const [planOverride, previewRow] = await Promise.all([
+    getPreviewPlanOverride(clientId),
+    prisma.preview.findFirst({ where: { clientId }, orderBy: { generatedAt: "desc" }, select: { selectedPlan: true, keptSections: true } }),
+  ]);
   const [leadForm, booking] = await Promise.all([
     getLeadFormMeta(clientId, planOverride),
     getBookingMeta(clientId, site.versions[0]?.bookingHtml ?? null, planOverride),
   ]);
-  return { kind: "preview", siteToken: site.siteToken, html, leadForm, booking };
+  return {
+    kind: "preview",
+    siteToken: site.siteToken,
+    html,
+    leadForm,
+    booking,
+    viewTier: previewRow?.selectedPlan,
+    keptSections: (previewRow?.keptSections as string[] | null) ?? null,
+  };
 }
 
 /**
@@ -1257,6 +1279,136 @@ export async function getPreviewPlanOverride(
   if (!selected) return undefined;
   const showcase = sub ? planRank(selected.name) > planRank(sub.plan.name) : true;
   return { flags: selected.featureFlags as Record<string, unknown>, showcase };
+}
+
+// ── Web address (subdomain) ──────────────────────────────────────────────────────────────────────
+
+// Subdomains that collide with platform hosts or would be confusing — never assignable to a tenant.
+const RESERVED_SUBDOMAINS = new Set([
+  "www", "app", "api", "admin", "preview", "mail", "email", "blog", "help", "support",
+  "status", "cdn", "static", "assets", "dashboard", "account", "billing", "login", "register",
+  "pagebee", "go", "test", "dev", "staging",
+]);
+
+export function rootDomain(): string {
+  return process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
+}
+
+/** The client's current web address (subdomain) + the platform root domain. */
+export async function getWebsiteAddress(clientId: string): Promise<{ subdomain: string | null; rootDomain: string }> {
+  const w = await prisma.website.findFirst({ where: { clientId }, select: { subdomain: true } });
+  return { subdomain: w?.subdomain ?? null, rootDomain: rootDomain() };
+}
+
+/** Whether `raw` (slugified) is a valid, free subdomain for this client. */
+export async function checkSubdomain(
+  clientId: string,
+  raw: string,
+): Promise<{ subdomain: string; available: boolean; reason?: "too_short" | "reserved" | "taken" }> {
+  const subdomain = slugify(raw);
+  if (subdomain.length < 3) return { subdomain, available: false, reason: "too_short" };
+  if (RESERVED_SUBDOMAINS.has(subdomain)) return { subdomain, available: false, reason: "reserved" };
+  const taken = await prisma.website.findFirst({
+    where: { subdomain, clientId: { not: clientId } },
+    select: { id: true },
+  });
+  return { subdomain, available: !taken, reason: taken ? "taken" : undefined };
+}
+
+/** Set the client's subdomain (validated + availability-checked). Throws the reason on failure. */
+export async function setSubdomain(clientId: string, raw: string): Promise<{ subdomain: string }> {
+  const check = await checkSubdomain(clientId, raw);
+  if (!check.available) throw new Error(check.reason ?? "taken");
+  const w = await prisma.website.findFirst({ where: { clientId }, select: { id: true } });
+  if (!w) throw new Error("no_website");
+  await prisma.website.update({ where: { id: w.id }, data: { subdomain: check.subdomain } });
+  await writeAudit({ action: "website.subdomain_changed", entityType: "Website", entityId: w.id, clientId, metadata: { subdomain: check.subdomain } });
+  return { subdomain: check.subdomain };
+}
+
+/** The site's content blocks (parsed from the latest generated HTML) + the client's current view
+ *  tier and kept-block choice — for the tier switcher / keep-picker UI. */
+export async function getSiteBlocks(
+  clientId: string,
+): Promise<{ blocks: SiteBlock[]; selectedPlan: string; keptSections: string[] | null }> {
+  const [site, preview, sub] = await Promise.all([
+    prisma.website.findFirst({
+      where: { clientId },
+      select: { versions: { orderBy: { version: "desc" }, take: 1, select: { generatedHtml: true } } },
+    }),
+    prisma.preview.findFirst({
+      where: { clientId },
+      orderBy: { generatedAt: "desc" },
+      select: { selectedPlan: true, keptSections: true },
+    }),
+    prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } }),
+  ]);
+  const blocks = listSiteBlocks(site?.versions[0]?.generatedHtml ?? "");
+  return {
+    blocks,
+    selectedPlan: preview?.selectedPlan ?? sub?.plan.name ?? "NECTAR",
+    keptSections: (preview?.keptSections as string[] | null) ?? null,
+  };
+}
+
+/**
+ * Switch the VIEW tier with NO regeneration — just record the selected plan and (when the tier allows
+ * fewer blocks than the site has) the owner's kept-block choice. The serve pipeline hides the rest.
+ * Validates the kept set against the real blocks and the tier's page allowance; the first block
+ * (hero/home) is always kept. Persists keptSections only when the tier actually hides something.
+ */
+export type TierSwitchResult =
+  | { mode: "switched"; kept: string[] | null }
+  | { mode: "payment"; direction: "upgrade" | "downgrade" };
+
+export async function setTierView(
+  clientId: string,
+  planName: string,
+  keptSections?: string[] | null,
+): Promise<TierSwitchResult> {
+  const plan = planByName(planName);
+  if (!plan) throw new Error("invalid_plan");
+
+  const [website, sub, client] = await Promise.all([
+    prisma.website.findFirst({ where: { clientId }, select: { status: true, publishedVersionId: true } }),
+    prisma.subscription.findUnique({ where: { clientId }, select: { plan: { select: { name: true } } } }),
+    prisma.client.findUnique({ where: { id: clientId }, select: { isTest: true } }),
+  ]);
+
+  // A LIVE, real (non-test) site means the tier change is MONETARY — never silently switch their paid
+  // plan. Signal the caller to collect payment (upgrade) or schedule the change (downgrade) instead.
+  const live = website?.status === "published" || Boolean(website?.publishedVersionId);
+  if (live && !client?.isTest) {
+    const direction = planRank(planName) > planRank(sub?.plan.name ?? "NECTAR") ? "upgrade" : "downgrade";
+    return { mode: "payment", direction };
+  }
+
+  // Pre-launch (or a test account): switch the WORKING plan in the background — free, no redirect, no
+  // payment (that happens at launch). Changing the subscription plan unlocks the tier's dashboard
+  // features; the kept-block choice + selected tier drive the website's serve-time view.
+  const { blocks } = await getSiteBlocks(clientId);
+  let kept: string[] | null = null;
+  if (blocks.length > plan.maxPages) {
+    const firstSlug = blocks[0]?.slug;
+    const valid = (keptSections ?? []).filter((s) => blocks.some((b) => b.slug === s));
+    let chosen = valid.length ? valid : blocks.slice(0, plan.maxPages).map((b) => b.slug);
+    if (firstSlug && !chosen.includes(firstSlug)) chosen = [firstSlug, ...chosen];
+    kept = chosen.slice(0, plan.maxPages);
+  }
+
+  const planRow = await prisma.plan.findUnique({ where: { name: planName as PlanName } });
+  if (planRow) {
+    await prisma.subscription.update({
+      where: { clientId },
+      data: { planId: planRow.id, agreedSetupFee: planRow.setupFee, agreedMonthlyFee: planRow.monthlyFee },
+    });
+  }
+  await prisma.preview.updateMany({
+    where: { clientId },
+    data: { selectedPlan: planName as PlanName, keptSections: kept ?? Prisma.JsonNull },
+  });
+  await writeAudit({ action: "preview.tier_switched", entityType: "Client", entityId: clientId, clientId, metadata: { plan: planName, kept: kept?.length ?? null } });
+  return { mode: "switched", kept };
 }
 
 /** The client's website with its latest version's metadata. Narrow select — no generatedHtml. */

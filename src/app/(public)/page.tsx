@@ -71,6 +71,32 @@ const INDUSTRIES = [
   "Auto detailing",
   "Law firms",
   "Real estate",
+  "Interior decorators",
+  "Wedding planners",
+  "Event management",
+  "Gyms & fitness studios",
+  "Yoga studios",
+  "Barbershops",
+  "Pet grooming",
+  "Veterinary clinics",
+  "Bakeries",
+  "Caterers",
+  "Florists",
+  "Tutors",
+  "Massage therapy",
+  "Chiropractors",
+  "Roofers",
+  "Painters",
+  "HVAC technicians",
+  "Locksmiths",
+  "Moving companies",
+  "Pool services",
+  "Handyman services",
+  "Accountants",
+  "Travel agencies",
+  "Daycares",
+  "Dry cleaners",
+  "Auto repair",
 ];
 
 const STEPS = [
@@ -215,11 +241,13 @@ export default function HomePage() {
           Built for local businesses like yours
         </p>
         <div className="marquee-mask mt-5 overflow-hidden">
-          <div className="marquee-track gap-3">
+          <div className="marquee-track">
+            {/* Two copies: the -50% loop needs the track to be two identical halves,
+                and one full list already exceeds the viewport, so no blank space. */}
             {[...INDUSTRIES, ...INDUSTRIES].map((name, i) => (
               <span
                 key={`${name}-${i}`}
-                className="rounded-full border border-stone-200 bg-[var(--background)] px-4 py-2 text-sm font-medium text-stone-600"
+                className="mr-3 rounded-full border border-stone-200 bg-[var(--background)] px-4 py-2 text-sm font-medium text-stone-600"
               >
                 {name}
               </span>

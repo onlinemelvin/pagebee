@@ -6,14 +6,16 @@ import { cn } from "@/lib/utils";
 import { PLANS, planByName, planRank, planLimitRows } from "@/lib/plans";
 import { Button } from "@/components/ui/button";
 import { UpgradeModal } from "./UpgradeModal";
-import { PreviewTierButton } from "./PreviewTierButton";
+import { UpgradePaymentModal } from "./UpgradePaymentModal";
 
 /**
- * Plan picker for the billing page.
- * - `mode="select"` (pre-launch): the current plan reads "Selected plan"; others offer "Select" →
- *   pays the setup fee + first month for the chosen tier and launches.
- * - `mode="manage"` (post-launch): higher tiers offer "Upgrade", lower tiers "Downgrade" (effective
- *   at period end). `pendingPlan` shows a scheduled downgrade.
+ * Plan picker for the billing page. Switching tier (up or down) is FREE — it just rebuilds the preview
+ * at that tier; you pay only at Approve & Launch.
+ * - `mode="select"` (pre-launch): current reads "Selected plan"; others "Switch" → free preview.
+ * - `mode="manage"` (post-launch): higher tiers "Switch" (free preview → pay the delta at approve);
+ *   lower tiers "Downgrade" (a real billing change — scheduled to period end). `pendingPlan` shows a
+ *   scheduled downgrade. The payment `UpgradeModal` only auto-opens via ?upgrade= (after approving a
+ *   higher-tier preview, to collect the delta before it publishes).
  */
 export function PlanComparison({
   currentPlan,
@@ -26,12 +28,13 @@ export function PlanComparison({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [switchToPlan, setSwitchToPlan] = React.useState<string | null>(null);
   const [upgradeTo, setUpgradeTo] = React.useState<string | null>(null);
   const [downgradeTo, setDowngradeTo] = React.useState<string | null>(null);
   const currentRank = planRank(currentPlan);
 
-  // Approving a higher-tier preview routes here as ?upgrade=PLAN — pre-open the upgrade modal so they
-  // can pay the delta and publish.
+  // Approving a higher-tier preview routes here as ?upgrade=PLAN — pre-open the PAYMENT modal so they
+  // can pay the delta and publish (this is the only place we collect money for a plan change).
   React.useEffect(() => {
     const want = searchParams.get("upgrade");
     if (want && planByName(want) && planRank(want) > currentRank) setUpgradeTo(want);
@@ -88,16 +91,13 @@ export function PlanComparison({
                   <Button variant="outline" className="w-full" disabled>
                     {mode === "select" ? "Selected plan" : "Your plan"}
                   </Button>
-                ) : mode === "select" ? (
-                  // Pre-launch: selecting a tier is FREE — it regenerates the preview at that tier; you
-                  // pay setup + first month only when you Approve & launch.
-                  <PreviewTierButton plan={p.name} label={`Select ${p.label} — free preview`} className="w-full" />
-                ) : isUpgrade ? (
-                  <>
-                    <Button className="w-full" onClick={() => setUpgradeTo(p.name)}>Upgrade to {p.label}</Button>
-                    <PreviewTierButton plan={p.name} label={`Preview ${p.label} free`} variant="subtle" className="w-full" />
-                  </>
+                ) : mode === "select" || isUpgrade ? (
+                  // Switching tier is FREE — rebuilds the preview at that tier; payment is at launch.
+                  <Button className="w-full" onClick={() => setSwitchToPlan(p.name)}>
+                    {mode === "select" ? `Select ${p.label}` : `Switch to ${p.label}`}
+                  </Button>
                 ) : (
+                  // Live + lower tier → a real billing change (scheduled to period end).
                   <Button variant="ghost" className="w-full text-stone-500" onClick={() => setDowngradeTo(p.name)}>Downgrade to {p.label}</Button>
                 )}
               </div>
@@ -106,7 +106,11 @@ export function PlanComparison({
         })}
       </div>
 
-      <UpgradeModal open={upgradeTo !== null} onClose={() => setUpgradeTo(null)} toPlan={upgradeTo ?? ""} reason="billing page" />
+      {/* Free tier switch (up or down) — rebuilds the preview; payment is deferred to launch. */}
+      <UpgradeModal open={switchToPlan !== null} onClose={() => setSwitchToPlan(null)} toPlan={switchToPlan ?? ""} />
+
+      {/* Payment for a higher tier, only after approving its preview on a live site (?upgrade=PLAN). */}
+      <UpgradePaymentModal open={upgradeTo !== null} onClose={() => setUpgradeTo(null)} toPlan={upgradeTo ?? ""} reason="approve_upgrade" />
 
       {downgradeTo && (
         <DowngradeModal planName={downgradeTo} onClose={() => setDowngradeTo(null)} onDone={() => { setDowngradeTo(null); router.refresh(); }} />
@@ -115,7 +119,6 @@ export function PlanComparison({
   );
 }
 
-/** Pre-launch plan selection → pays setup + first month for the chosen tier and launches. */
 /** Confirm a downgrade (effective at period end, no refund). */
 function DowngradeModal({ planName, onClose, onDone }: { planName: string; onClose: () => void; onDone: () => void }) {
   const plan = planByName(planName);

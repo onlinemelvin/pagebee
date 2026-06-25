@@ -19,12 +19,15 @@ export function ClientWebsiteChanges({
   maxPages,
   canBook,
   canUseForms,
+  bare = false,
 }: {
   quota: { allowance: number; used: number; remaining: number };
   planName: string;
   maxPages: number;
   canBook: boolean;
   canUseForms: boolean;
+  /** Render as a section inside another card (no own card chrome) — for the website top card. */
+  bare?: boolean;
 }) {
   const router = useRouter();
   const [mode, setMode] = React.useState<null | "update" | "regen">(null);
@@ -64,9 +67,9 @@ export function ClientWebsiteChanges({
   }
 
   return (
-    <div className="mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
+    <div className={bare ? "" : "mt-8 rounded-2xl border border-stone-200 bg-white p-6 shadow-card"}>
       <div>
-        <h2 className="font-display text-xl text-stone-900">Make changes to your website</h2>
+        <h2 className={bare ? "font-display text-lg text-stone-900" : "font-display text-xl text-stone-900"}>Make changes to your website</h2>
         <p className="mt-1 text-sm text-stone-500">
           A quick edit or a full rebuild — <strong>{quota.used} of {quota.allowance}</strong> update
           {quota.allowance === 1 ? "" : "s"} used this month.
