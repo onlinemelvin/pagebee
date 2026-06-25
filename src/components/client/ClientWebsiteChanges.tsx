@@ -39,6 +39,12 @@ export function ClientWebsiteChanges({
 
   const out = quota.remaining <= 0;
   const next = nextTier(planName);
+  // Updates reset at the start of next calendar month (matches getUpdateQuota's UTC month window).
+  const now = new Date();
+  const resetLabel = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+  });
 
   async function submitUpdate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -85,17 +91,14 @@ export function ClientWebsiteChanges({
           <p className="text-sm font-medium text-stone-900">
             You&apos;ve used all {quota.allowance} update{quota.allowance === 1 ? "" : "s"} this month.
           </p>
-          {next ? (
-            <>
-              <p className="mt-1 text-sm text-stone-600">
-                Upgrade to {next.label} for {next.monthlyUpdates} updates / month.
-              </p>
-              <Button className="mt-3" onClick={() => setUpsell(true)}>
-                Upgrade to {next.label}
-              </Button>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-stone-600">Your updates reset at the start of next month.</p>
+          <p className="mt-1 text-sm text-stone-600">
+            Your updates reset on <span className="font-medium text-stone-800">{resetLabel}</span>
+            {next ? " — or upgrade now for more." : "."}
+          </p>
+          {next && (
+            <Button className="mt-3" onClick={() => setUpsell(true)}>
+              Upgrade to {next.label} — {next.monthlyUpdates} updates / month
+            </Button>
           )}
         </div>
       ) : mode === null ? (
