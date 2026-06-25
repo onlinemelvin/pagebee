@@ -13,10 +13,13 @@ import { nextTier } from "@/lib/plans";
 export function ClientWebsiteChanges({
   quota,
   planName,
+  actions,
   bare = false,
 }: {
   quota: { allowance: number; used: number; remaining: number };
   planName: string;
+  /** The action buttons (Preview / Request edits, Regenerate) — shown beneath the quota sentence. */
+  actions?: React.ReactNode;
   /** Render as a section inside another card (no own card chrome) — for the website top card. */
   bare?: boolean;
 }) {
@@ -41,6 +44,8 @@ export function ClientWebsiteChanges({
           <strong>Regenerate</strong>.
         </p>
       </div>
+
+      {actions && <div className="mt-4 flex flex-wrap items-center gap-2">{actions}</div>}
 
       {out && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
