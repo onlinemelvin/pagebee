@@ -8,6 +8,8 @@ import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateButton } from "@/components/client/RegenerateButton";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
+import { SubdomainChooser } from "@/components/client/SubdomainChooser";
+import { planForFlag } from "@/lib/plans";
 import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
 import { PreviewCover } from "@/components/client/PreviewCover";
 import { extractAccentColor } from "@/lib/site/accent";
@@ -230,6 +232,17 @@ export default async function ClientWebsitePage() {
       {/* ───────────────── TOOLS: only for a settled site the owner manages ───────────────── */}
       {showTools && (
         <>
+          {/* Your web address — choose your subdomain, with a custom-domain upsell. */}
+          <SubdomainChooser
+            customDomain={ws.caps.customDomain}
+            domainState={domainState}
+            testModeActive={ws.testMode}
+            upsellPlan={(() => {
+              const p = planForFlag("customDomain");
+              return p ? { name: p.name, label: p.label } : undefined;
+            })()}
+          />
+
           {/* Live sites change through the quota-aware update/regenerate surface; previews regenerate
               straight from the card button above. */}
           {isPublished && (

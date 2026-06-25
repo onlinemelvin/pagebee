@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import type { PlanName } from "@prisma/client";
 import { planByName, planRank, topPlan } from "@/lib/plans";
 import { listSiteBlocks, type SiteBlock } from "@/lib/site/tier-view";
+import { slugify } from "@/lib/slug";
 import { writeAudit } from "@/lib/modules/audit";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 import { emit } from "@/lib/events";
@@ -1278,6 +1279,51 @@ export async function getPreviewPlanOverride(
   if (!selected) return undefined;
   const showcase = sub ? planRank(selected.name) > planRank(sub.plan.name) : true;
   return { flags: selected.featureFlags as Record<string, unknown>, showcase };
+}
+
+// ── Web address (subdomain) ──────────────────────────────────────────────────────────────────────
+
+// Subdomains that collide with platform hosts or would be confusing — never assignable to a tenant.
+const RESERVED_SUBDOMAINS = new Set([
+  "www", "app", "api", "admin", "preview", "mail", "email", "blog", "help", "support",
+  "status", "cdn", "static", "assets", "dashboard", "account", "billing", "login", "register",
+  "pagebee", "go", "test", "dev", "staging",
+]);
+
+export function rootDomain(): string {
+  return process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
+}
+
+/** The client's current web address (subdomain) + the platform root domain. */
+export async function getWebsiteAddress(clientId: string): Promise<{ subdomain: string | null; rootDomain: string }> {
+  const w = await prisma.website.findFirst({ where: { clientId }, select: { subdomain: true } });
+  return { subdomain: w?.subdomain ?? null, rootDomain: rootDomain() };
+}
+
+/** Whether `raw` (slugified) is a valid, free subdomain for this client. */
+export async function checkSubdomain(
+  clientId: string,
+  raw: string,
+): Promise<{ subdomain: string; available: boolean; reason?: "too_short" | "reserved" | "taken" }> {
+  const subdomain = slugify(raw);
+  if (subdomain.length < 3) return { subdomain, available: false, reason: "too_short" };
+  if (RESERVED_SUBDOMAINS.has(subdomain)) return { subdomain, available: false, reason: "reserved" };
+  const taken = await prisma.website.findFirst({
+    where: { subdomain, clientId: { not: clientId } },
+    select: { id: true },
+  });
+  return { subdomain, available: !taken, reason: taken ? "taken" : undefined };
+}
+
+/** Set the client's subdomain (validated + availability-checked). Throws the reason on failure. */
+export async function setSubdomain(clientId: string, raw: string): Promise<{ subdomain: string }> {
+  const check = await checkSubdomain(clientId, raw);
+  if (!check.available) throw new Error(check.reason ?? "taken");
+  const w = await prisma.website.findFirst({ where: { clientId }, select: { id: true } });
+  if (!w) throw new Error("no_website");
+  await prisma.website.update({ where: { id: w.id }, data: { subdomain: check.subdomain } });
+  await writeAudit({ action: "website.subdomain_changed", entityType: "Website", entityId: w.id, clientId, metadata: { subdomain: check.subdomain } });
+  return { subdomain: check.subdomain };
 }
 
 /** The site's content blocks (parsed from the latest generated HTML) + the client's current view

@@ -21,16 +21,19 @@ export function CustomDomainPanel({
   initial,
   testModeActive = false,
   bare = false,
+  initialBuyKeyword,
 }: {
   initial: DomainState | null;
   /** Global Test Mode is on — domain purchases are simulated (toggle lives in the top nav). */
   testModeActive?: boolean;
   /** Render without the outer card chrome + heading — for embedding inside a modal (DomainCard). */
   bare?: boolean;
+  /** When set (the subdomain upsell), open straight into the "buy a domain" flow seeded with this name. */
+  initialBuyKeyword?: string;
 }) {
   const router = useRouter();
   const [state, setState] = React.useState<DomainState | null>(initial);
-  const [mode, setMode] = React.useState<"choose" | "connect" | "buy">("choose");
+  const [mode, setMode] = React.useState<"choose" | "connect" | "buy">(initialBuyKeyword ? "buy" : "choose");
   const [error, setError] = React.useState<string | null>(null);
   const status = state?.status ?? null;
   const isPurchase = state?.hosts?.find((h) => h.isPrimary)?.source === "purchase";
@@ -112,7 +115,7 @@ export function CustomDomainPanel({
       )}
 
       {!status && mode === "connect" && <ConnectForm onBack={() => setMode("choose")} onDone={setState} />}
-      {!status && mode === "buy" && <BuyForm onBack={() => setMode("choose")} onDone={setState} />}
+      {!status && mode === "buy" && <BuyForm onBack={() => setMode("choose")} onDone={setState} initialKeyword={initialBuyKeyword} />}
 
       {/* ── Connect path: awaiting admin approval ── */}
       {status === "requested" && (
@@ -327,13 +330,13 @@ function ConnectVerifying({
 }
 
 // ── Buy: search (AI + manual), price, purchase ───────────────────────────────
-function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainState | null) => void }) {
+function BuyForm({ onBack, onDone, initialKeyword }: { onBack: () => void; onDone: (s: DomainState | null) => void; initialKeyword?: string }) {
   const router = useRouter();
   const [tlds, setTlds] = React.useState<string[]>(["com"]);
-  const [keyword, setKeyword] = React.useState("");
+  const [keyword, setKeyword] = React.useState(initialKeyword ?? "");
   const [suggesting, setSuggesting] = React.useState(false);
   const [suggestions, setSuggestions] = React.useState<DomainSuggestion[] | null>(null);
-  const [manual, setManual] = React.useState("");
+  const [manual, setManual] = React.useState(initialKeyword ? `${initialKeyword}.com` : "");
   const [checking, setChecking] = React.useState(false);
   const [lookup, setLookup] = React.useState<DomainLookup | null>(null);
   const [buying, setBuying] = React.useState<string | null>(null);
@@ -399,6 +402,16 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
       setBuying(null);
     }
   }
+
+  // Subdomain upsell: proactively check "<name>.com" the moment we open seeded.
+  const autoChecked = React.useRef(false);
+  React.useEffect(() => {
+    if (initialKeyword && !autoChecked.current) {
+      autoChecked.current = true;
+      void check();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKeyword]);
 
   return (
     <div className="mt-5">
