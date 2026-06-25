@@ -187,7 +187,7 @@ export default async function ClientWebsitePage() {
               {/* View & comment on the live site to request a change (no pending update in flight). */}
               {!viewable && isOwner && (
                 <div className="mt-3">
-                  <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                  <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
                     <Eye size={16} /> Preview / Request edits
                   </a>
                 </div>
