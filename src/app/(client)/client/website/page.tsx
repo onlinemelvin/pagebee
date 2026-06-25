@@ -208,9 +208,9 @@ export default async function ClientWebsitePage() {
               </div>
             </div>
 
-            {/* RIGHT — make changes, alongside the live site */}
+            {/* RIGHT — make changes, sharing the card width with the live site */}
             {isOwner && (
-              <div className="mt-5 border-t border-stone-100 pt-5 lg:mt-0 lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+              <div className="mt-5 border-t border-stone-100 pt-5 lg:mt-0 lg:flex-1 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                 <ClientWebsiteChanges
                   quota={ws.quota}
                   planName={ws.planName}
