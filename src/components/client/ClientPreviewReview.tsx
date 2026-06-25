@@ -13,6 +13,8 @@ const ERR: Record<string, string> = {
   no_content: "Pin a change on the page or add a comment before sending.",
   no_revisions_left: "You've used your free revision.",
   already_live: "This site is already live.",
+  out_of_updates: "You're out of website updates this month.",
+  no_live_site: "Your site isn't live yet.",
 };
 
 /**
@@ -27,15 +29,21 @@ export function ClientPreviewReview({
   revisionsLeft,
   planName,
   reviewing = false,
+  mode = "preview",
 }: {
   canComment: boolean;
+  /** Edits left this cycle — pre-launch free revisions in "preview" mode, monthly updates in "live". */
   revisionsLeft: number;
   /** Current plan — drives the "out of edits" upsell to the next tier. */
   planName: string;
   /** A revision is already in our review queue — show the existing preview, locked, with a notice. */
   reviewing?: boolean;
+  /** "preview" = reviewing an unlaunched/pending preview (approve + free revisions). "live" = annotate
+   *  the published site to request a change, which consumes one monthly update (no approve step). */
+  mode?: "preview" | "live";
 }) {
   const router = useRouter();
+  const isLive = mode === "live";
   const [busy, setBusy] = React.useState(false);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [upsell, setUpsell] = React.useState(false);
@@ -46,9 +54,15 @@ export function ClientPreviewReview({
   // already pending when the page loaded.
   const sent = justSent || reviewing;
 
-  // No website edits left this cycle: don't invite markup, hide "Send my changes", upsell instead.
+  // Out of edits this cycle: don't invite markup, hide "Send my changes", upsell instead.
   const outOfEdits = !sent && revisionsLeft <= 0;
   const next = nextTier(planName);
+  // Live mode is bounded by the monthly update quota → tell them the reset date.
+  const now = new Date();
+  const resetLabel = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+  });
 
   async function post(path: string, body?: unknown): Promise<boolean> {
     setBusy(true);
@@ -75,7 +89,10 @@ export function ClientPreviewReview({
   async function sendChanges(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const note = String(new FormData(e.currentTarget).get("note") ?? "");
-    const ok = await post("/api/v1/client/preview/request-revision", { note });
+    // Live site → request a change against the monthly update quota (bundles all pins into 1 update).
+    // Unlaunched/pending preview → a free revision.
+    const path = isLive ? "/api/v1/client/website/update" : "/api/v1/client/preview/request-revision";
+    const ok = await post(path, { note });
     if (ok) {
       setModalOpen(false);
       setJustSent(true); // lock the footer until our team re-releases an updated preview
@@ -133,7 +150,7 @@ export function ClientPreviewReview({
 
   const footerEnd = sent ? (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-900 px-3 py-1.5 text-xs font-semibold text-amber-300">
-      ✓ Your comments are received — our team is reviewing (~48h)
+      ✓ Your {isLive ? "change request is" : "comments are"} received — our team is reviewing (~48h)
     </span>
   ) : (
     <div className="flex flex-wrap items-center gap-2">
@@ -144,7 +161,7 @@ export function ClientPreviewReview({
             onClick={() => setUpsell(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-stone-700"
           >
-            ✦ Upgrade to {next.label} for more edits
+            ✦ Upgrade to {next.label} for more
           </button>
         )
       ) : (
@@ -156,27 +173,36 @@ export function ClientPreviewReview({
           disabled={busy}
           className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-900 hover:bg-white disabled:opacity-50"
         >
-          Send my changes
+          {isLive ? "Request these changes" : "Send my changes"}
         </button>
       )}
-      <button
-        onClick={approve}
-        disabled={busy}
-        className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
-      >
-        {busy ? "Working…" : "Approve & launch"}
-      </button>
+      {/* A live site has no "approve" — changes go to the team as an update. */}
+      {!isLive && (
+        <button
+          onClick={approve}
+          disabled={busy}
+          className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-stone-700 disabled:opacity-50"
+        >
+          {busy ? "Working…" : "Approve & launch"}
+        </button>
+      )}
     </div>
   );
 
   // What the yellow footer says when comment mode is off. Out of edits → reflect that and point
   // to the upsell / reset instead of inviting markup.
   const bannerMessage = sent
-    ? "Your review comments are received — our team is reviewing them (about a 48-hour turnaround). You're viewing your current preview in the meantime."
+    ? isLive
+      ? "Your change request is with our team — they'll review and publish it to your live site shortly. You're viewing your live site in the meantime."
+      : "Your review comments are received — our team is reviewing them (about a 48-hour turnaround). You're viewing your current preview in the meantime."
     : outOfEdits
-      ? next
-        ? `This site isn't live yet. You've used all your website edits — upgrade to ${next.label} for more, or wait for your monthly reset. Approve & launch whenever you're ready.`
-        : "This site isn't live yet. You've used all your website edits this cycle — they reset next month. Approve & launch whenever you're ready."
+      ? isLive
+        ? next
+          ? `You're out of website updates this month — they reset on ${resetLabel}, or upgrade to ${next.label} for more.`
+          : `You're out of website updates this month — they reset on ${resetLabel}.`
+        : next
+          ? `This site isn't live yet. You've used all your website edits — upgrade to ${next.label} for more, or wait for your monthly reset. Approve & launch whenever you're ready.`
+          : "This site isn't live yet. You've used all your website edits this cycle — they reset next month. Approve & launch whenever you're ready."
       : undefined;
 
   return (
@@ -211,10 +237,10 @@ export function ClientPreviewReview({
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <h2 className="font-display text-xl text-stone-900">Send your changes</h2>
+            <h2 className="font-display text-xl text-stone-900">{isLive ? "Request these changes" : "Send your changes"}</h2>
             <p className="mt-1 text-sm text-stone-600">
               Any changes you pinned on the page are included. Add additional comments below if
-              you&apos;d like (optional).
+              you&apos;d like (optional).{isLive ? " All of it counts as one monthly update." : ""}
             </p>
             <form onSubmit={sendChanges} className="mt-4">
               <Textarea name="note" rows={4} placeholder="Additional comments (optional)…" autoFocus />

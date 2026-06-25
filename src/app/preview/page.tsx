@@ -15,13 +15,6 @@ export default async function PreviewPage() {
   const ws = await getClientWorkspace();
   if (!ws) redirect("/login");
 
-  // Already live → send to the real site.
-  if (ws.preview.live && ws.preview.url) redirect(ws.preview.url);
-  // Nothing has been released yet (still generating, never reviewed) → back to the dashboard's
-  // "we're setting up your website" holding state. Once any version is released the preview stays
-  // viewable — even while a newer revision is being reviewed.
-  if (!ws.preview.viewable && !ws.preview.awaitingPayment) redirect("/client/website");
-
   if (ws.preview.awaitingPayment) {
     return (
       <div className="grid min-h-screen place-items-center bg-stone-50 px-4">
@@ -46,12 +39,32 @@ export default async function PreviewPage() {
     );
   }
 
-  return (
-    <ClientPreviewReview
-      canComment={ws.preview.canComment}
-      revisionsLeft={ws.preview.revisionsLeft}
-      planName={ws.planName}
-      reviewing={ws.preview.reviewing}
-    />
-  );
+  // A pending update or pre-launch preview is in review → approve + free revisions.
+  if (ws.preview.viewable) {
+    return (
+      <ClientPreviewReview
+        mode="preview"
+        canComment={ws.preview.canComment}
+        revisionsLeft={ws.preview.revisionsLeft}
+        planName={ws.planName}
+        reviewing={ws.preview.reviewing}
+      />
+    );
+  }
+
+  // Live site, nothing pending → annotate the live site to request a change (consumes a monthly update).
+  if (ws.preview.live) {
+    return (
+      <ClientPreviewReview
+        mode="live"
+        canComment
+        revisionsLeft={ws.quota.remaining}
+        planName={ws.planName}
+        reviewing={ws.preview.reviewing}
+      />
+    );
+  }
+
+  // Nothing released yet (still generating) → back to the dashboard holding state.
+  redirect("/client/website");
 }

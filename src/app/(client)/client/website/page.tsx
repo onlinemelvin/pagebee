@@ -12,6 +12,8 @@ import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
 import { PreviewCover } from "@/components/client/PreviewCover";
 import { extractAccentColor } from "@/lib/site/accent";
 import { LogoMark } from "@/components/brand/Logo";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +92,7 @@ export default async function ClientWebsitePage() {
                 and your features turn on right away.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <a href="/client/launch" className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700">
+                <a href="/client/launch" className={cn(buttonVariants({ variant: "dark", size: "sm" }))}>
                   <CreditCard size={16} /> Continue to launch
                 </a>
                 <a href="/preview" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 hover:underline">
@@ -139,7 +141,7 @@ export default async function ClientWebsitePage() {
                 </p>
               )}
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <a href="/preview" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-300">
+                <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
                   <Eye size={16} /> View your preview
                 </a>
                 {ws.preview.ready && isOwner && <ApproveLaunchButton isUpdate={false} />}
@@ -182,12 +184,21 @@ export default async function ClientWebsitePage() {
                 </a>
               )}
 
+              {/* View & comment on the live site to request a change (no pending update in flight). */}
+              {!viewable && isOwner && (
+                <div className="mt-3">
+                  <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                    <Eye size={16} /> View &amp; comment on your site
+                  </a>
+                </div>
+              )}
+
               {/* Pending update to the live site */}
               {viewable && (
                 <div className="mt-4 border-t border-stone-100 pt-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-600">Changes ready to review</p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <a href="/preview" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-300">
+                    <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "primary", size: "sm" }))}>
                       <Eye size={16} /> View new preview
                     </a>
                     {ws.preview.ready && isOwner && <ApproveLaunchButton isUpdate />}
