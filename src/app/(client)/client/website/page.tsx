@@ -8,8 +8,6 @@ import { WebsiteIntakeForm } from "@/components/client/WebsiteIntakeForm";
 import { RegenerateButton } from "@/components/client/RegenerateButton";
 import { ClientWebsiteChanges } from "@/components/client/ClientWebsiteChanges";
 import { FeatureCards } from "@/components/client/FeatureCards";
-import { SubdomainChooser } from "@/components/client/SubdomainChooser";
-import { planForFlag } from "@/lib/plans";
 import { ApproveLaunchButton } from "@/components/client/ApproveLaunchButton";
 import { PreviewCover } from "@/components/client/PreviewCover";
 import { extractAccentColor } from "@/lib/site/accent";
@@ -42,7 +40,11 @@ export default async function ClientWebsitePage() {
 
   const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
   const proto = root.includes("localhost") ? "http" : "https";
-  const liveUrl = website?.subdomain ? `${proto}://${website.subdomain}.${root}` : null;
+  const subUrl = website?.subdomain ? `${proto}://${website.subdomain}.${root}` : null;
+  // When a custom domain is connected/live, that's the address we surface everywhere (cover, links).
+  const customHost = domainState?.status === "active" ? (domainState.domain ?? null) : null;
+  const liveUrl = customHost ? `https://${customHost}` : subUrl;
+  const addressHost = customHost ?? (website?.subdomain ? `${website.subdomain}.${root}` : null);
   const isPublished = website?.status === "published";
 
   const viewable = ws.preview.viewable;
@@ -130,6 +132,12 @@ export default async function ClientWebsitePage() {
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Preview ready</span>
               {copy?.heroHeadline && <p className="mt-2 font-display text-xl text-stone-900">{copy.heroHeadline}</p>}
               <p className="mt-1 text-sm text-stone-500">Review your free preview, then approve to go live. You only pay the setup fee + first month when you launch.</p>
+              {addressHost && (
+                <p className="mt-2 text-xs text-stone-400">
+                  Your address: <span className="font-medium text-stone-600">{customHost ?? addressHost}</span>
+                  {customHost && <span className="ml-1.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">custom domain</span>}
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <a href="/preview" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-300">
                   <Eye size={16} /> View your preview
@@ -195,6 +203,18 @@ export default async function ClientWebsitePage() {
               )}
             </div>
           </div>
+
+          {/* Make changes — folded into the top card, alongside the live site. */}
+          {isOwner && (
+            <ClientWebsiteChanges
+              quota={ws.quota}
+              planName={ws.planName}
+              maxPages={ws.caps.maxPages}
+              canBook={ws.caps.booking && ws.choices.booking === true}
+              canUseForms={ws.caps.forms}
+              bare
+            />
+          )}
         </div>
       )}
 
@@ -231,37 +251,12 @@ export default async function ClientWebsitePage() {
 
       {/* ───────────────── TOOLS: only for a settled site the owner manages ───────────────── */}
       {showTools && (
-        <>
-          {/* Your web address — choose your subdomain, with a custom-domain upsell. */}
-          <SubdomainChooser
-            customDomain={ws.caps.customDomain}
-            domainState={domainState}
-            testModeActive={ws.testMode}
-            upsellPlan={(() => {
-              const p = planForFlag("customDomain");
-              return p ? { name: p.name, label: p.label } : undefined;
-            })()}
-          />
-
-          {/* Live sites change through the quota-aware update/regenerate surface; previews regenerate
-              straight from the card button above. */}
-          {isPublished && (
-            <ClientWebsiteChanges
-              quota={ws.quota}
-              planName={ws.planName}
-              maxPages={ws.caps.maxPages}
-              canBook={ws.caps.booking && ws.choices.booking === true}
-              canUseForms={ws.caps.forms}
-            />
-          )}
-
-          {/* Add features — custom domain is the first card in the grid (opens its flows in a modal). */}
-          <FeatureCards
-            features={ws.features}
-            title="Add features"
-            prepend={ws.caps.customDomain ? <DomainCard initial={domainState} testModeActive={ws.testMode} /> : null}
-          />
-        </>
+        /* Add features — custom domain is the first card in the grid (opens its flows in a modal). */
+        <FeatureCards
+          features={ws.features}
+          title="Add features"
+          prepend={ws.caps.customDomain ? <DomainCard initial={domainState} testModeActive={ws.testMode} /> : null}
+        />
       )}
 
       {/* Staff (non-owner) — status only */}
