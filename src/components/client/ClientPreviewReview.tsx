@@ -49,6 +49,29 @@ export function ClientPreviewReview({
   const [upsell, setUpsell] = React.useState(false);
   const [justSent, setJustSent] = React.useState(false); // changes submitted this session
   const [error, setError] = React.useState<string | null>(null);
+  // Pins the client has placed, listed in the confirmation modal so they can review what's bundled.
+  const [comments, setComments] = React.useState<
+    Array<{ id: string; body: string; anchorText: string | null; pagePath: string }>
+  >([]);
+  const [loadingComments, setLoadingComments] = React.useState(false);
+
+  async function openModal() {
+    setError(null);
+    setModalOpen(true);
+    setLoadingComments(true);
+    try {
+      const res = await fetch("/api/v1/client/preview/comments");
+      const data = (await res.json().catch(() => null)) as {
+        comments?: Array<{ id: string; body: string; anchorText: string | null; pagePath: string; parentId: string | null; kind: string }>;
+      } | null;
+      // Top-level change-request pins only (skip replies/notes).
+      setComments((data?.comments ?? []).filter((c) => !c.parentId && c.kind === "CHANGE_REQUEST"));
+    } catch {
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  }
 
   // Locked whenever changes are with our team — either submitted just now, or a revision was
   // already pending when the page loaded.
@@ -166,14 +189,11 @@ export function ClientPreviewReview({
         )
       ) : (
         <button
-          onClick={() => {
-            setError(null);
-            setModalOpen(true);
-          }}
+          onClick={openModal}
           disabled={busy}
           className="rounded-lg bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-900 hover:bg-white disabled:opacity-50"
         >
-          {isLive ? "Request these changes" : "Send my changes"}
+          {isLive ? "Request changes" : "Send my changes"}
         </button>
       )}
       {/* A live site has no "approve" — changes go to the team as an update. */}
@@ -237,11 +257,33 @@ export function ClientPreviewReview({
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <h2 className="font-display text-xl text-stone-900">{isLive ? "Request these changes" : "Send your changes"}</h2>
+            <h2 className="font-display text-xl text-stone-900">{isLive ? "Request changes" : "Send your changes"}</h2>
             <p className="mt-1 text-sm text-stone-600">
-              Any changes you pinned on the page are included. Add additional comments below if
-              you&apos;d like (optional).{isLive ? " All of it counts as one monthly update." : ""}
+              {comments.length > 0
+                ? "These pinned changes are included"
+                : "Any changes you pin on the page are included"}
+              . Add additional comments below if you&apos;d like (optional).
+              {isLive ? " All of it counts as one monthly update." : ""}
             </p>
+
+            {loadingComments ? (
+              <p className="mt-3 text-sm text-stone-400">Loading your pins…</p>
+            ) : comments.length > 0 ? (
+              <ul className="mt-3 max-h-44 space-y-2 overflow-y-auto rounded-lg border border-stone-200 bg-stone-50 p-3">
+                {comments.map((c, i) => (
+                  <li key={c.id} className="text-sm text-stone-700">
+                    <span className="mr-1.5 font-semibold text-stone-900">{i + 1}.</span>
+                    {c.anchorText && <span className="text-stone-400">near “{c.anchorText}” — </span>}
+                    {c.body}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm text-stone-400">
+                You haven&apos;t pinned any changes yet — add a comment below, or close this and pin them on the page.
+              </p>
+            )}
+
             <form onSubmit={sendChanges} className="mt-4">
               <Textarea name="note" rows={4} placeholder="Additional comments (optional)…" autoFocus />
               {error && <p className="mt-2 text-sm font-medium text-red-600">{error}</p>}

@@ -188,7 +188,7 @@ export default async function ClientWebsitePage() {
               {!viewable && isOwner && (
                 <div className="mt-3">
                   <a href="/preview" target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-                    <Eye size={16} /> View &amp; comment on your site
+                    <Eye size={16} /> Preview / Request edits
                   </a>
                 </div>
               )}
