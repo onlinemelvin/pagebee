@@ -5,6 +5,7 @@ import { startGeneration, claimAndRun, approveAndPublish } from "@/lib/modules/w
 import type { GenerationForm } from "@/lib/modules/website";
 import { compileChangeRequest, markResolved } from "@/lib/modules/review";
 import { setupFeeRequired } from "@/lib/auth/policy";
+import { getUpdateQuota } from "@/lib/modules/subscription";
 import { planRank } from "@/lib/plans";
 
 export class PreviewError extends Error {
@@ -44,6 +45,19 @@ export async function getReviewableVersionId(clientId: string): Promise<string |
 export async function getClientReviewContext(clientId: string) {
   const preview = await getClientPreview(clientId);
   if (!preview?.websiteId) return { canComment: false, versionId: null as string | null, revisionsLeft: 0 };
+
+  // Live site: pins annotate the PUBLISHED version (what requestWebsiteUpdate → compileChangeRequest
+  // reads) and are bounded by the monthly update quota rather than free revisions.
+  if (preview.status === "LIVE") {
+    const website = await prisma.website.findFirst({
+      where: { clientId, status: "published", publishedVersionId: { not: null } },
+      select: { publishedVersionId: true },
+    });
+    if (!website?.publishedVersionId) return { canComment: false, versionId: null as string | null, revisionsLeft: 0 };
+    const quota = await getUpdateQuota(clientId);
+    return { canComment: quota.remaining > 0, versionId: website.publishedVersionId, revisionsLeft: quota.remaining };
+  }
+
   const revisionsLeft = Math.max(0, preview.maxFreeRevisions - preview.revisionCount);
   const versionId = REVIEWABLE.includes(preview.status) ? await getReviewableVersionId(clientId) : null;
   return { canComment: revisionsLeft > 0 && !!versionId, versionId, revisionsLeft };
