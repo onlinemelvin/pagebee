@@ -15,6 +15,7 @@ Start with these — they are the source of truth for design decisions:
 | [docs/API.md](docs/API.md) | Versioned API contracts (public/client/admin/internal) |
 | [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) | Plans, flags, plan→API allow-list, discount rules |
 | [docs/ONBOARDING.md](docs/ONBOARDING.md) | **Official acquisition model**: Preview-before-you-pay, pricing, sales flow, monetization |
+| [docs/DOMAINS.md](docs/DOMAINS.md) | Domain registration, the registrar abstraction (swap providers via one adapter), scaling risks + migration triggers |
 | [prisma/schema.prisma](prisma/schema.prisma) | Full data model (~55 models) |
 
 **Project state:** design phase. Schema + docs exist; no application code, no

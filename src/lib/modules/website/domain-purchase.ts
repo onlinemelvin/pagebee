@@ -6,9 +6,12 @@ import { emit } from "@/lib/events";
 import { CHEAP_MODEL } from "@/lib/ai/models";
 import { checkCustomDomain, planHosts } from "@/lib/site/domain";
 import { getRegistrarGuide } from "@/lib/site/registrar-instructions";
-import { registrarConfigured, lookup as registrarLookup, getPrice, buyDomain, RegistrarError } from "@/lib/vercel/registrar";
+import { getRegistrar, RegistrarError } from "@/lib/registrar";
 import { vercelConfigured, addProjectDomain } from "@/lib/vercel/domains";
 import { LIVE_STATES, getDomainState, type DomainState } from "./domain";
+
+// The active registrar (Vercel today; swap via REGISTRAR_PROVIDER — see docs/DOMAINS.md).
+const registrar = getRegistrar();
 
 /**
  * "Buy a brand new domain" path. The client picks/enters a domain (with AI suggestions); we check
@@ -56,9 +59,9 @@ export type LookupResult =
 export async function lookupDomain(rawDomain: string): Promise<LookupResult> {
   const check = checkCustomDomain(rawDomain, ROOT_DOMAIN());
   if (!check.ok) return { ok: false, reason: check.reason };
-  if (!registrarConfigured()) return { ok: false, reason: "registrar_unavailable" };
+  if (!registrar.configured()) return { ok: false, reason: "registrar_unavailable" };
   try {
-    const { available, price } = await registrarLookup(check.domain);
+    const { available, price } = await registrar.lookup(check.domain);
     const priceCents = price?.priceCents ?? null;
     return {
       ok: true,
@@ -82,7 +85,7 @@ export async function suggestDomainNames(
   clientId: string,
   opts: { tlds?: string[]; keyword?: string } = {},
 ): Promise<DomainSuggestion[]> {
-  if (!registrarConfigured()) return [];
+  if (!registrar.configured()) return [];
   const client = await prisma.client.findUnique({
     where: { id: clientId },
     select: { businessName: true, businessType: true },
@@ -94,7 +97,7 @@ export async function suggestDomainNames(
   const out: DomainSuggestion[] = [];
   for (const domain of ideas.slice(0, 12)) {
     try {
-      const { available, price } = await registrarLookup(domain);
+      const { available, price } = await registrar.lookup(domain);
       if (!available) continue;
       const priceCents = price?.priceCents ?? null;
       // Only surface names within the auto-buy cap — the end user never sees price or "needs review".
@@ -250,10 +253,10 @@ export async function executePurchase(websiteId: string, reviewerId: string | nu
   await prisma.websiteDomain.updateMany({ where: { websiteId, source: "purchase" }, data: { status: "purchasing", error: null } });
 
   try {
-    if (!registrarConfigured()) throw new RegistrarError(503, "registrar_unavailable", "Domain registrar is not configured");
+    if (!registrar.configured()) throw new RegistrarError(503, "registrar_unavailable", "Domain registrar is not configured");
     // Re-quote and buy with that exact price (Vercel rejects expected_price_mismatch if it moved).
-    const price = await getPrice(primary.host);
-    await buyDomain(primary.host, { expectedPriceCents: price.priceCents });
+    const price = await registrar.getPrice(primary.host);
+    await registrar.buyDomain(primary.host, { expectedPriceCents: price.priceCents });
 
     // Attach the registered domain (apex + www redirect) to the project. Vercel manages DNS for
     // domains it registers, so this resolves on its own → verifying → active via the cron sweep.
