@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AnnotatablePreview } from "@/components/review/AnnotatablePreview";
+import type { ReviewCommentDTO } from "@/lib/modules/review";
 import { UpgradeModal } from "./UpgradeModal";
 import { nextTier } from "@/lib/plans";
 
@@ -49,28 +50,24 @@ export function ClientPreviewReview({
   const [upsell, setUpsell] = React.useState(false);
   const [justSent, setJustSent] = React.useState(false); // changes submitted this session
   const [error, setError] = React.useState<string | null>(null);
-  // Pins the client has placed, listed in the confirmation modal so they can review what's bundled.
+  // Pins the client has placed, kept in sync by AnnotatablePreview (no refetch) and listed in the
+  // confirmation modal so they can review exactly what's bundled before submitting.
   const [comments, setComments] = React.useState<
     Array<{ id: string; body: string; anchorText: string | null; pagePath: string }>
   >([]);
-  const [loadingComments, setLoadingComments] = React.useState(false);
 
-  async function openModal() {
+  const handleComments = React.useCallback((list: ReviewCommentDTO[]) => {
+    // Top-level change-request pins only (skip replies/notes).
+    setComments(
+      list
+        .filter((c) => !c.parentId && c.kind === "CHANGE_REQUEST")
+        .map((c) => ({ id: c.id, body: c.body, anchorText: c.anchorText, pagePath: c.pagePath })),
+    );
+  }, []);
+
+  function openModal() {
     setError(null);
     setModalOpen(true);
-    setLoadingComments(true);
-    try {
-      const res = await fetch("/api/v1/client/preview/comments");
-      const data = (await res.json().catch(() => null)) as {
-        comments?: Array<{ id: string; body: string; anchorText: string | null; pagePath: string; parentId: string | null; kind: string }>;
-      } | null;
-      // Top-level change-request pins only (skip replies/notes).
-      setComments((data?.comments ?? []).filter((c) => !c.parentId && c.kind === "CHANGE_REQUEST"));
-    } catch {
-      setComments([]);
-    } finally {
-      setLoadingComments(false);
-    }
   }
 
   // Locked whenever changes are with our team — either submitted just now, or a revision was
@@ -231,6 +228,7 @@ export function ClientPreviewReview({
         frameSrc="/preview/frame?annotate=1"
         apiBase="/api/v1/client/preview"
         initialComments={[]}
+        onComments={handleComments}
         canComment={canComment && !outOfEdits}
         canResolve={false}
         deletePolicy="own"
@@ -266,9 +264,7 @@ export function ClientPreviewReview({
               {isLive ? " All of it counts as one monthly update." : ""}
             </p>
 
-            {loadingComments ? (
-              <p className="mt-3 text-sm text-stone-400">Loading your pins…</p>
-            ) : comments.length > 0 ? (
+            {comments.length > 0 ? (
               <ul className="mt-3 max-h-44 space-y-2 overflow-y-auto rounded-lg border border-stone-200 bg-stone-50 p-3">
                 {comments.map((c, i) => (
                   <li key={c.id} className="text-sm text-stone-700">

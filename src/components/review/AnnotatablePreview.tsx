@@ -16,6 +16,8 @@ export interface AnnotatablePreviewProps {
   /** REST base for comments: `${apiBase}/comments` (+ `/[id]`). */
   apiBase: string;
   initialComments: ReviewCommentDTO[];
+  /** Called whenever the comment list changes (load/add/delete) so a parent can read pins without refetching. */
+  onComments?: (comments: ReviewCommentDTO[]) => void;
   /** Whether the viewer is allowed to comment at all (gates the toggle). */
   canComment: boolean;
   canResolve: boolean;
@@ -46,6 +48,7 @@ export function AnnotatablePreview({
   frameSrc,
   apiBase,
   initialComments,
+  onComments,
   canComment,
   canResolve,
   deletePolicy,
@@ -64,6 +67,8 @@ export function AnnotatablePreview({
   const router = useRouter();
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const [comments, setComments] = React.useState<ReviewCommentDTO[]>(initialComments);
+  // Surface the live list to a parent (e.g. the "Request changes" modal) so it never has to refetch.
+  React.useEffect(() => onComments?.(comments), [comments, onComments]);
   const [page, setPage] = React.useState("/");
   const [rects, setRects] = React.useState<Record<string, Rect>>({});
   const [commenting, setCommenting] = React.useState(canComment && defaultCommenting);
