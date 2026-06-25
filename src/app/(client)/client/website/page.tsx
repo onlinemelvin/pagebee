@@ -184,11 +184,11 @@ export default async function ClientWebsitePage() {
                   </a>
                 )}
                 {isOwner && !viewable && (
-                  <span className="text-sm text-stone-500">
-                    <strong className="font-semibold text-stone-700">{ws.quota.used} of {ws.quota.allowance}</strong> update
-                    {ws.quota.allowance === 1 ? "" : "s"} used this month. Pin small tweaks with{" "}
-                    <strong className="font-semibold text-stone-700">Preview / Request edits</strong>, or rebuild from scratch with{" "}
-                    <strong className="font-semibold text-stone-700">Regenerate</strong>.
+                  <span className="text-xs leading-relaxed text-stone-400 sm:border-l sm:border-stone-200 sm:pl-3">
+                    <span className="font-medium text-stone-500">{ws.quota.used} of {ws.quota.allowance}</span> update
+                    {ws.quota.allowance === 1 ? "" : "s"} used this month — pin small tweaks with{" "}
+                    <span className="font-medium text-stone-500">Preview / Request edits</span>, or rebuild from scratch with{" "}
+                    <span className="font-medium text-stone-500">Regenerate</span>.
                   </span>
                 )}
               </div>
