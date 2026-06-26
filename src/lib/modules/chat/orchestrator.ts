@@ -132,3 +132,42 @@ export async function chatTurn(clientId: string, history: ChatHistoryMsg[], user
 
   return { reply, intent, escalationReason, suggestCall: intent === "escalate" && open };
 }
+
+/**
+ * A light "holding" reply for a conversation that's ALREADY escalated (a teammate is being looped
+ * in). It keeps the visitor company — acknowledges thanks, answers small talk ("are you there?") or
+ * a simple fact — but deliberately does NOT try to answer the question the human is handling, make
+ * promises, or re-escalate. Returns null (stay silent) when off-plan, over the allowance, or on error.
+ */
+export async function holdingReply(clientId: string, history: ChatHistoryMsg[], userMessage: string): Promise<string | null> {
+  const flags = await planFlags(clientId);
+  if (!flags.aiAssistant || !process.env.ANTHROPIC_API_KEY) return null;
+  try {
+    await requireWithinLimit(clientId, "aiReplies");
+  } catch {
+    return null;
+  }
+  const facts = await loadBusinessFacts(clientId);
+  const system =
+    `You are the website assistant for ${facts.businessName}. A teammate has ALREADY been notified about this ` +
+    "visitor's request and will follow up personally — you're just keeping them company while they wait. " +
+    "Reply in ONE short, warm sentence. You may acknowledge a thanks, answer small talk like \"are you there?\", " +
+    "or answer a simple question directly from the approved facts. Do NOT try to answer the question the team is " +
+    "handling, do NOT make promises or commitments, and if they ask something you can't answer from the facts, " +
+    "gently reassure them the team will get back to them shortly.\n\nApproved facts:\n" +
+    facts.facts.join("\n");
+  const anthropic = new Anthropic();
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 200,
+      system,
+      messages: [...history.slice(-8), { role: "user", content: userMessage }],
+    });
+    const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+    await recordUsage(clientId, "aiReplies").catch(() => {});
+    return text || null;
+  } catch {
+    return null;
+  }
+}

@@ -6,7 +6,7 @@ import { writeAudit } from "@/lib/modules/audit";
 import { sendEmail, escapeHtml } from "@/lib/modules/email";
 import { createNotification, isGroupEmailAllowed } from "@/lib/modules/notification";
 import { notifyOwnerSms } from "@/lib/modules/messaging";
-import { chatTurn, ChatError, type ChatHistoryMsg } from "./orchestrator";
+import { chatTurn, holdingReply, ChatError, type ChatHistoryMsg } from "./orchestrator";
 import { getChatConfig } from "./config";
 
 // Conversation status state machine.
@@ -125,8 +125,27 @@ export async function handleCustomerMessage(params: {
 
   if (!message) return { conversationId: conv.id, publicToken, status: conv.status, messages: out };
 
-  // 4. Route by state. A human (escalated/human) owns the thread → AI stays quiet.
-  if (conv.status === S.ESCALATED || conv.status === S.HUMAN) {
+  // 4. Route by state.
+  // The owner is live in the thread → AI stays quiet so it doesn't talk over them.
+  if (conv.status === S.HUMAN) {
+    return { conversationId: conv.id, publicToken, status: conv.status, messages: out };
+  }
+  // Escalated but no human has jumped in yet → keep the visitor company with a light holding reply
+  // (acknowledgments / small talk / simple facts) without answering the escalated question or re-escalating.
+  if (conv.status === S.ESCALATED) {
+    const history = await getHistory(conv.id);
+    let reply: string | null = null;
+    try {
+      reply = await holdingReply(clientId, history, message);
+    } catch {
+      reply = null;
+    }
+    if (reply) {
+      const aiMsg = await addMessage(conv.id, "AI", reply);
+      const aiConv = await prisma.aiConversation.findUnique({ where: { conversationId: conv.id }, select: { id: true } });
+      if (aiConv) await prisma.aiMessage.create({ data: { aiConversationId: aiConv.id, role: "assistant", content: reply } });
+      out.push(toDTO(aiMsg));
+    }
     return { conversationId: conv.id, publicToken, status: conv.status, messages: out };
   }
   if (conv.status === S.AWAITING) {
