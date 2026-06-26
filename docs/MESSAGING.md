@@ -82,6 +82,37 @@ Recipients can text **STOP** to opt out, **START** to opt back in, **HELP** for 
 > + Campaign via The Campaign Registry) or **toll-free verification** before carriers reliably
 > deliver link-bearing texts — same flavor of step as email DKIM/DMARC. Budget a few days.
 
+## AI Website Chat (HIVE — `aiAssistant`)
+
+A floating chat widget on generated sites, answered first-line by an AI that escalates to the owner.
+
+**Widget** — `src/lib/site/chat.ts` (`withChatFeed`, wired into `serve.ts`): a self-contained
+floating "Chat now" button + panel, mirroring the lead-form injection. It self-gates on
+`GET /api/v1/public/chat/config` (shows only when `aiAssistant` is on-plan AND the owner enabled it).
+Turns go to `POST /api/v1/public/chat/message`; owner/AI replies arrive via `GET /chat/poll`. Preview
+runs as a non-persisting demo. Tenant + thread isolation: the **site token** authorizes the tenant,
+a per-conversation **`publicToken`** scopes the widget to its own thread.
+
+**Orchestration** — `src/lib/modules/chat/`:
+- `chatTurn` (`orchestrator.ts`) — Haiku via **tool-use** returns a structured `{ reply, intent
+  (answer|book|escalate), escalationReason }`. Answers ONLY from approved facts (`facts.ts`, shared
+  with `sendAiReply`). Gated by `aiAssistant` + metered against `aiReplies`.
+- **Business-hours aware** (`booking/hours.ts`: `isOpenNow`/`nextResponseEta`): on escalation, during
+  hours it invites the visitor to call; after hours it gives an ETA of **next opening + 1 hour**.
+- **Escalation** (`service.ts`): flips the `Conversation` to `escalated`, records an `AiEscalation`,
+  and notifies the owner once — **bell + email + SMS** (`chat.escalated`), deep-linking
+  `/client/chats/[id]`.
+- **Timeout → lead** (`sweepChatEscalations`, run by the worker every ~60s): if the owner doesn't
+  jump in within the configurable timeout (default 5 min), the AI hands off — captures the visitor's
+  email/phone and creates a **Lead** (reusing the `lead.created` fan-out) so it lands in Inquiries.
+
+**Owner inbox** — a dedicated **Chats** nav item (`/client/chats`, governed by the `inquiries` team
+area). List + per-thread window with **manual reply** and **AI auto-compose** (`draftReply`). Config
+(on/off, greeting, timeout) lives in `ClientSetting.aiSettings.chat` (`config.ts`), edited on the
+Chats page.
+
+**State machine:** `ai` → `escalated` → `human` / `awaiting_contact` → `closed`.
+
 ## Roadmap (nothing here boxes out later work)
 
 1. **Now:** one-way owner SMS alerts (above).

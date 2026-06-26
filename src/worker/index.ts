@@ -30,6 +30,7 @@ async function main() {
   const { sweepInvoiceReminders, sweepRecurringPlans } = await import("@/lib/modules/finance");
   const { sweepScheduledCampaigns, sweepEmailReminders } = await import("@/lib/modules/email/sweep");
   const { sweepSendingDomains } = await import("@/lib/modules/email/sending-domains");
+  const { sweepChatEscalations } = await import("@/lib/modules/chat");
 
   console.log("[worker] PageBee generation worker started");
   const recovered = await requeueStaleJobs();
@@ -37,6 +38,9 @@ async function main() {
 
   let lastReminderSweep = 0;
   const REMINDER_SWEEP_MS = 10 * 60 * 1000;
+  // Chat escalations time out in minutes (default 5), so this needs a much tighter cadence.
+  let lastChatSweep = 0;
+  const CHAT_SWEEP_MS = 60 * 1000;
 
   for (;;) {
     try {
@@ -55,6 +59,13 @@ async function main() {
         if (er.setupReminders) console.log(`[worker] setup-fee reminders sent: ${er.setupReminders}`);
         const sd = await sweepSendingDomains();
         if (sd.verified) console.log(`[worker] sending domains verified: ${sd.verified}`);
+      }
+
+      // Hand off chat escalations the owner hasn't answered (every ~60s).
+      if (Date.now() - lastChatSweep > CHAT_SWEEP_MS) {
+        lastChatSweep = Date.now();
+        const cs = await sweepChatEscalations();
+        if (cs.handed) console.log(`[worker] chat escalations handed off: ${cs.handed}`);
       }
 
       const id = await claimNextQueuedJob();

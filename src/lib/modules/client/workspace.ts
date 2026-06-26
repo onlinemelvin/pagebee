@@ -128,6 +128,7 @@ const NAV_CATALOG: { key: string; label: string; href: string; tier: 1 | 2 | 3; 
   { key: "services", label: "Services", href: "/client/services", tier: 1, flag: null, needsSite: true },
   { key: "media", label: "Media", href: "/client/media", tier: 1, flag: null, needsSite: true },
   { key: "inquiries", label: "Inquiries", href: "/client/inquiries", tier: 2, flag: "contactForm" },
+  { key: "chats", label: "Chats", href: "/client/chats", tier: 3, flag: "aiAssistant" },
   { key: "customers", label: "Customers", href: "/client/customers", tier: 2, flag: null },
   { key: "appointments", label: "Appointments", href: "/client/appointments", tier: 2, flag: "booking" },
   { key: "invoices", label: "Finance", href: "/client/invoices", tier: 3, flag: "invoices" },

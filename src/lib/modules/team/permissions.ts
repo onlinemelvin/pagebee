@@ -23,7 +23,7 @@ export interface TeamArea {
 
 /** The areas an owner can delegate. Order drives the permission editor's row order. */
 export const TEAM_AREAS: TeamArea[] = [
-  { key: "inquiries", label: "Inquiries", description: "Lead inbox & replies", navKeys: ["inquiries"], flag: "contactForm" },
+  { key: "inquiries", label: "Inquiries", description: "Lead inbox, chats & replies", navKeys: ["inquiries", "chats"], flag: "contactForm" },
   { key: "customers", label: "Customers", description: "Customer records (CRM)", navKeys: ["customers"], flag: null },
   { key: "appointments", label: "Appointments", description: "Booking calendar", navKeys: ["appointments"], flag: "booking" },
   { key: "finance", label: "Finance", description: "Invoices & payments", navKeys: ["invoices"], flag: "invoices" },

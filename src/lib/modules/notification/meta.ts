@@ -59,6 +59,7 @@ export const NOTIF_META: Record<string, NotifMeta> = {
   // — Activity (no dedicated email template — built inline by subscribers) ----
   "lead.created": { icon: "Inbox", href: "/client/inquiries", title: "New inquiry received", group: "inquiries", level: "info" },
   "booking.created": { icon: "CalendarCheck", href: "/client/appointments", title: "New appointment request", group: "appointments", level: "info" },
+  "chat.escalated": { icon: "MessageSquare", href: "/client/chats", title: "A visitor needs you in chat", group: "inquiries", level: "warning" },
   "support.replied": { icon: "LifeBuoy", href: "/client?support=1", title: "Support replied to your ticket", group: null, level: "info" },
 };
 

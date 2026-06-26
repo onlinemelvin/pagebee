@@ -3,6 +3,7 @@ import type { ServeSite } from "@/lib/modules/website";
 import type { LeadFormMeta } from "@/lib/site/lead-goals";
 import { withLeadFormFeed } from "@/lib/site/lead-form";
 import { withBookingFeed, type BookingMeta } from "@/lib/site/booking";
+import { withChatFeed } from "@/lib/site/chat";
 import { withTierView } from "@/lib/site/tier-view";
 import { extractAccentColor } from "@/lib/site/accent";
 
@@ -420,6 +421,7 @@ export function serveTenant(site: ServeSite | null, req: Request, path?: string[
   const isPreview = site.kind === "preview";
   doc = withLeadFormFeed(doc, site.siteToken, site.leadForm, isPreview);
   doc = withBookingFeed(doc, site.siteToken, site.booking, isPreview);
+  doc = withChatFeed(doc, site.siteToken, isPreview); // AI chat widget (self-gates via /chat/config)
   doc = withThemeAccent(doc, site.html); // tint platform components to the site's accent
   // Tier view: hide pages/sections the view tier doesn't include (must run BEFORE the router so it
   // never routes to a removed page). No-op when nothing is hidden.

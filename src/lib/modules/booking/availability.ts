@@ -17,7 +17,7 @@ const DOW: Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const FALLBACK_TZ = "America/New_York";
 
 /** Wall-clock parts of a UTC instant as observed in `tz`. */
-function tzParts(utcMs: number, tz: string) {
+export function tzParts(utcMs: number, tz: string) {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     hour12: false,
@@ -38,7 +38,7 @@ function offsetMs(utcMs: number, tz: string): number {
 }
 
 /** UTC epoch ms for a wall-clock date/time in `tz`. Refines once to settle DST boundaries. */
-function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, tz: string): number {
+export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, tz: string): number {
   const guess = Date.UTC(y, mo - 1, d, h, mi);
   const off1 = offsetMs(guess, tz);
   const off2 = offsetMs(guess - off1, tz);
@@ -51,7 +51,7 @@ function zonedYmd(utcMs: number, tz: string): string {
   return `${p.y}-${String(p.mo).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
 }
 
-function safeTz(tz: string | undefined): string {
+export function safeTz(tz: string | undefined): string {
   if (!tz) return FALLBACK_TZ;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });

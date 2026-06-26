@@ -1641,8 +1641,24 @@ model Conversation {
   leadId     String?             @unique
   lead       Lead?               @relation(fields: [leadId], references: [id])
   channel    ConversationChannel @default(WEBSITE_CHAT)
-  status     String              @default("open") // open, escalated, closed
+  // Lifecycle: ai (AI handling) → escalated (waiting on owner) → human (owner engaged) /
+  // awaiting_contact (timed out, asking for contact) → closed.
+  status     String              @default("ai")
   subject    String?
+
+  // Web-chat session: an unguessable token the widget holds to read/post ONLY its own thread
+  // (the site token authorizes the tenant; this scopes to the single conversation).
+  publicToken String? @unique
+  // Visitor contact captured by the AI before a Lead exists (anonymous web chat).
+  visitorName  String?
+  visitorEmail String?
+  visitorPhone String?
+  // Escalation + timeout bookkeeping (drives the owner alert + the sweep, kept idempotent).
+  escalatedAt          DateTime?
+  escalationNotifiedAt DateTime?
+  lastCustomerAt       DateTime?
+  lastOwnerAt          DateTime?
+  timedOutAt           DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1652,6 +1668,7 @@ model Conversation {
 
   @@index([clientId])
   @@index([clientId, status])
+  @@index([status, escalatedAt]) // the timeout sweep scans escalated chats across tenants
   @@map("conversations")
 }
 

@@ -7,7 +7,7 @@ import {
   Search, Bell, Menu, X, LogOut, CreditCard, ChevronDown, ArrowRight, Sparkles, FlaskConical,
   LayoutDashboard, Inbox, CalendarCheck, FileText, Globe, Tag, Image as ImageIcon,
   Eye, Clock, Rocket, CheckCircle2, AlertTriangle, Receipt, CalendarClock, XCircle, PartyPopper,
-  Gauge, LifeBuoy, Settings, CheckCheck, type LucideIcon,
+  Gauge, LifeBuoy, Settings, CheckCheck, MessageSquare, type LucideIcon,
 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ interface ActionItem { title: string; desc: string; href: string; cta: string; p
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   overview: LayoutDashboard, inquiries: Inbox, appointments: CalendarCheck,
-  invoices: FileText, services: Tag, website: Globe, media: ImageIcon,
+  invoices: FileText, services: Tag, website: Globe, media: ImageIcon, chats: MessageSquare,
 };
 
 function useClickOutside<T extends HTMLElement>(onClose: () => void) {
@@ -176,7 +176,7 @@ interface Notification {
 // Lucide icon names stored on a notification → component (see notification/meta.ts).
 const NOTIF_ICONS: Record<string, LucideIcon> = {
   Bell, Eye, Clock, Rocket, CheckCircle2, AlertTriangle, Receipt, CalendarClock, XCircle,
-  Sparkles, PartyPopper, Gauge, Inbox, CalendarCheck, LifeBuoy, Globe,
+  Sparkles, PartyPopper, Gauge, Inbox, CalendarCheck, LifeBuoy, Globe, MessageSquare,
 };
 
 const LEVEL_STYLES: Record<Notification["level"], string> = {
