@@ -81,20 +81,26 @@ export async function chatTurn(clientId: string, history: ChatHistoryMsg[], user
   const open = isOpenNow(settings);
   const eta = nextResponseEta(settings);
 
-  const hoursContext = open
-    ? `The business is currently OPEN.${facts.phone ? ` If you escalate, you may invite the customer to call ${facts.phone} for a faster answer.` : ""}`
-    : `The business is currently CLOSED. If you escalate, reassure the customer the team will follow up${eta ? ` by ${eta}` : " as soon as possible"} and offer to take their email or phone.`;
+  // How the AI hands off on escalation: reassure → ask for a phone number to reach THEM → offer to
+  // call the business or wait here. Never push email (the team is auto-notified; the owner wants calls).
+  const callLine = facts.phone
+    ? ` They can also call us at ${facts.phone}, or just wait here and you'll be right back with an answer.`
+    : " They're welcome to wait here for an answer.";
+  const etaLine = open ? "shortly" : eta ? `by ${eta}` : "as soon as possible";
+  const escalationGuide =
+    `WHEN YOU ESCALATE: warmly say something like "Great question — I'll have to check with the team on that and get back to you ${etaLine}." ` +
+    `Then ask for a good phone number to reach them (an email is fine too).${callLine} ` +
+    "NEVER tell a visitor to email us or share our email address — the team is notified automatically the moment they leave a number, so steer them to call or leave a phone number.";
 
   const system =
     `You are the friendly website assistant for ${facts.businessName}${facts.businessType ? ` (${facts.businessType})` : ""}. ` +
     "Answer visitor questions helpfully and briefly (1–3 sentences), warm and professional. " +
     "Use ONLY the approved facts below — never invent prices, hours, guarantees, availability, or policies you weren't given. " +
     "The services list may be INCOMPLETE: if a visitor asks whether we do a service you don't see listed, do NOT say we don't " +
-    "offer it and NEVER refer them to another business — the owner may well do it. Instead set intent='escalate' (UNKNOWN_TO_KB) " +
-    "and reassure them you'll check with the team and get right back to them. " +
+    "offer it and NEVER refer them to another business — the owner may well do it. Instead set intent='escalate' (UNKNOWN_TO_KB). " +
     "If a visitor wants to book or schedule, set intent='book' and encourage them (a booking button will appear). " +
     "If you cannot answer from the facts, or the topic is sensitive, set intent='escalate' with the best reason and do NOT guess. " +
-    hoursContext +
+    escalationGuide +
     "\n\nApproved facts:\n" +
     facts.facts.join("\n");
 

@@ -100,10 +100,12 @@ export async function handleCustomerMessage(params: {
   const publicToken = conv.publicToken as string;
   const out: ChatMessageDTO[] = [];
 
-  // 2. Record the visitor's message (if any).
+  // 2. Record the visitor's message (if any). Echo it back (with its id) so the widget renders the
+  // server copy and the poller can dedupe — otherwise the optimistic bubble + the polled copy double up.
   if (message) {
-    await addMessage(conv.id, "CUSTOMER", message);
+    const cm = await addMessage(conv.id, "CUSTOMER", message);
     await prisma.conversation.update({ where: { id: conv.id }, data: { lastCustomerAt: new Date() } });
+    out.push(toDTO(cm));
   }
 
   // 3. Contact capture (from the timed-out handoff form, or the visitor volunteering it).

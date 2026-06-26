@@ -55,7 +55,7 @@ export function chatFeedScript(token: string, preview?: boolean): string {
     "function mount(greeting){" +
     "var root=document.createElement('div');root.className='pb-chat';" +
     "root.innerHTML='<button class=\"pb-chat-fab\" aria-label=\"Open chat\">'+" + JSON.stringify(CHAT_ICON) + "+'<span class=\"pb-chat-dot\"></span></button>'+" +
-    "'<div class=\"pb-chat-panel\" role=\"dialog\" aria-label=\"Chat\"><div class=\"pb-chat-hd\"><div><b class=\"pb-chat-title\">Chat with us</b><span>We typically reply in a few minutes</span></div><button class=\"pb-chat-x\" aria-label=\"Close\">\\u00d7</button></div><div class=\"pb-chat-body\"></div><div class=\"pb-chat-foot\"><input type=\"text\" placeholder=\"Type a message\\u2026\" aria-label=\"Message\"/><button class=\"pb-chat-send\" aria-label=\"Send\">\\u27a4</button></div></div>';" +
+    "'<div class=\"pb-chat-panel\" role=\"dialog\" aria-label=\"Chat\"><div class=\"pb-chat-hd\"><div><b class=\"pb-chat-title\">Chat with us</b><span>AI assistant \\u00b7 a real person steps in when needed</span></div><button class=\"pb-chat-x\" aria-label=\"Close\">\\u00d7</button></div><div class=\"pb-chat-body\"></div><div class=\"pb-chat-foot\"><input type=\"text\" placeholder=\"Type a message\\u2026\" aria-label=\"Message\"/><button class=\"pb-chat-send\" aria-label=\"Send\">\\u27a4</button></div></div>';" +
     "document.body.appendChild(root);" +
     "var fab=root.querySelector('.pb-chat-fab');fab.style.display='flex';" +
     "var panel=root.querySelector('.pb-chat-panel');var body=root.querySelector('.pb-chat-body');var input=root.querySelector('.pb-chat-foot input');var send=root.querySelector('.pb-chat-send');" +
@@ -73,10 +73,17 @@ export function chatFeedScript(token: string, preview?: boolean): string {
     "function handle(res){if(!res)return;if(res.conversationId&&res.conversationId!=='demo'){var s=sess();s.conversationId=res.conversationId;s.publicToken=res.publicToken;save(s);}" +
     "addMsgs(res.messages);if(res.messages&&res.messages.length){var last=res.messages[res.messages.length-1];if(last.at){var s2=sess();s2.lastAt=last.at;save(s2);}}" +
     "if(res.cta==='book')bookBtn();if(res.status==='awaiting_contact')contactForm();if(res.status==='escalated'){var s3=sess();s3.escalated=1;save(s3);startPoll();}}" +
-    // one turn: send message and/or contact
-    "function turn(text,contact){var s=sess();var pay={conversationId:s.conversationId,publicToken:s.publicToken};if(text)pay.message=text;if(contact)pay.contact=contact;typing(true);send.disabled=true;" +
-    "fetch('/api/v1/public/chat/message',{method:'POST',headers:hdrs(),body:JSON.stringify(pay)}).then(function(r){return r.json();}).then(function(res){typing(false);send.disabled=false;handle(res);}).catch(function(){typing(false);send.disabled=false;bubble('system','Something went wrong. Please try again.');});}" +
-    "function submit(){var v=(input.value||'').trim();if(!v)return;input.value='';bubble('customer',v);turn(v,null);}" +
+    // one turn: send message and/or contact. `opt` is the optimistic customer bubble — once the server
+    // echoes the stored customer message (with an id), drop the optimistic one so it isn't shown twice.
+    "function turn(text,contact,opt){var s=sess();var pay={conversationId:s.conversationId,publicToken:s.publicToken};if(text)pay.message=text;if(contact)pay.contact=contact;typing(true);send.disabled=true;var t0=Date.now();" +
+    "fetch('/api/v1/public/chat/message',{method:'POST',headers:hdrs(),body:JSON.stringify(pay)}).then(function(r){return r.json();}).then(function(res){" +
+    "var aiText='';((res&&res.messages)||[]).forEach(function(m){if(m.role!=='customer')aiText+=(m.body||'');});" +
+    // Keep the typing indicator up long enough to feel natural (scaled to reply length), min ~1.1s.
+    "var wait=Math.min(3800,Math.max(1100,aiText.length*32))-(Date.now()-t0);" +
+    "function reveal(){typing(false);send.disabled=false;if(opt&&((res&&res.messages)||[]).some(function(m){return m.role==='customer';})){try{opt.remove();}catch(_){}}handle(res);}" +
+    "if(wait>0)setTimeout(reveal,wait);else reveal();" +
+    "}).catch(function(){typing(false);send.disabled=false;bubble('system','Something went wrong. Please try again.');});}" +
+    "function submit(){var v=(input.value||'').trim();if(!v)return;input.value='';var opt=bubble('customer',v);turn(v,null,opt);}" +
     "send.onclick=submit;input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();submit();}});" +
     // poll for owner/AI replies (skip in preview/demo — nothing persisted)
     "function pollOnce(){if(DEMO)return;var s=sess();if(!s.conversationId)return;fetch('/api/v1/public/chat/poll?conversationId='+encodeURIComponent(s.conversationId)+'&publicToken='+encodeURIComponent(s.publicToken)+'&after='+encodeURIComponent(s.lastAt||''),{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json();}).then(function(d){if(!d||!d.messages)return;var fresh=d.messages.filter(function(m){return !seen[m.id];});if(fresh.length){addMsgs(fresh);var s2=sess();s2.lastAt=fresh[fresh.length-1].at;save(s2);}if(d.status==='awaiting_contact'&&!body.querySelector('.pb-chat-form'))contactForm();}).catch(function(){});}" +
