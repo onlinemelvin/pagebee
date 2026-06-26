@@ -1,10 +1,21 @@
+export type { BillingIntent } from "./service";
 export {
   createBillingCheckout,
+  createBillingIntent,
   upgradeSubscription,
   cancelSubscription,
   reactivateSubscription,
   syncCheckoutSession,
   reconcileFromStripe,
   processBillingEvent,
+  recordBillingAgreement,
+  getSavedCard,
+  createCardSetupIntent,
+  setDefaultCardFromSetupIntent,
+  listBillingInvoices,
+  scheduleDowngrade,
+  applyRetentionDiscount,
+  retentionOfferAvailable,
+  BILLING_TERMS_VERSION,
   BillingError,
 } from "./service";

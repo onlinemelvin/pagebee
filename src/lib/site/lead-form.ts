@@ -94,10 +94,13 @@ export const LEADFORM_CSS =
  * the feed returns the form HTML only while the feature is enabled, so a disabled feature leaves no
  * form. The submit handler is delegated, so it works on whatever markup the feed injects.
  */
-export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null): string {
+export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null, preview?: boolean): string {
   return (
     "<script>(function(){try{" +
     "var TOKEN=" + JSON.stringify(token) + ";" +
+    // In preview, ask the status feed for the PREVIEWED tier's state (so a free higher-tier preview
+    // shows the form); empty on the live site → paid-plan state.
+    "var PVQS=" + JSON.stringify(preview ? "?preview=1" : "") + ";" +
     // Goal state computed at serve time (may be briefly stale on cached pages — the fetch below
     // reconciles). Lets the runtime label the page CTA on first paint, with no fetch flicker.
     "var INIT=" + JSON.stringify(meta ?? null) + ";" +
@@ -158,7 +161,7 @@ export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null): s
     "if(INIT){try{pbCtaSync(INIT.enabled,INIT.ctaLabel);}catch(e){}}" +
     // Hydrate: ask whether the form is live and, if so, drop it into the slot (or build a section),
     // then sync the CTA label + lead type to the owner's currently-chosen goal.
-    "fetch('/api/v1/public/lead-form',{headers:{'Authorization':'Bearer '+TOKEN}})" +
+    "fetch('/api/v1/public/lead-form'+PVQS,{headers:{'Authorization':'Bearer '+TOKEN}})" +
     ".then(function(r){return r.json();}).then(function(d){" +
     "var slots=[].slice.call(document.querySelectorAll('[data-pb-leadform-slot]'));" +
     "if(!d||d.enabled!==true||!d.html){" + // disabled (or nothing to show): collapse the form's void, drop any stray host, swap CTAs to a call fallback
@@ -205,9 +208,9 @@ export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null): s
 
 /** Inject the form CSS (into <head>) + the runtime (before </body>) into a served document. `meta` is
  *  the goal state inlined for flicker-free first paint (computed by the serve pipeline). */
-export function withLeadFormFeed(doc: string, token: string, meta?: LeadFormMeta | null): string {
+export function withLeadFormFeed(doc: string, token: string, meta?: LeadFormMeta | null, preview?: boolean): string {
   let out = doc.includes("</head>") ? doc.replace("</head>", `${LEADFORM_CSS}</head>`) : `${LEADFORM_CSS}${doc}`;
-  const script = leadFormFeedScript(token, meta);
+  const script = leadFormFeedScript(token, meta, preview);
   out = out.includes("</body>") ? out.replace("</body>", `${script}</body>`) : out + script;
   return out;
 }

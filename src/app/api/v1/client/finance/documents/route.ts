@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { requireCapability, AuthError } from "@/lib/auth/session";
 import { listDocuments, createDocument, FinanceError, type DocType } from "@/lib/modules/finance";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +24,9 @@ export async function GET(req: Request) {
 
 /** POST /api/v1/client/finance/documents — create an estimate, quote, or invoice (DRAFT). */
 export async function POST(req: Request) {
-  let client;
+  let client, ctx;
   try {
-    ({ client } = await requireCapability("finance", "manage"));
+    ({ client, ctx } = await requireCapability("finance", "manage"));
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -33,6 +34,12 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   try {
     const document = await createDocument(client.id, body);
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: ctx.userId,
+      event: "finance_document_created",
+      properties: { clientId: client.id, docType: document.docType },
+    });
     return NextResponse.json({ document }, { status: 201 });
   } catch (err) {
     if (err instanceof ZodError) return NextResponse.json({ error: "validation_error", issues: err.flatten() }, { status: 400 });

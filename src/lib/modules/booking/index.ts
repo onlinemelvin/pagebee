@@ -1,6 +1,7 @@
 export {
   createBooking,
   bookingEnabled,
+  hasSchedulingSettings,
   getBookingMeta,
   getAvailability,
   getOwnerSlots,

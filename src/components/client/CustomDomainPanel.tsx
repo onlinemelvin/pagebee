@@ -20,17 +20,27 @@ const TLD_OPTIONS = ["com", "biz", "us", "net", "org", "co"];
 export function CustomDomainPanel({
   initial,
   testModeActive = false,
+  bare = false,
+  initialBuyKeyword,
 }: {
   initial: DomainState | null;
   /** Global Test Mode is on — domain purchases are simulated (toggle lives in the top nav). */
   testModeActive?: boolean;
+  /** Render without the outer card chrome + heading — for embedding inside a modal (DomainCard). */
+  bare?: boolean;
+  /** When set (the subdomain upsell), open straight into the "buy a domain" flow seeded with this name. */
+  initialBuyKeyword?: string;
 }) {
   const router = useRouter();
   const [state, setState] = React.useState<DomainState | null>(initial);
-  const [mode, setMode] = React.useState<"choose" | "connect" | "buy">("choose");
+  const [mode, setMode] = React.useState<"choose" | "connect" | "buy">(initialBuyKeyword ? "buy" : "choose");
   const [error, setError] = React.useState<string | null>(null);
   const status = state?.status ?? null;
   const isPurchase = state?.hosts?.find((h) => h.isPrimary)?.source === "purchase";
+  // A purchased domain that's already registered (live or connecting) is PERMANENT — we don't let the
+  // owner remove it (it's a real registration PageBee paid for). Removal stays for connected domains
+  // and not-yet-registered states (an over-cap request awaiting review, or a failed attempt).
+  const lockedPurchase = isPurchase && (status === "active" || status === "verifying" || status === "purchasing");
 
   const runCheck = React.useCallback(async () => {
     const res = await fetch("/api/v1/client/website/domain/verify", { method: "POST" });
@@ -61,16 +71,18 @@ export function CustomDomainPanel({
   const secondary = state?.hosts?.find((h) => !h.isPrimary);
 
   return (
-    <div className="anim-rise mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
-      <div className="flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700">
-          <Globe size={18} />
-        </span>
-        <div>
-          <h2 className="font-display text-xl text-stone-900">Custom domain</h2>
-          <p className="text-sm text-stone-500">Use your own domain name instead of your free address.</p>
+    <div className={bare ? "" : "anim-rise mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-card"}>
+      {!bare && (
+        <div className="flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700">
+            <Globe size={18} />
+          </span>
+          <div>
+            <h2 className="font-display text-xl text-stone-900">Custom domain</h2>
+            <p className="text-sm text-stone-500">Use your own domain name instead of your free address.</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Passive indicator — the toggle lives in the top nav now (Test Mode). */}
       {testModeActive && (
@@ -107,7 +119,7 @@ export function CustomDomainPanel({
       )}
 
       {!status && mode === "connect" && <ConnectForm onBack={() => setMode("choose")} onDone={setState} />}
-      {!status && mode === "buy" && <BuyForm onBack={() => setMode("choose")} onDone={setState} />}
+      {!status && mode === "buy" && <BuyForm onBack={() => setMode("choose")} onDone={setState} initialKeyword={initialBuyKeyword} />}
 
       {/* ── Connect path: awaiting admin approval ── */}
       {status === "requested" && (
@@ -135,7 +147,7 @@ export function CustomDomainPanel({
 
       {/* ── Verifying: connect shows DNS+instructions; a bought domain is automatic ── */}
       {status === "verifying" && state && isPurchase && (
-        <StatusRow tone="amber" icon={<Loader2 size={16} className="animate-spin" />} title={`Setting up ${state.domain}`} onRemove={remove}>
+        <StatusRow tone="amber" icon={<Loader2 size={16} className="animate-spin" />} title={`Setting up ${state.domain}`}>
           We registered your domain and we&apos;re connecting it now — this is automatic and usually takes a few minutes. The page will update when it&apos;s live.
         </StatusRow>
       )}
@@ -146,7 +158,7 @@ export function CustomDomainPanel({
 
       {/* ── Active ── */}
       {status === "active" && (
-        <StatusRow tone="green" icon={<Check size={16} />} title="Connected" onRemove={remove}>
+        <StatusRow tone="green" icon={<Check size={16} />} title="Connected" onRemove={lockedPurchase ? undefined : remove}>
           <a href={`https://${state?.domain}`} target="_blank" rel="noreferrer" className="font-semibold text-blue-600 underline decoration-blue-300 underline-offset-4 hover:text-blue-700">
             {state?.domain}
           </a>{" "}
@@ -322,16 +334,17 @@ function ConnectVerifying({
 }
 
 // ── Buy: search (AI + manual), price, purchase ───────────────────────────────
-function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainState | null) => void }) {
+function BuyForm({ onBack, onDone, initialKeyword }: { onBack: () => void; onDone: (s: DomainState | null) => void; initialKeyword?: string }) {
   const router = useRouter();
   const [tlds, setTlds] = React.useState<string[]>(["com"]);
-  const [keyword, setKeyword] = React.useState("");
+  const [keyword, setKeyword] = React.useState(initialKeyword ?? "");
   const [suggesting, setSuggesting] = React.useState(false);
   const [suggestions, setSuggestions] = React.useState<DomainSuggestion[] | null>(null);
-  const [manual, setManual] = React.useState("");
+  const [manual, setManual] = React.useState(initialKeyword ? `${initialKeyword}.com` : "");
   const [checking, setChecking] = React.useState(false);
   const [lookup, setLookup] = React.useState<DomainLookup | null>(null);
   const [buying, setBuying] = React.useState<string | null>(null);
+  const [pendingBuy, setPendingBuy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   function toggleTld(t: string) {
@@ -395,6 +408,41 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
     }
   }
 
+  // Subdomain upsell: proactively check "<name>.com" the moment we open seeded.
+  const autoChecked = React.useRef(false);
+  React.useEffect(() => {
+    if (initialKeyword && !autoChecked.current) {
+      autoChecked.current = true;
+      void check();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKeyword]);
+
+  // Confirm step — a domain registration is permanent, so make the commitment explicit before we buy.
+  if (pendingBuy) {
+    return (
+      <div className="mt-5">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <p className="font-display text-lg text-stone-900">Register {pendingBuy}?</p>
+          <p className="mt-2 text-sm text-stone-700">
+            This is a <strong>one-time registration</strong>. <span className="font-medium">{pendingBuy}</span> becomes your
+            permanent web address — it&apos;s yours to keep, but the purchase is <strong>final</strong>: it can&apos;t be
+            refunded, changed, or removed afterwards. Make sure it&apos;s exactly the domain you want.
+          </p>
+          {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => { setPendingBuy(null); setError(null); }} disabled={Boolean(buying)}>
+              Cancel
+            </Button>
+            <Button onClick={() => buy(pendingBuy)} disabled={Boolean(buying)}>
+              {buying ? <><Loader2 size={14} className="animate-spin" /> Registering…</> : `Yes, register ${pendingBuy}`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-5">
       <BackLink onClick={onBack} />
@@ -441,7 +489,7 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
           ) : (
             <ul className="space-y-2">
               {suggestions.map((s, i) => (
-                <BuyRow key={s.domain} domain={s.domain} index={i} buying={buying === s.domain} onBuy={() => buy(s.domain)} />
+                <BuyRow key={s.domain} domain={s.domain} index={i} buying={buying === s.domain} onBuy={() => setPendingBuy(s.domain)} />
               ))}
             </ul>
           )}
@@ -467,7 +515,7 @@ function BuyForm({ onBack, onDone }: { onBack: () => void; onDone: (s: DomainSta
         {!checking && lookup && (
           <div className="mt-3">
             {lookup.available && lookup.affordable ? (
-              <BuyRow domain={lookup.domain} buying={buying === lookup.domain} onBuy={() => buy(lookup.domain)} />
+              <BuyRow domain={lookup.domain} buying={buying === lookup.domain} onBuy={() => setPendingBuy(lookup.domain)} />
             ) : (
               <p className="anim-rise flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-sm text-stone-600">
                 <X size={15} className="shrink-0 text-rose-400" />
@@ -546,14 +594,15 @@ function StatusRow({
   icon: React.ReactNode;
   title: string;
   children?: React.ReactNode;
-  onRemove: () => void;
+  /** When omitted, no remove control is shown (a registered/permanent purchased domain). */
+  onRemove?: () => void;
 }) {
   const tones = { amber: "bg-amber-50 text-amber-800", green: "bg-green-50 text-green-800", rose: "bg-rose-50 text-rose-800" } as const;
   return (
     <div className="mt-5">
       <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${tones[tone]}`}>{icon} {title}</div>
       {children && <div className="mt-2 text-sm text-stone-600">{children}</div>}
-      <button onClick={onRemove} className="mt-3 text-sm text-stone-400 hover:text-stone-700">Remove domain</button>
+      {onRemove && <button onClick={onRemove} className="mt-3 text-sm text-stone-400 hover:text-stone-700">Remove domain</button>}
     </div>
   );
 }

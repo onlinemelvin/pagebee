@@ -3,6 +3,7 @@ import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
 import { rateLimited } from "@/lib/ratelimit";
 import { createLead, leadCaptureEnabled, leadInputSchema } from "@/lib/modules/lead";
 import "@/lib/events/subscribers"; // register lead.created handlers
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs"; // Prisma requires the Node runtime
 export const dynamic = "force-dynamic";
@@ -58,6 +59,16 @@ export async function POST(req: Request) {
 
   try {
     const lead = await createLead({ clientId: site.clientId, input: parsed.data, ip });
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: `client:${site.clientId}`,
+      event: "lead_submitted",
+      properties: {
+        clientId: site.clientId,
+        leadType: parsed.data.type,
+        source: parsed.data.source,
+      },
+    });
     return json({ id: lead.id, status: lead.status, createdAt: lead.createdAt }, 201);
   } catch (err) {
     console.error("[POST /api/v1/public/leads]", err);

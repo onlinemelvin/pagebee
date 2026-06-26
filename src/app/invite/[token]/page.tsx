@@ -21,7 +21,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           <Link href="/login" className="mt-5 inline-block rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-stone-950 hover:bg-amber-300">Go to sign in</Link>
         </div>
       ) : (
-        <InviteAccept token={token} email={invite.email} businessName={invite.businessName} signedIn={Boolean(ctx)} />
+        <InviteAccept token={token} email={invite.email} businessName={invite.businessName} signedIn={Boolean(ctx)} signedInEmail={ctx?.email ?? null} />
       )}
     </main>
   );

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireClient, AuthError } from "@/lib/auth/session";
-import { removeMember, updateMemberPermissions, assertOwner, updatePermissionsSchema, TeamError } from "@/lib/modules/team";
+import { removeMember, updateMemberPermissions, setMemberDisabled, assertOwner, updatePermissionsSchema, TeamError } from "@/lib/modules/team";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** PATCH — replace a staff member's capability set (owner only). Body: { permissions: string[] }. */
+/** PATCH — update a staff member (owner only). Body is either { disabled: boolean } to toggle their
+ *  account access, or { permissions: string[] } to replace their capability set. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ userId: string }> }) {
   let ctx, client;
   try {
@@ -15,15 +16,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
     throw err;
   }
   const { userId } = await params;
-  const parsed = updatePermissionsSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return NextResponse.json({ error: "validation_error", issues: parsed.error.flatten() }, { status: 400 });
+  const body = (await req.json().catch(() => ({}))) as { disabled?: unknown; permissions?: unknown };
   try {
     await assertOwner(client.id, ctx.userId);
+    // Enable/disable the member's account.
+    if (typeof body.disabled === "boolean") {
+      const r = await setMemberDisabled(client.id, ctx.userId, userId, body.disabled);
+      return NextResponse.json({ ok: true, disabled: r.disabled });
+    }
+    // Otherwise, a permissions update.
+    const parsed = updatePermissionsSchema.safeParse(body);
+    if (!parsed.success) return NextResponse.json({ error: "validation_error", issues: parsed.error.flatten() }, { status: 400 });
     const r = await updateMemberPermissions(client.id, userId, parsed.data.permissions);
     return NextResponse.json({ ok: true, permissions: r.permissions });
   } catch (err) {
     if (err instanceof TeamError) return NextResponse.json({ error: err.code }, { status: err.status });
-    console.error("[team/member/permissions]", err);
+    console.error("[team/member/patch]", err);
     return NextResponse.json({ error: "failed" }, { status: 500 });
   }
 }

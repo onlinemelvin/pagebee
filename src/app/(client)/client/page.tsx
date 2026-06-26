@@ -123,6 +123,10 @@ export default async function ClientHomePage() {
   const websiteStatus = ws.preview.live ? "Live" : ws.preview.ready ? "Preview ready" : ws.website.exists ? "In progress" : "Not started";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  // Greet by first name only. Staff are greeted by their own name; the owner by the account's owner
+  // name (falling back to the business name when neither is set).
+  const greetName = ws.role === "owner" ? ws.client.ownerName : ws.userName;
+  const firstName = greetName?.trim().split(/\s+/)[0] || ws.client.businessName;
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
   return (
@@ -132,7 +136,7 @@ export default async function ClientHomePage() {
         <div>
           <p className="text-sm font-medium text-stone-500">{dateStr}</p>
           <h1 className="mt-0.5 font-display text-3xl text-stone-900">
-            {greeting}, {ws.client.ownerName ?? ws.client.businessName}
+            {greeting}, {firstName}
           </h1>
         </div>
         {ws.client.isTest && (

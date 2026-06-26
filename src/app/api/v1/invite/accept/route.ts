@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/session";
 import { acceptInvite, acceptInviteSchema, TeamError } from "@/lib/modules/team";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,12 @@ export async function POST(req: Request) {
       userId: ctx?.userId,
       name: parsed.data.name,
       password: parsed.data.password,
+    });
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: r.email,
+      event: "team_invite_accepted",
+      properties: { createdAccount: r.createdAccount, email: r.email },
     });
     return NextResponse.json({ ok: true, createdAccount: r.createdAccount, email: r.email });
   } catch (err) {

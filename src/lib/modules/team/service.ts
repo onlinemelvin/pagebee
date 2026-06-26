@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { createAuthUser, findAuthUserId } from "@/lib/supabase/admin";
-import { sendEmail, escapeHtml } from "@/lib/modules/email";
+import { dispatch, escapeHtml } from "@/lib/modules/email";
+import { button, linkFallback } from "@/lib/modules/email/layout";
 import { writeAudit } from "@/lib/modules/audit";
 import { sanitizePermissions } from "./permissions";
 
@@ -46,6 +47,7 @@ export interface TeamMember {
   role: string;
   permissions: string[];
   isYou: boolean;
+  disabled: boolean; // access switched off (User.status = DISABLED) — can't sign in until re-enabled
   joinedAt: string;
 }
 export interface TeamInvite {
@@ -81,7 +83,7 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
   const [members, invites, flags] = await Promise.all([
     prisma.clientUser.findMany({
       where: { clientId },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: { user: { select: { id: true, name: true, email: true, status: true } } },
       orderBy: { createdAt: "asc" },
     }),
     prisma.clientUserInvite.findMany({
@@ -98,6 +100,7 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
       role: m.role,
       permissions: m.permissions,
       isYou: m.userId === currentUserId,
+      disabled: m.user.status === "DISABLED",
       joinedAt: m.createdAt.toISOString(),
     })),
     invites: invites.map((i) => ({
@@ -112,6 +115,23 @@ export async function listTeam(clientId: string, currentUserId: string): Promise
     seatsUnlimited: seatsUnlimited(flags),
     seatsUsed: members.length + invites.length,
   };
+}
+
+/** Pre-flight check for the invite form (step 1): is this email free to invite, already a PageBee
+ *  team member, or already holding a pending invite for this client? Mirrors the guards in
+ *  inviteMember so the owner learns the outcome before picking access. */
+export async function checkInviteEmail(
+  clientId: string,
+  emailRaw: string,
+): Promise<{ status: "ok" | "already_on_a_team" | "already_invited" }> {
+  const email = emailRaw.trim().toLowerCase();
+  const [existingUser, dup] = await Promise.all([
+    prisma.user.findUnique({ where: { email }, select: { clientUser: { select: { clientId: true } } } }),
+    prisma.clientUserInvite.findFirst({ where: { clientId, email, status: "pending" } }),
+  ]);
+  if (existingUser?.clientUser) return { status: "already_on_a_team" };
+  if (dup) return { status: "already_invited" };
+  return { status: "ok" };
 }
 
 /** Invite someone to the team by email. Enforces the plan's seat limit. */
@@ -153,14 +173,35 @@ export async function inviteMember(
   });
 
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true } });
-  const url = `${appBase()}/invite/${token}`;
-  await sendEmail({
+  const business = client?.businessName ?? "a business";
+  const base = appBase();
+  const url = `${base}/invite/${token}`;
+  // One-click opt-out (RFC 8058): declines the invite so we stop emailing. Doubles as a footer
+  // "don't want this?" link and a List-Unsubscribe header — a real opt-out target helps deliverability.
+  const declineUrl = `${base}/api/v1/public/invite/decline?token=${token}`;
+  // Route through the branded transactional funnel (dispatch) — gives us the PageBee layout, a
+  // reply-to, an EmailLog record, and better inbox placement than a bare one-button email.
+  const res = await dispatch({
     to: email,
-    subject: `You're invited to join ${client?.businessName ?? "a team"} on PageBee`,
-    html: `<p>You've been invited to join <strong>${escapeHtml(client?.businessName ?? "a business")}</strong> on PageBee.</p>
-<p><a href="${url}" style="display:inline-block;background:#f59e0b;color:#1c1917;padding:10px 18px;border-radius:10px;font-weight:600;text-decoration:none">Accept invitation</a></p>
-<p style="color:#78716c;font-size:13px">Or paste this link: ${url}<br/>This invitation expires in ${INVITE_DAYS} days.</p>`,
+    subject: `You're invited to join ${business} on PageBee`,
+    category: "ACCOUNT",
+    template: "team_invite",
+    clientId,
+    preheader: `Accept your invitation to ${business} on PageBee.`,
+    listUnsubscribeUrl: declineUrl,
+    body: `<p style="margin:0 0 14px">Hi there,</p>
+<p style="margin:0 0 14px">You've been invited to join <strong>${escapeHtml(business)}</strong> on PageBee — the platform they use to run their website, leads, bookings and more.</p>
+<p style="margin:0 0 4px">Click below to accept and set up your account:</p>
+${button("Accept invitation", url)}
+${linkFallback(url)}
+<p style="margin:14px 0 0;color:#78716c;font-size:13px">This invitation expires in ${INVITE_DAYS} days. Not expecting it, or don't want to join? <a href="${declineUrl}" style="color:#78716c">Decline this invitation</a> and we won't email you again.</p>`,
   });
+
+  // If the email never went out, don't leave an orphaned pending invite the owner thinks was sent.
+  if (res.status === "FAILED") {
+    await prisma.clientUserInvite.delete({ where: { id: invite.id } }).catch(() => {});
+    throw new TeamError(502, "email_failed");
+  }
 
   await writeAudit({ action: "team.invited", entityType: "Client", entityId: clientId, clientId, metadata: { email, role, permissions: perms } });
   return invite;
@@ -195,8 +236,15 @@ export async function acceptInvite(
   let createdAccount = false;
 
   if (targetUserId) {
-    const already = await prisma.clientUser.findUnique({ where: { userId: targetUserId } });
-    if (already) throw new TeamError(409, "already_on_a_team");
+    // Signed-in accept: the invite is bound to a specific email, so the current session must BE that
+    // person — never silently attach whoever happens to be logged in (e.g. the owner who sent it).
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { email: true, clientUser: { select: { id: true } } },
+    });
+    if (!user) throw new TeamError(404, "invite_invalid");
+    if (user.email.toLowerCase() !== inv.email.toLowerCase()) throw new TeamError(409, "email_mismatch");
+    if (user.clientUser) throw new TeamError(409, "already_on_a_team");
   } else {
     if (!opts.password || opts.password.length < 8) throw new TeamError(400, "password_required");
     const created = await createAuthUser(inv.email, opts.password);
@@ -236,6 +284,18 @@ export async function acceptInvite(
   return { clientId: inv.clientId, email: inv.email, createdAccount };
 }
 
+/**
+ * Decline a pending invite from the email's one-click opt-out (no session). Idempotent and
+ * intentionally quiet: an unknown/already-resolved token is treated as success so the public
+ * endpoint never leaks whether a token exists. Accepted invites are left untouched.
+ */
+export async function declineInviteByToken(token: string): Promise<void> {
+  const inv = await prisma.clientUserInvite.findUnique({ where: { token }, select: { id: true, clientId: true, status: true } });
+  if (!inv || inv.status !== "pending") return;
+  await prisma.clientUserInvite.update({ where: { id: inv.id }, data: { status: "declined" } });
+  await writeAudit({ action: "team.invite_declined", entityType: "Client", entityId: inv.clientId, clientId: inv.clientId });
+}
+
 /** Revoke a pending invite (scoped to the client). */
 export async function revokeInvite(clientId: string, inviteId: string) {
   const inv = await prisma.clientUserInvite.findFirst({ where: { id: inviteId, clientId } });
@@ -254,6 +314,22 @@ export async function removeMember(clientId: string, actorUserId: string, member
   await prisma.clientUser.delete({ where: { id: member.id } });
   await writeAudit({ action: "team.member_removed", entityType: "Client", entityId: clientId, clientId, metadata: { memberUserId } });
   return { userId: memberUserId };
+}
+
+/**
+ * Disable (or re-enable) a team member's account. Disabling flips their User.status to DISABLED,
+ * which makes getAuthContext() return null for them — they're fully locked out (can't sign in or
+ * hit any API) until re-enabled, but their membership, permissions and history are preserved.
+ * Owner-only (route-enforced); you can't disable the owner or yourself.
+ */
+export async function setMemberDisabled(clientId: string, actorUserId: string, memberUserId: string, disabled: boolean) {
+  if (memberUserId === actorUserId) throw new TeamError(400, "cannot_disable_self");
+  const member = await prisma.clientUser.findFirst({ where: { clientId, userId: memberUserId }, select: { role: true } });
+  if (!member) throw new TeamError(404, "not_found");
+  if (member.role === "owner") throw new TeamError(403, "cannot_disable_owner");
+  await prisma.user.update({ where: { id: memberUserId }, data: { status: disabled ? "DISABLED" : "ACTIVE" } });
+  await writeAudit({ action: disabled ? "team.member_disabled" : "team.member_enabled", entityType: "Client", entityId: clientId, clientId, metadata: { memberUserId } });
+  return { userId: memberUserId, disabled };
 }
 
 /** Replace a staff member's capability set. Owner-only (enforced by the route); the owner's own

@@ -34,9 +34,10 @@ function useClickOutside<T extends HTMLElement>(onClose: () => void) {
 }
 
 export function Topbar({
-  email, businessName, planName, tabs, actions, isOwner = true, testMode = false, testModeEligible = false,
+  email, userName = null, businessName, planName, tabs, actions, isOwner = true, testMode = false, testModeEligible = false,
 }: {
   email: string;
+  userName?: string | null;
   businessName: string;
   planName: string;
   tabs: NavTab[];
@@ -65,7 +66,7 @@ export function Topbar({
         <div className="ml-auto flex items-center gap-1.5">
           {testModeEligible && <TestModeToggle enabled={testMode} />}
           <Notifications actions={actions} />
-          <AvatarMenu email={email} businessName={businessName} planName={planName} isOwner={isOwner} />
+          <AvatarMenu email={email} userName={userName} businessName={businessName} planName={planName} isOwner={isOwner} />
         </div>
       </header>
 
@@ -383,11 +384,13 @@ function TestModeToggle({ enabled }: { enabled: boolean }) {
 }
 
 /* ── Avatar menu ──────────────────────────────────────────────────────── */
-function AvatarMenu({ email, businessName, planName, isOwner }: { email: string; businessName: string; planName: string; isOwner: boolean }) {
+function AvatarMenu({ email, userName, businessName, planName, isOwner }: { email: string; userName?: string | null; businessName: string; planName: string; isOwner: boolean }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const initials = businessName.trim().slice(0, 2).toUpperCase() || "PB";
+  // Staff are identified by their own name; owners by the business they run.
+  const primary = (!isOwner && userName?.trim()) || businessName;
+  const initials = primary.trim().slice(0, 2).toUpperCase() || "PB";
 
   async function signOut() {
     const supabase = createSupabaseBrowserClient();
@@ -411,21 +414,23 @@ function AvatarMenu({ email, businessName, planName, isOwner }: { email: string;
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] z-40 w-60 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xl anim-pop">
           <div className="border-b border-stone-100 px-4 py-3">
-            <p className="truncate font-display text-sm font-semibold text-stone-900">{businessName}</p>
+            <p className="truncate font-display text-sm font-semibold text-stone-900">{primary}</p>
             <p className="truncate text-xs text-stone-400">{email}</p>
-            <span className="mt-1.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">{planName} plan</span>
+            {isOwner ? (
+              <span className="mt-1.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">{planName} plan</span>
+            ) : (
+              <span className="mt-1.5 inline-block rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-500">{businessName} · Team member</span>
+            )}
           </div>
           <div className="p-1.5">
             {isOwner && (
-              <>
-                <Link href="/client/billing" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
-                  <CreditCard size={16} className="text-stone-400" /> Billing & plan
-                </Link>
-                <Link href="/client/settings" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
-                  <Settings size={16} className="text-stone-400" /> Settings
-                </Link>
-              </>
+              <Link href="/client/billing" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
+                <CreditCard size={16} className="text-stone-400" /> Billing & plan
+              </Link>
             )}
+            <Link href="/client/settings" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">
+              <Settings size={16} className="text-stone-400" /> Settings
+            </Link>
             <button onClick={signOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-stone-700 hover:bg-stone-100">
               <LogOut size={16} className="text-stone-400" /> Sign out
             </button>

@@ -95,23 +95,6 @@ export function AppointmentsManager({
 
   return (
     <div className="mt-6">
-      {appointments.length === 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-card">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-amber-600 shadow-sm">
-            <Plus size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="font-semibold text-stone-900">No appointments yet</p>
-            <p className="text-sm text-stone-600">Add a walk-in or phone booking manually, or set your hours so customers can book online.</p>
-          </div>
-          <div className="ml-auto flex gap-2">
-            <Button onClick={() => setAdd(true)}><Plus size={16} /> Add appointment</Button>
-            <Link href="/client/appointments/settings" className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50">
-              <SlidersHorizontal size={16} /> Set availability
-            </Link>
-          </div>
-        </div>
-      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => setAdd(true)}>
           <Plus size={16} /> Add appointment

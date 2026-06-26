@@ -5,7 +5,14 @@ import * as notify from "@/lib/modules/email/notifications";
 import * as customerNotify from "@/lib/modules/email/customer-notifications";
 import { upsertCustomerFromLead } from "@/lib/modules/customer";
 import { createNotification, isGroupEmailAllowed } from "@/lib/modules/notification";
+import { notifyOwnerSms } from "@/lib/modules/messaging";
 import type { Lead, Booking } from "@prisma/client";
+
+// Public origin for deep links inside SMS alerts (owner taps through to the web app to reply).
+function appBase(): string {
+  const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
+  return `${root.includes("localhost") ? "http" : "https"}://${root}`;
+}
 
 // Escape user-supplied values before embedding in notification HTML.
 function esc(s: string | null | undefined): string {
@@ -55,6 +62,14 @@ if (!globalForSubs.__pagebeeSubscribers) {
       body: lead.message ? lead.message.slice(0, 120) : "Respond from your inquiries inbox.",
     });
 
+    // One-way SMS alert with a deep link to the inbox — owner taps through and replies in the web
+    // app. Fail-soft and self-gating (opt-in + plan + allowance + STOP list all checked inside).
+    await notifyOwnerSms(
+      lead.clientId,
+      "inquiries",
+      `New lead${lead.name ? ` from ${lead.name}` : ""}${lead.phone ? ` (${lead.phone})` : ""}. View & reply: ${appBase()}/client/inquiries`,
+    );
+
     // Notify the actual business owner by email — gated by their opt-in (falls back to the
     // platform inbox only if none on file).
     if (await isGroupEmailAllowed(lead.clientId, "inquiries")) {
@@ -93,6 +108,13 @@ if (!globalForSubs.__pagebeeSubscribers) {
       title: `New appointment request: ${booking.serviceName}`,
       body: `${customer.name || "A customer"} · ${booking.startAt.toLocaleString()}`,
     });
+
+    // One-way SMS alert with a deep link to the calendar (fail-soft, self-gating).
+    await notifyOwnerSms(
+      booking.clientId,
+      "appointments",
+      `New appointment request: ${booking.serviceName} — ${booking.startAt.toLocaleString()}. Review: ${appBase()}/client/appointments`,
+    );
 
     // Email the owner — gated by their opt-in.
     if (await isGroupEmailAllowed(booking.clientId, "appointments")) {

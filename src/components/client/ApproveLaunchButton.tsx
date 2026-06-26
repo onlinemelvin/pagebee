@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Rocket } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * Approve the released preview and launch (shown next to "View your preview" once the preview is
@@ -16,6 +18,8 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
   const [busy, setBusy] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
 
   const cta = isUpdate ? "Approve & update" : "Approve & launch";
 
@@ -53,12 +57,13 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
           setError(null);
           setOpen(true);
         }}
-        className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
+        className={cn(buttonVariants({ variant: "dark", size: "sm" }))}
       >
         <Rocket size={16} /> {cta}
       </button>
 
-      {open && (
+      {open && mounted &&
+        createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/50 p-4"
           role="dialog"
@@ -93,8 +98,9 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </>
   );
 }

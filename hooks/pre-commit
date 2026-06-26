@@ -32,7 +32,8 @@ FORBIDDEN_PATTERNS=(
 STAGED_FILES=$(git diff --cached --name-only)
 
 # Scan only added lines (leading '+'), excluding the diff header lines.
-ADDED=$(git diff --cached --unified=0 | grep -E '^\+' | grep -vE '^\+\+\+')
+# `|| true` so a deletion-only commit (no added lines → grep exits 1) doesn't abort under `set -e`.
+ADDED=$(git diff --cached --unified=0 | grep -E '^\+' | grep -vE '^\+\+\+' || true)
 
 for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
   # `--` stops grep treating patterns that start with `-` (e.g. PEM headers) as flags

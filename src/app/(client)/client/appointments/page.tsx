@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { getClientWorkspace } from "@/lib/modules/client";
-import { listBookings, getSchedulingSettings } from "@/lib/modules/booking";
+import { listBookings, getSchedulingSettings, hasSchedulingSettings, icalToken } from "@/lib/modules/booking";
 import { listBookableServices } from "@/lib/modules/service";
 import { bookingInvoiceStatuses } from "@/lib/modules/finance";
 import { AppointmentsManager } from "@/components/client/AppointmentsManager";
+import { AppointmentsIntro } from "@/components/client/AppointmentsIntro";
+import { AppointmentsSetup } from "@/components/client/AppointmentsSetup";
 import { UpgradeGate } from "@/components/client/UpgradeGate";
 import type { Appt, ApptService } from "@/components/client/appointments-types";
 
@@ -15,6 +17,21 @@ export default async function ClientAppointmentsPage() {
   if (!ws.access.appointments.view) redirect("/client"); // staff without appointments access
   // Booking is a Honey+ feature; surfaced to every tier in the nav, gated here for lower plans.
   if (!ws.caps.booking) return <UpgradeGate title="Appointments" flag="booking" blurb="Let customers book and reschedule online, with availability and walk-in management — available on the HONEY plan and up." />;
+
+  // First-run onboarding: enable → set availability → manage. Booking goes live on the site only
+  // after both steps are done (see bookingEnabled). Staff who can't change settings skip to manage.
+  if (ws.access.appointments.manage) {
+    if (!ws.choices.booking) {
+      return <AppointmentsIntro videoUrl={process.env.NEXT_PUBLIC_BOOKING_DEMO_VIDEO_URL ?? process.env.NEXT_PUBLIC_DEMO_VIDEO_URL} />;
+    }
+    if (!(await hasSchedulingSettings(ws.client.id))) {
+      const settings = await getSchedulingSettings(ws.client.id);
+      const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "localhost:3000";
+      const proto = root.includes("localhost") ? "http" : "https";
+      const icalUrl = `${proto}://${root}/api/v1/ical/${icalToken(ws.client.id)}.ics`;
+      return <AppointmentsSetup initial={settings} icalUrl={icalUrl} />;
+    }
+  }
 
   const [bookings, settings, catalog] = await Promise.all([
     listBookings(ws.client.id),

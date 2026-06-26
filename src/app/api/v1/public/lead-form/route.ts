@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
 import { rateLimited } from "@/lib/ratelimit";
 import { leadCaptureEnabled } from "@/lib/modules/lead";
+import { getPreviewPlanOverride } from "@/lib/modules/website";
 import { defaultLeadFormHtml } from "@/lib/site/lead-form";
 import { goalToLeadType, goalToCtaLabel, goalToFormBlurb, goalToMessagePrompt } from "@/lib/site/lead-goals";
 
@@ -61,7 +62,12 @@ export async function GET(req: Request) {
     const formBlurb = goalToFormBlurb(web?.leadFormGoal);
     const messagePrompt = goalToMessagePrompt(web?.leadFormGoal);
 
-    const enabled = await leadCaptureEnabled(site.clientId);
+    // In a PREVIEW (hydrator adds ?preview=1) gate by the previewed tier so a free higher-tier preview
+    // shows the form; the live site (no param) always uses the paid plan.
+    const isPreview = new URL(req.url).searchParams.get("preview") === "1";
+    const planOverride = isPreview ? await getPreviewPlanOverride(site.clientId) : undefined;
+
+    const enabled = await leadCaptureEnabled(site.clientId, planOverride);
     // When disabled we still return ctaLabel so the hydrator knows the original intent; the runtime
     // swaps the CTA to a "call us" fallback regardless.
     if (!enabled) return json({ enabled: false, ctaLabel }, 200, NO_CACHE);

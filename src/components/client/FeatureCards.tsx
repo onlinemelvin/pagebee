@@ -40,7 +40,18 @@ const ICONS: Record<string, LucideIcon> = {
  * plan but off — enable, with a responsibility disclaimer for risky features), or locked (a higher
  * tier — upgrade). Tasteful, transforms-only, reduced-motion-safe motion (UI/UX Pro guidance).
  */
-export function FeatureCards({ features, title = "Features" }: { features: FeatureCardInfo[]; title?: string }) {
+export function FeatureCards({
+  features,
+  title = "Features",
+  hideTitle = false,
+  prepend,
+}: {
+  features: FeatureCardInfo[];
+  title?: string;
+  hideTitle?: boolean;
+  /** An extra card rendered FIRST in the grid (e.g. the custom-domain card). */
+  prepend?: React.ReactNode;
+}) {
   const router = useRouter();
   const [upsell, setUpsell] = React.useState<FeatureCardInfo | null>(null);
   const [confirm, setConfirm] = React.useState<FeatureCardInfo | null>(null);
@@ -124,8 +135,9 @@ export function FeatureCards({ features, title = "Features" }: { features: Featu
 
   return (
     <section>
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">{title}</h2>
-      <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {!hideTitle && <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-400">{title}</h2>}
+      <div className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-3", !hideTitle && "mt-3")}>
+        {prepend}
         {features.map((f) => {
           const Icon = ICONS[f.key] ?? Sparkles;
           const state = optimistic.get(f.key) ?? f.state;

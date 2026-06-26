@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Inbox, Search, Mail, Phone, Send, MessageSquarePlus, Clock } from "lucide-react";
+import { Inbox, Search, Mail, Phone, Send, MessageSquarePlus, Clock, MessageSquare, ArrowRight, Lock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -43,7 +44,21 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function ClientInquiries({ inquiries, goal, formsEnabled }: { inquiries: InquiryRow[]; goal: string | null; formsEnabled: boolean }) {
+export function ClientInquiries({
+  inquiries,
+  goal,
+  formsEnabled,
+  isOwner = true,
+  smsState = "locked",
+  smsPlanLabel = "a higher plan",
+}: {
+  inquiries: InquiryRow[];
+  goal: string | null;
+  formsEnabled: boolean;
+  isOwner?: boolean;
+  smsState?: "enabled" | "available" | "locked";
+  smsPlanLabel?: string;
+}) {
   const router = useRouter();
   const [replyTo, setReplyTo] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -219,15 +234,66 @@ export function ClientInquiries({ inquiries, goal, formsEnabled }: { inquiries: 
   );
 
   if (inquiries.length === 0) {
+    // Text-alert option adapts to plan state: on, available-to-enable, or an upgrade prompt.
+    const smsCta =
+      smsState === "enabled"
+        ? { label: "Manage text alerts", href: "/client/website" }
+        : smsState === "available"
+          ? { label: "Turn on text alerts", href: "/client/website" }
+          : { label: `Upgrade to enable`, href: "/client/billing" };
+
     return (
       <div className="mt-6 space-y-4">
         {goalSelector}
-        <EmptyState
-          icon={Inbox}
-          title="No inquiries yet"
-          description="When someone fills out a form or messages you on your website, their inquiry lands here — ready for you to reply in one click."
-          cta={{ label: "Preview your website", href: "/client/website" }}
-        />
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-card">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><Inbox size={20} /></span>
+            <div>
+              <p className="font-display text-lg text-stone-900">No inquiries yet</p>
+              <p className="text-sm text-stone-500">When someone fills out your form or messages you, it lands here. Set up how you want to be alerted so you never miss a new lead.</p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {/* Email alerts — always on by default */}
+            <div className="rounded-xl border border-stone-200 p-4">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 font-medium text-stone-900"><Mail size={16} className="text-amber-500" /> Email alerts</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700"><Check size={11} /> On</span>
+              </div>
+              <p className="mt-1.5 text-sm text-stone-500">We email you the moment a new inquiry arrives.</p>
+              {isOwner && (
+                <Link href="/client/settings" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-amber-700 hover:text-amber-800">
+                  Manage email alerts <ArrowRight size={14} />
+                </Link>
+              )}
+            </div>
+
+            {/* Text alerts — SMS (smsAlerts feature) */}
+            <div className="rounded-xl border border-stone-200 p-4">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 font-medium text-stone-900"><MessageSquare size={16} className="text-amber-500" /> Text alerts</span>
+                {smsState === "enabled" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700"><Check size={11} /> On</span>
+                ) : smsState === "locked" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-500"><Lock size={11} /> {smsPlanLabel}</span>
+                ) : (
+                  <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-500">Off</span>
+                )}
+              </div>
+              <p className="mt-1.5 text-sm text-stone-500">
+                {smsState === "locked"
+                  ? `Get an instant text for every new lead — included on ${smsPlanLabel}.`
+                  : "Get a text the second a new lead comes in, so you can reply while it's hot."}
+              </p>
+              {(isOwner || smsState !== "locked") && (
+                <Link href={smsCta.href} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-amber-700 hover:text-amber-800">
+                  {smsCta.label} <ArrowRight size={14} />
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

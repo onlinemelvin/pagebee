@@ -115,7 +115,7 @@ export const PLANS: PlanDef[] = [
       customDomain: true,
       booking: true,
       chat: true,
-      smsAlerts: false, // disabled until a real SMS provider is wired — sendSms() is a metered stub that would bill for unsent messages
+      smsAlerts: true, // one-way owner alerts via Twilio (opt-in; stubs safely + unmetered when unconfigured) — see docs/MESSAGING.md
       smsIncludedMonthly: 100,
       emailIncludedMonthly: 1000,
       payments: false,
@@ -172,7 +172,7 @@ export const PLANS: PlanDef[] = [
       customDomain: true,
       booking: true,
       chat: true,
-      smsAlerts: false, // disabled until a real SMS provider is wired — sendSms() is a metered stub that would bill for unsent messages
+      smsAlerts: true, // one-way owner alerts via Twilio (opt-in; stubs safely + unmetered when unconfigured) — see docs/MESSAGING.md
       smsIncludedMonthly: 500,
       emailIncludedMonthly: 5000,
       payments: true,
@@ -206,6 +206,61 @@ export function planByName(name: string): PlanDef | undefined {
   return PLANS.find((p) => p.name === name);
 }
 
+/** The highest tier — every site is GENERATED at this tier so all pages/sections/features exist;
+ *  lower view-tiers just hide what they don't include (no regeneration on a tier switch). */
+export function topPlan(): PlanDef {
+  return PLANS[PLANS.length - 1];
+}
+
+/** The plan feature flags that map to a visible website capability, with a human label. Used to
+ *  compute the gain/loss diff when switching tiers (e.g. "lead capture form", "online booking"). */
+export const FEATURE_LABELS: { flag: string; label: string }[] = [
+  { flag: "contactForm", label: "Lead capture form" },
+  { flag: "booking", label: "Online appointment booking" },
+  { flag: "chat", label: "Website chat" },
+  { flag: "payments", label: "Invoices & payments" },
+  { flag: "aiAssistant", label: "AI assistant & follow-ups" },
+];
+
+/**
+ * What changes moving from `fromName` to `toName`: pages allowed (max content units), the features
+ * gained/lost, and the monthly + setup cost difference (cents). Powers the "you'll lose / you'll
+ * gain" switch UI. `pagesNow` is the site's actual content-unit count so we can say "lose N pages".
+ */
+export function tierDiff(fromName: string, toName: string, pagesNow?: number) {
+  const from = planByName(fromName);
+  const to = planByName(toName);
+  if (!from || !to) return null;
+  const direction = planRank(to.name) > planRank(from.name) ? "upgrade" : planRank(to.name) < planRank(from.name) ? "downgrade" : "same";
+
+  const gained: string[] = [];
+  const lost: string[] = [];
+  for (const { flag, label } of FEATURE_LABELS) {
+    const had = from.featureFlags[flag] === true;
+    const has = to.featureFlags[flag] === true;
+    if (has && !had) gained.push(label);
+    if (had && !has) lost.push(label);
+  }
+
+  // Page allowance change. When we know the current page count, report how many overflow on a
+  // downgrade ("lose N pages") or how much more room an upgrade frees up.
+  const visibleNow = pagesNow ?? from.maxPages;
+  const pagesOver = Math.max(0, visibleNow - to.maxPages); // must be hidden on a downgrade
+
+  return {
+    direction,
+    fromPlan: from,
+    toPlan: to,
+    gained,
+    lost,
+    maxPagesFrom: from.maxPages,
+    maxPagesTo: to.maxPages,
+    pagesOver,
+    monthlyDeltaCents: to.monthlyFee - from.monthlyFee,
+    setupDeltaCents: Math.max(0, to.setupFee - from.setupFee),
+  };
+}
+
 /** The next higher tier above `name`, or null if already on the top tier. */
 export function nextTier(name: string): PlanDef | null {
   const i = PLAN_ORDER.indexOf(name as PlanName);
@@ -216,6 +271,19 @@ export function nextTier(name: string): PlanDef | null {
 /** Index of a plan in the ascending tier order (-1 if unknown). */
 export function planRank(name: string): number {
   return PLAN_ORDER.indexOf(name as PlanName);
+}
+
+/**
+ * One-time setup-fee difference (cents) owed when UPGRADING from `fromName` to `toName`. Each tier's
+ * setup fee is cumulative, so an upgrade only pays the gap between tiers (never the full higher fee
+ * again). Returns 0 for same-tier or downgrades. The setup fee — original or delta — is
+ * non-refundable per the billing terms.
+ */
+export function setupFeeDelta(fromName: string, toName: string): number {
+  const from = planByName(fromName);
+  const to = planByName(toName);
+  if (!from || !to) return 0;
+  return Math.max(0, to.setupFee - from.setupFee);
 }
 
 /** The cheapest plan whose feature flags enable `flag` (e.g. "booking" → Connect). */

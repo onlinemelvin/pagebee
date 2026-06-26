@@ -10,6 +10,7 @@ import { LogoMark } from "@/components/brand/Logo";
 const ERR: Record<string, string> = {
   invite_invalid: "This invitation is no longer valid or has expired.",
   already_on_a_team: "Your account is already part of a PageBee team.",
+  email_mismatch: "This invitation was sent to a different email than the account you're signed in with.",
   seat_limit_reached: "This team is full. Ask the owner to free up a seat.",
   password_required: "Please choose a password (at least 8 characters).",
   validation_error: "Please check the form and try again.",
@@ -20,17 +21,30 @@ export function InviteAccept({
   email,
   businessName,
   signedIn,
+  signedInEmail,
 }: {
   token: string;
   email: string;
   businessName: string;
   signedIn: boolean;
+  signedInEmail?: string | null;
 }) {
   const router = useRouter();
   const [name, setName] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // The invite is bound to `email`. If a *different* account is signed in (e.g. the owner who sent
+  // it), accepting would attach the wrong user — prompt them to sign out and continue as the invitee.
+  const wrongAccount = signedIn && !!signedInEmail && signedInEmail.toLowerCase() !== email.toLowerCase();
+
+  async function signOutAndContinue() {
+    setBusy(true);
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    router.refresh(); // re-renders signed-out → the create-account path for the invited email
+  }
 
   async function accept(e?: React.FormEvent) {
     e?.preventDefault();
@@ -69,7 +83,16 @@ export function InviteAccept({
         You&apos;ve been invited to join <strong>{businessName}</strong> on PageBee as a team member.
       </p>
 
-      {signedIn ? (
+      {wrongAccount ? (
+        <div className="mt-5">
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            This invite is for <strong>{email}</strong>, but you&apos;re signed in as <strong>{signedInEmail}</strong>. Sign out to accept it.
+          </p>
+          <Button className="mt-3 w-full" size="lg" variant="ghost" disabled={busy} onClick={signOutAndContinue}>
+            {busy ? "Signing out…" : `Sign out & continue as ${email}`}
+          </Button>
+        </div>
+      ) : signedIn ? (
         <Button className="mt-5 w-full" size="lg" disabled={busy} onClick={() => accept()}>
           <Check size={16} /> {busy ? "Joining…" : "Accept & join"}
         </Button>

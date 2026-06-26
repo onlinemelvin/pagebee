@@ -24,3 +24,4 @@ build/
 
 # Playwright MCP session artifacts
 .playwright-mcp/
+.env.local

@@ -41,10 +41,13 @@ export default async function ClientLayout({ children }: { children: React.React
       : null;
   const ctaExternal = cta?.href.startsWith("http") ?? false;
 
-  const secondaryTabs = [
-    ...(ws.caps.teamSeats > 1 ? [{ key: "team", label: "Team", href: "/client/team" }] : []),
-    ...(isOwner ? [{ key: "billing", label: "Billing", href: "/client/billing" }] : []),
-  ];
+  // Team management + billing are owner-only — staff never see these links.
+  const secondaryTabs = isOwner
+    ? [
+        ...(ws.caps.teamSeats > 1 ? [{ key: "team", label: "Team", href: "/client/team" }] : []),
+        { key: "billing", label: "Billing", href: "/client/billing" },
+      ]
+    : [];
 
   const pct = ws.quota.allowance > 0 ? Math.min(100, Math.round((ws.quota.used / ws.quota.allowance) * 100)) : 0;
   const unlimitedUpdates = planByName(ws.planName)?.quotas.updatesUnlimited === true;
@@ -126,6 +129,7 @@ export default async function ClientLayout({ children }: { children: React.React
         </div>
         <Topbar
           email={ws.email}
+          userName={ws.userName}
           businessName={ws.client.businessName}
           planName={ws.planName}
           tabs={ws.tabs}

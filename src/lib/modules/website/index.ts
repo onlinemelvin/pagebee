@@ -30,6 +30,13 @@ export {
   getServeSiteBySubdomain,
   getServeSiteByDomain,
   getPreviewSiteForClient,
+  getPreviewPlanOverride,
+  effectivePlanForGeneration,
+  getSiteBlocks,
+  setTierView,
+  getWebsiteAddress,
+  checkSubdomain,
+  setSubdomain,
 } from "./service";
 export type { PublishedSite, ServeSite } from "./service";
 export { prepareGeneration, finalizeGeneration } from "./generation-offload";
