@@ -3,6 +3,7 @@ import { sweepChatEscalations } from "@/lib/modules/chat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * GET /api/v1/cron/chat/sweep — drive the wait-time experience for escalated website chats: post the

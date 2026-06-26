@@ -8,6 +8,10 @@
     {
       "path": "/api/v1/cron/chat/sweep",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/v1/cron/sweep",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
