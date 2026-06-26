@@ -4,6 +4,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
 import { WebsiteIntakeForm } from "./WebsiteIntakeForm";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * Secondary "Regenerate" action that lives inside the primary website card. A compact button that
@@ -31,7 +33,7 @@ export function RegenerateButton({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-50"
+        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
       >
         <RefreshCw size={15} /> {label}
       </button>

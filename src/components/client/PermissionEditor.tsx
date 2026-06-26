@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { TEAM_AREAS, type AccessLevel } from "@/lib/modules/team/permissions";
+import { TEAM_AREAS, type AccessLevel, type TeamArea } from "@/lib/modules/team/permissions";
 
 const LEVELS: { value: AccessLevel; label: string }[] = [
   { value: "none", label: "No access" },
@@ -11,19 +11,22 @@ const LEVELS: { value: AccessLevel; label: string }[] = [
 ];
 
 /** Per-area access picker (No access / View / Full) used in the invite form and member editor.
- *  Controlled: parent owns the area→level map. */
+ *  Controlled: parent owns the area→level map. `areas` defaults to every area but is normally the
+ *  plan-enabled subset so off-plan features (e.g. Finance) never appear. */
 export function PermissionEditor({
   value,
   onChange,
   disabled,
+  areas = TEAM_AREAS,
 }: {
   value: Record<string, AccessLevel>;
   onChange: (next: Record<string, AccessLevel>) => void;
   disabled?: boolean;
+  areas?: TeamArea[];
 }) {
   return (
     <div className="space-y-2">
-      {TEAM_AREAS.map((a) => {
+      {areas.map((a) => {
         const current = value[a.key] ?? "none";
         return (
           <div key={a.key} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-stone-50/70 px-3 py-2">
@@ -59,9 +62,9 @@ export function PermissionEditor({
 }
 
 /** A short human summary of a member's access, e.g. "Inquiries, Customers · Finance (view)". */
-export function accessSummary(levels: Record<string, AccessLevel>): string {
-  const full = TEAM_AREAS.filter((a) => levels[a.key] === "manage").map((a) => a.label);
-  const view = TEAM_AREAS.filter((a) => levels[a.key] === "view").map((a) => a.label);
+export function accessSummary(levels: Record<string, AccessLevel>, areas: TeamArea[] = TEAM_AREAS): string {
+  const full = areas.filter((a) => levels[a.key] === "manage").map((a) => a.label);
+  const view = areas.filter((a) => levels[a.key] === "view").map((a) => a.label);
   const parts: string[] = [];
   if (full.length) parts.push(full.join(", "));
   if (view.length) parts.push(`${view.join(", ")} (view)`);

@@ -135,6 +135,7 @@ const NAV_CATALOG: { key: string; label: string; href: string; tier: 1 | 2 | 3; 
 
 export interface ClientWorkspace {
   email: string;
+  userName: string | null; // the signed-in member's own name (for greeting/profile)
   role: string; // "owner" | "staff"
   client: { id: string; businessName: string; ownerName: string | null; isTest: boolean };
   planName: string;
@@ -164,6 +165,7 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
   const membership = await prisma.clientUser.findFirst({
     where: { userId: ctx.userId },
     include: {
+      user: { select: { name: true } },
       client: {
         include: {
           subscription: { include: { plan: true } },
@@ -379,6 +381,7 @@ async function getClientWorkspaceRaw(): Promise<ClientWorkspace | null> {
 
   return {
     email: ctx.email,
+    userName: membership.user?.name ?? null,
     role: membership.role,
     client: { id: client.id, businessName: client.businessName, ownerName: client.ownerName, isTest: client.isTest },
     planName: client.subscription?.plan.name ?? "—",

@@ -32,12 +32,21 @@ export default async function ClientInquiriesPage() {
 
   // The lead-capture master switch shares the `contactForm` flag with the Website page's feature card.
   const formsEnabled = ws.features.find((f) => f.key === "forms")?.state === "enabled";
+  // SMS lead alerts (smsAlerts flag) — surface its state so the empty inbox can offer text alerts.
+  const sms = ws.features.find((f) => f.key === "sms");
 
   return (
     <div>
       <h1 className="font-display text-3xl text-stone-900">Inquiries</h1>
       <p className="mt-1 text-stone-500">Messages from your website. Reply by email or update their status.</p>
-      <ClientInquiries inquiries={inquiries} goal={website?.leadFormGoal ?? null} formsEnabled={formsEnabled} />
+      <ClientInquiries
+        inquiries={inquiries}
+        goal={website?.leadFormGoal ?? null}
+        formsEnabled={formsEnabled}
+        isOwner={ws.role === "owner"}
+        smsState={sms?.state ?? "locked"}
+        smsPlanLabel={sms?.toPlanLabel ?? sms?.toPlan ?? "a higher plan"}
+      />
     </div>
   );
 }

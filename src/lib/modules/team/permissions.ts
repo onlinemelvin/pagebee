@@ -32,6 +32,14 @@ export const TEAM_AREAS: TeamArea[] = [
 
 export const TEAM_AREA_KEYS = TEAM_AREAS.map((a) => a.key);
 
+/** The delegable areas available on the client's current plan. `enabled` maps a feature-flag key →
+ *  whether the plan includes it; areas with a null flag are always available. The Team UI only ever
+ *  shows/grants these — a feature the plan lacks (e.g. Finance off) never appears, and when a plan is
+ *  later upgraded the newly-unlocked area simply starts at "no access" for existing staff. */
+export function areasForFlags(enabled: Record<string, boolean>): TeamArea[] {
+  return TEAM_AREAS.filter((a) => a.flag === null || enabled[a.flag]);
+}
+
 /** Compose a capability key. */
 export function permKey(area: string, action: AreaAction): string {
   return `${area}:${action}`;

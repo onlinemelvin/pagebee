@@ -4,7 +4,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Rocket } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * Approve the released preview and launch (shown next to "View your preview" once the preview is
@@ -56,7 +57,7 @@ export function ApproveLaunchButton({ isUpdate = false }: { isUpdate?: boolean }
           setError(null);
           setOpen(true);
         }}
-        className="inline-flex items-center gap-1.5 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700"
+        className={cn(buttonVariants({ variant: "dark", size: "sm" }))}
       >
         <Rocket size={16} /> {cta}
       </button>

@@ -16,6 +16,7 @@ Start with these — they are the source of truth for design decisions:
 | [docs/FEATURE_FLAGS.md](docs/FEATURE_FLAGS.md) | Plans, flags, plan→API allow-list, discount rules |
 | [docs/ONBOARDING.md](docs/ONBOARDING.md) | **Official acquisition model**: Preview-before-you-pay, pricing, sales flow, monetization |
 | [docs/DOMAINS.md](docs/DOMAINS.md) | Domain registration, the registrar abstraction (swap providers via one adapter), scaling risks + migration triggers |
+| [docs/MESSAGING.md](docs/MESSAGING.md) | SMS (Twilio, one-way owner alerts) + chat model, the notification fan-out, STOP/opt-in compliance, WhatsApp/mobile roadmap |
 | [prisma/schema.prisma](prisma/schema.prisma) | Full data model (~55 models) |
 
 **Project state:** design phase. Schema + docs exist; no application code, no

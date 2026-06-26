@@ -2322,6 +2322,21 @@ model SmsLog {
   @@map("sms_logs")
 }
 
+/// SMS suppression list (TCPA STOP compliance). A phone number lands here when the recipient texts
+/// STOP (or an admin/bounce suppresses it); we never send transactional/alert SMS to a suppressed
+/// number until they text START (which removes the row). Keyed globally by E.164 phone — opt-out is
+/// per-number, independent of which client triggered the message. Mirrors EmailUnsubscribe.
+model SmsOptOut {
+  id        String   @id @default(cuid())
+  phone     String   @unique // E.164, e.g. +14155551234
+  clientId  String? // the client whose message prompted the opt-out, when known
+  reason    String   @default("user") // user (texted STOP) | admin | bounce
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@map("sms_opt_outs")
+}
+
 model NotificationEvent {
   id        String              @id @default(cuid())
   clientId  String?

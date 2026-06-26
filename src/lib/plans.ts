@@ -115,7 +115,7 @@ export const PLANS: PlanDef[] = [
       customDomain: true,
       booking: true,
       chat: true,
-      smsAlerts: false, // disabled until a real SMS provider is wired — sendSms() is a metered stub that would bill for unsent messages
+      smsAlerts: true, // one-way owner alerts via Twilio (opt-in; stubs safely + unmetered when unconfigured) — see docs/MESSAGING.md
       smsIncludedMonthly: 100,
       emailIncludedMonthly: 1000,
       payments: false,
@@ -172,7 +172,7 @@ export const PLANS: PlanDef[] = [
       customDomain: true,
       booking: true,
       chat: true,
-      smsAlerts: false, // disabled until a real SMS provider is wired — sendSms() is a metered stub that would bill for unsent messages
+      smsAlerts: true, // one-way owner alerts via Twilio (opt-in; stubs safely + unmetered when unconfigured) — see docs/MESSAGING.md
       smsIncludedMonthly: 500,
       emailIncludedMonthly: 5000,
       payments: true,

@@ -123,8 +123,10 @@ export default async function ClientHomePage() {
   const websiteStatus = ws.preview.live ? "Live" : ws.preview.ready ? "Preview ready" : ws.website.exists ? "In progress" : "Not started";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  // Greet by first name only (fall back to the business name when we have no owner name).
-  const firstName = ws.client.ownerName?.trim().split(/\s+/)[0] || ws.client.businessName;
+  // Greet by first name only. Staff are greeted by their own name; the owner by the account's owner
+  // name (falling back to the business name when neither is set).
+  const greetName = ws.role === "owner" ? ws.client.ownerName : ws.userName;
+  const firstName = greetName?.trim().split(/\s+/)[0] || ws.client.businessName;
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
   return (

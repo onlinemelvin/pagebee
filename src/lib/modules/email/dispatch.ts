@@ -27,6 +27,12 @@ export interface DispatchParams {
   attachments?: EmailAttachment[];
   /** When true, `body` is already a full HTML document (skip the layout). */
   rawHtml?: boolean;
+  /**
+   * RFC 8058 one-click List-Unsubscribe endpoint for this send. Marketing mail
+   * sets this automatically; transactional senders (e.g. team invites) may pass
+   * a purpose-specific opt-out URL — a working header improves inbox placement.
+   */
+  listUnsubscribeUrl?: string;
 }
 
 export interface DispatchResult {
@@ -107,7 +113,7 @@ export async function dispatch(params: DispatchParams): Promise<DispatchResult> 
       html,
       replyTo: params.replyTo ?? DEFAULT_REPLY_TO,
       attachments: params.attachments,
-      listUnsubscribeUrl: oneClickUrl,
+      listUnsubscribeUrl: oneClickUrl ?? params.listUnsubscribeUrl,
       headers: { "X-Entity-Ref-ID": log.id },
     });
     await prisma.emailLog.update({

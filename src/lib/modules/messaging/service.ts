@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/modules/email";
 import { requireWithinLimit, recordUsage, UsageError } from "@/lib/modules/usage";
+import { sendProviderSms } from "@/lib/sms/twilio";
+import { isOptedOut, normalizePhone } from "./optout";
 
 export class MessagingError extends Error {
   constructor(
@@ -83,22 +85,69 @@ export async function sendAiReply(
   return { reply: reply || "I'm not sure about that — please reach out to us directly and we'll help." };
 }
 
+// Appended to every alert so recipients always have a documented opt-out (TCPA). Twilio strips/echoes
+// STOP handling, but we include it in copy too for compliance + clarity.
+const STOP_FOOTER = "\n\nReply STOP to opt out.";
+
+export interface SmsSendResult {
+  status: "sent" | "stubbed" | "suppressed";
+  to: string;
+}
+
 /**
- * SMS send path (STUB — no real provider wired yet). Gated by `smsAlerts` and metered against the
- * monthly `sms` allowance. Records usage and logs; swap the body for a real provider later.
+ * SMS send path (Twilio, with a console-stub fallback when unconfigured). Gated by the `smsAlerts`
+ * plan flag and metered against the monthly `sms` allowance. Honors the STOP suppression list
+ * (never sends to an opted-out number), appends the opt-out footer, and records every attempt in
+ * SmsLog for audit. `consentVerified` must be true at the call site (the owner opted in / it's their
+ * own number) — we record it on the log row.
  */
-export async function sendSms(clientId: string, to: string, body: string): Promise<{ stubbed: boolean; to: string }> {
+export async function sendSms(
+  clientId: string,
+  to: string,
+  body: string,
+  opts: { consentVerified?: boolean } = {},
+): Promise<SmsSendResult> {
   const flags = await planFlags(clientId);
   if (!flags.smsAlerts) throw new MessagingError(403, "sms_not_enabled");
+
+  const phone = normalizePhone(to);
+  if (!phone) throw new MessagingError(400, "invalid_phone");
+
+  // Compliance gate: never message a suppressed number. Log it and return without metering a send.
+  if (await isOptedOut(phone)) {
+    await prisma.smsLog.create({
+      data: { clientId, toPhone: phone, body, status: "FAILED", error: "suppressed:opted_out", consentVerified: opts.consentVerified ?? false },
+    }).catch(() => {});
+    return { status: "suppressed", to: phone };
+  }
+
   try {
     await requireWithinLimit(clientId, "sms");
   } catch (err) {
     if (err instanceof UsageError) throw new MessagingError(429, "sms_limit_reached");
     throw err;
   }
-  await recordUsage(clientId, "sms");
-  console.log(`[sms stub] → ${to}: ${body.slice(0, 80)}`);
-  return { stubbed: true, to };
+
+  const text = body.includes("STOP") ? body : body + STOP_FOOTER;
+  const log = await prisma.smsLog.create({
+    data: { clientId, toPhone: phone, body: text, status: "QUEUED", consentVerified: opts.consentVerified ?? false },
+    select: { id: true },
+  });
+
+  try {
+    const res = await sendProviderSms(phone, text);
+    await prisma.smsLog.update({
+      where: { id: log.id },
+      data: { status: res.stubbed ? "QUEUED" : "SENT", providerId: res.sid },
+    });
+    // Only meter REAL sends — a stubbed send (no provider configured) must never burn the allowance.
+    if (!res.stubbed) await recordUsage(clientId, "sms").catch(() => {});
+    return { status: res.stubbed ? "stubbed" : "sent", to: phone };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await prisma.smsLog.update({ where: { id: log.id }, data: { status: "FAILED", error: message } }).catch(() => {});
+    throw new MessagingError(502, "sms_failed");
+  }
 }
 
 /**

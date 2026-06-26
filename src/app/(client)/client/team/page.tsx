@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Users, ArrowUpRight } from "lucide-react";
 import { getClientWorkspace } from "@/lib/modules/client";
 import { getAuthContext } from "@/lib/auth/session";
 import { listTeam } from "@/lib/modules/team";
+import { areasForFlags } from "@/lib/modules/team/permissions";
 import { TeamManager } from "@/components/client/TeamManager";
 import { EmptyState } from "@/components/client/ui/EmptyState";
 
@@ -11,6 +13,8 @@ export const dynamic = "force-dynamic";
 export default async function ClientTeamPage() {
   const ws = await getClientWorkspace();
   if (!ws) return null;
+  // Team management is owner-only — staff have no business viewing the roster or invites.
+  if (ws.role !== "owner") redirect("/client");
 
   return (
     <div>
@@ -26,7 +30,7 @@ export default async function ClientTeamPage() {
           cta={{ label: "See plans & upgrade", href: "/client/billing", icon: ArrowUpRight }}
         />
       ) : (
-        <TeamContent clientId={ws.client.id} seats={ws.caps.teamSeats} unlimited={ws.caps.teamSeatsUnlimited} />
+        <TeamContent clientId={ws.client.id} seats={ws.caps.teamSeats} unlimited={ws.caps.teamSeatsUnlimited} caps={ws.caps} />
       )}
 
       <p className="mt-6 text-xs text-stone-400">
@@ -37,12 +41,24 @@ export default async function ClientTeamPage() {
   );
 }
 
-async function TeamContent({ clientId, seats, unlimited }: { clientId: string; seats: number; unlimited: boolean }) {
+async function TeamContent({
+  clientId,
+  seats,
+  unlimited,
+  caps,
+}: {
+  clientId: string;
+  seats: number;
+  unlimited: boolean;
+  caps: { forms: boolean; booking: boolean; invoices: boolean };
+}) {
   const ctx = await getAuthContext();
   const state = await listTeam(clientId, ctx?.userId ?? "");
   // Keep the live seat limit authoritative (plan flags), in case it changed since load.
   state.seatsUnlimited = unlimited;
   if (!unlimited) state.seatLimit = seats;
   const isOwner = state.members.find((m) => m.isYou)?.role === "owner";
-  return <TeamManager state={state} isOwner={isOwner} />;
+  // Only delegate areas the plan actually includes — Finance hidden on plans without invoices, etc.
+  const areas = areasForFlags({ contactForm: caps.forms, booking: caps.booking, invoices: caps.invoices });
+  return <TeamManager state={state} isOwner={isOwner} areas={areas} />;
 }
