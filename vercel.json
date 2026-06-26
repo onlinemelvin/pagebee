@@ -4,14 +4,6 @@
     {
       "path": "/api/v1/cron/domains/verify",
       "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/v1/cron/chat/sweep",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/v1/cron/sweep",
-      "schedule": "*/10 * * * *"
     }
   ]
 }
