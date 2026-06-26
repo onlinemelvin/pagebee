@@ -33,7 +33,10 @@ if (!globalForSubs.__pagebeeSubscribers) {
   globalForSubs.__pagebeeSubscribers = true;
 
   on("lead.created", async (payload) => {
-    const { lead } = payload as { lead: Lead };
+    // `suppressOwnerAlert` is set for leads born from an already-escalated chat — the owner was
+    // already pinged by the escalation, so we skip the duplicate "new inquiry" bell/email/SMS (but
+    // still run the CRM upsert + customer ack).
+    const { lead, suppressOwnerAlert } = payload as { lead: Lead; suppressOwnerAlert?: boolean };
 
     // Auto-add the lead to the CRM: link to an existing contact (by email/phone) or create one. Fail-
     // soft — a CRM hiccup must never block lead capture or the owner notification below.
@@ -53,6 +56,8 @@ if (!globalForSubs.__pagebeeSubscribers) {
         message: lead.message,
       });
     }
+
+    if (suppressOwnerAlert) return; // owner already alerted by the chat escalation
 
     // In-app notification for the owner (always — the bell isn't gated by email prefs).
     await createNotification({

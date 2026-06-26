@@ -178,14 +178,15 @@ export async function handleCustomerMessage(params: {
   if (aiConv) await prisma.aiMessage.create({ data: { aiConversationId: aiConv.id, role: "assistant", content: decision.reply } });
   out.push(toDTO(aiMsg));
 
-  // Capture any contact the visitor shared → creates/updates the lead.
-  if (decision.contact) conv = await captureContact(conv, decision.contact);
-
   let status: string = conv.status;
   if (decision.intent === "escalate") {
     await escalate(conv.id, clientId, decision.escalationReason ?? "UNKNOWN_TO_KB");
     status = S.ESCALATED;
   }
+  // Capture any contact the visitor shared → creates/updates the lead. Run AFTER escalation so a lead
+  // born on this same turn inherits escalationNotifiedAt and doesn't double-alert the owner.
+  if (decision.contact) await captureContact(conv, decision.contact);
+
   return { conversationId: conv.id, publicToken, status, messages: out, cta: decision.intent === "book" ? "book" : undefined };
 }
 
@@ -240,8 +241,10 @@ async function notifyOwnerEscalation(clientId: string, conversationId: string) {
   }
 }
 
-/** Create a Lead from a chat conversation (idempotent) and link it, reusing the lead.created fan-out. */
-async function createChatLead(conv: { id: string; clientId: string; leadId: string | null; visitorName: string | null; visitorEmail: string | null; visitorPhone: string | null }) {
+/** Create a Lead from a chat conversation (idempotent) and link it, reusing the lead.created fan-out.
+ *  When the chat was already escalated (owner pinged), the lead.created owner alert is suppressed so
+ *  the owner isn't double-notified. */
+async function createChatLead(conv: { id: string; clientId: string; leadId: string | null; visitorName: string | null; visitorEmail: string | null; visitorPhone: string | null; escalationNotifiedAt?: Date | null }) {
   if (conv.leadId) return;
   const lead = await prisma.lead.create({
     data: {
@@ -256,7 +259,7 @@ async function createChatLead(conv: { id: string; clientId: string; leadId: stri
   });
   await prisma.conversation.update({ where: { id: conv.id }, data: { leadId: lead.id } });
   await writeAudit({ action: "lead.created", entityType: "Lead", entityId: lead.id, clientId: conv.clientId });
-  await emit("lead.created", { lead });
+  await emit("lead.created", { lead, suppressOwnerAlert: !!conv.escalationNotifiedAt });
 }
 
 /**
@@ -287,39 +290,60 @@ async function captureContact(conv: { id: string }, contact: { name?: string; ph
   return updated;
 }
 
-// ── Timeout sweep (worker) ────────────────────────────────────────────────────
+// ── Wait-time nudges + timeout handoff (worker) ───────────────────────────────
+
+// Proactive "still waiting" reassurances, posted (as AI messages — canned, no AI spend) at increasing
+// fractions of the per-client timeout while an escalated chat waits for the owner. The final hand-off
+// (take their number) happens at the full timeout.
+const WAIT_NUDGES = [
+  "I've let the team know — they usually respond pretty fast, so I'll give them a few moments. 🙂",
+  "Thanks for hanging in there! We're a little busier than usual right now — bear with me while I track down someone who can help.",
+];
+const NUDGE_FRACTIONS = [0.3, 0.65]; // of the timeout (the rest of the way → final handoff)
 
 /**
- * Hand off escalated chats the owner hasn't answered within their timeout: post the AI's "I'll get
- * the team on it" message, then capture contact → Lead (if known) or ask for it. Idempotent via
- * `timedOutAt`. Runs from the worker on a short cadence.
+ * Keep escalated chats alive while the owner is being looped in: post staged "still waiting"
+ * reassurances, and at the full timeout hand off — capture contact → Lead (if known) or ask for a
+ * number. All steps are idempotent (nudgeCount / timedOutAt). Runs from the worker every ~60s.
  */
 export async function sweepChatEscalations(now: Date = new Date()): Promise<{ handed: number }> {
-  // Bound the scan to escalations at least 1 min old; per-client timeout is checked below.
+  // Bound the scan to escalations at least 1 min old; per-client timing is checked below.
   const candidates = await prisma.conversation.findMany({
     where: { status: S.ESCALATED, timedOutAt: null, escalatedAt: { not: null, lt: new Date(now.getTime() - 60_000) } },
-    select: { id: true, clientId: true, leadId: true, visitorName: true, visitorEmail: true, visitorPhone: true, escalatedAt: true, lastOwnerAt: true },
+    select: { id: true, clientId: true, leadId: true, visitorName: true, visitorEmail: true, visitorPhone: true, escalatedAt: true, lastOwnerAt: true, escalationNotifiedAt: true, nudgeCount: true },
     take: 100,
   });
   let handed = 0;
   for (const c of candidates) {
+    if (c.lastOwnerAt && c.escalatedAt && c.lastOwnerAt > c.escalatedAt) continue; // owner jumped in → leave it
     const cfg = await getChatConfig(c.clientId);
-    const dueAt = c.escalatedAt!.getTime() + cfg.escalationTimeoutMinutes * 60_000;
-    if (now.getTime() < dueAt) continue; // not due yet for this client
-    if (c.lastOwnerAt && c.escalatedAt && c.lastOwnerAt > c.escalatedAt) continue; // owner already replied
+    const timeoutMs = cfg.escalationTimeoutMinutes * 60_000;
+    const elapsed = now.getTime() - c.escalatedAt!.getTime();
 
-    await prisma.conversation.update({ where: { id: c.id }, data: { timedOutAt: now } });
-    const hasContact = !!(c.visitorEmail || c.visitorPhone);
-    if (hasContact || c.leadId) {
-      await createChatLead(c);
-      const reach = c.visitorEmail && c.visitorPhone ? "email or text" : c.visitorEmail ? "email" : "text";
-      await addMessage(c.id, "SYSTEM", `Sorry for the wait — I couldn't get you an answer just now, so I've passed this to our team. We'll get back to you by ${reach} as soon as possible.`);
-      await prisma.conversation.update({ where: { id: c.id }, data: { status: S.CLOSED } });
-    } else {
-      await addMessage(c.id, "SYSTEM", "Sorry for the wait — I'm having trouble getting you an answer right now, so I'll pass this to our team. What's the best email or phone number to reach you?");
-      await prisma.conversation.update({ where: { id: c.id }, data: { status: S.AWAITING } });
+    // Full timeout → hand off to a lead.
+    if (elapsed >= timeoutMs) {
+      await prisma.conversation.update({ where: { id: c.id }, data: { timedOutAt: now } });
+      if (c.visitorPhone || c.visitorEmail || c.leadId) {
+        await createChatLead(c);
+        const how = c.visitorPhone ? "give you a call" : c.visitorEmail ? "email you" : "reach out";
+        await addMessage(c.id, "AI", `Looks like the team's tied up at the moment — I've passed your request along and they'll ${how} as soon as they're free. Thanks for your patience!`);
+        await prisma.conversation.update({ where: { id: c.id }, data: { status: S.CLOSED } });
+      } else {
+        await addMessage(c.id, "AI", "Seems like we're out of luck for the moment — let me take your number and have the team reach out as soon as they're available. What's the best phone number for you?");
+        await prisma.conversation.update({ where: { id: c.id }, data: { status: S.AWAITING } });
+      }
+      handed++;
+      continue;
     }
-    handed++;
+
+    // Before the timeout: send the next staged reassurance, if its threshold has passed (each once).
+    let target = 0;
+    for (let i = 0; i < NUDGE_FRACTIONS.length; i++) if (elapsed >= NUDGE_FRACTIONS[i] * timeoutMs) target = i + 1;
+    if (c.nudgeCount < target && c.nudgeCount < WAIT_NUDGES.length) {
+      await addMessage(c.id, "AI", WAIT_NUDGES[c.nudgeCount]);
+      await prisma.conversation.update({ where: { id: c.id }, data: { nudgeCount: { increment: 1 } } });
+      handed++;
+    }
   }
   return { handed };
 }

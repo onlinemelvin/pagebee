@@ -1659,6 +1659,7 @@ model Conversation {
   lastCustomerAt       DateTime?
   lastOwnerAt          DateTime?
   timedOutAt           DateTime?
+  nudgeCount           Int       @default(0) // proactive "still waiting" reassurances sent while escalated
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -59,7 +59,7 @@ export function chatFeedScript(token: string, preview?: boolean): string {
     "document.body.appendChild(root);" +
     "var fab=root.querySelector('.pb-chat-fab');fab.style.display='flex';" +
     "var panel=root.querySelector('.pb-chat-panel');var body=root.querySelector('.pb-chat-body');var input=root.querySelector('.pb-chat-foot input');var send=root.querySelector('.pb-chat-send');" +
-    "var seen={};var poller=null;var greeted=false;" +
+    "var seen={};var poller=null;var greeted=false;var sending=false;" +
     // try to label the header with the page's site title
     "try{var t=(document.querySelector('meta[property=\"og:site_name\"]')||{}).content||document.title;if(t)root.querySelector('.pb-chat-title').textContent=t.split('|')[0].split('\\u2013')[0].trim().slice(0,28);}catch(e){}" +
     "function scroll(){body.scrollTop=body.scrollHeight;}" +
@@ -75,18 +75,20 @@ export function chatFeedScript(token: string, preview?: boolean): string {
     "if(res.cta==='book')bookBtn();if(res.status==='awaiting_contact')contactForm();if(res.status==='escalated'){var s3=sess();s3.escalated=1;save(s3);startPoll();}}" +
     // one turn: send message and/or contact. `opt` is the optimistic customer bubble — once the server
     // echoes the stored customer message (with an id), drop the optimistic one so it isn't shown twice.
-    "function turn(text,contact,opt){var s=sess();var pay={conversationId:s.conversationId,publicToken:s.publicToken};if(text)pay.message=text;if(contact)pay.contact=contact;typing(true);send.disabled=true;var t0=Date.now();" +
+    // Pause polling for the duration of a turn (`sending`) so the poller can't fetch+render the just-
+    // sent visitor message before the optimistic bubble is reconciled — that was the residual duplicate.
+    "function turn(text,contact,opt){var s=sess();var pay={conversationId:s.conversationId,publicToken:s.publicToken};if(text)pay.message=text;if(contact)pay.contact=contact;sending=true;typing(true);send.disabled=true;var t0=Date.now();" +
     "fetch('/api/v1/public/chat/message',{method:'POST',headers:hdrs(),body:JSON.stringify(pay)}).then(function(r){return r.json();}).then(function(res){" +
     "var aiText='';((res&&res.messages)||[]).forEach(function(m){if(m.role!=='customer')aiText+=(m.body||'');});" +
     // Keep the typing indicator up long enough to feel natural (scaled to reply length), min ~1.1s.
     "var wait=Math.min(3800,Math.max(1100,aiText.length*32))-(Date.now()-t0);" +
-    "function reveal(){typing(false);send.disabled=false;if(opt&&((res&&res.messages)||[]).some(function(m){return m.role==='customer';})){try{opt.remove();}catch(_){}}handle(res);}" +
+    "function reveal(){typing(false);send.disabled=false;if(opt&&((res&&res.messages)||[]).some(function(m){return m.role==='customer';})){try{opt.remove();}catch(_){}}handle(res);sending=false;}" +
     "if(wait>0)setTimeout(reveal,wait);else reveal();" +
-    "}).catch(function(){typing(false);send.disabled=false;bubble('system','Something went wrong. Please try again.');});}" +
-    "function submit(){var v=(input.value||'').trim();if(!v)return;input.value='';var opt=bubble('customer',v);turn(v,null,opt);}" +
+    "}).catch(function(){sending=false;typing(false);send.disabled=false;bubble('system','Something went wrong. Please try again.');});}" +
+    "function submit(){if(sending)return;var v=(input.value||'').trim();if(!v)return;input.value='';var opt=bubble('customer',v);turn(v,null,opt);}" +
     "send.onclick=submit;input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();submit();}});" +
     // poll for owner/AI replies (skip in preview/demo — nothing persisted)
-    "function pollOnce(){if(DEMO)return;var s=sess();if(!s.conversationId)return;fetch('/api/v1/public/chat/poll?conversationId='+encodeURIComponent(s.conversationId)+'&publicToken='+encodeURIComponent(s.publicToken)+'&after='+encodeURIComponent(s.lastAt||''),{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json();}).then(function(d){if(!d||!d.messages)return;var fresh=d.messages.filter(function(m){return !seen[m.id];});if(fresh.length){addMsgs(fresh);var s2=sess();s2.lastAt=fresh[fresh.length-1].at;save(s2);}if(d.status==='awaiting_contact'&&!body.querySelector('.pb-chat-form'))contactForm();}).catch(function(){});}" +
+    "function pollOnce(){if(DEMO||sending)return;var s=sess();if(!s.conversationId)return;fetch('/api/v1/public/chat/poll?conversationId='+encodeURIComponent(s.conversationId)+'&publicToken='+encodeURIComponent(s.publicToken)+'&after='+encodeURIComponent(s.lastAt||''),{headers:{'Authorization':'Bearer '+TOKEN}}).then(function(r){return r.json();}).then(function(d){if(!d||!d.messages)return;var fresh=d.messages.filter(function(m){return !seen[m.id];});if(fresh.length){addMsgs(fresh);var s2=sess();s2.lastAt=fresh[fresh.length-1].at;save(s2);}if(d.status==='awaiting_contact'&&!body.querySelector('.pb-chat-form'))contactForm();}).catch(function(){});}" +
     "function startPoll(){if(poller||DEMO)return;poller=setInterval(pollOnce,4000);}" +
     "function stopPoll(){if(poller){clearInterval(poller);poller=null;}}" +
     "function open(){root.classList.add('pb-chat-open');fab.style.display='none';input.focus();" +
