@@ -84,8 +84,8 @@ export async function chatTurn(clientId: string, history: ChatHistoryMsg[], user
   // How the AI hands off on escalation: reassure → ask for a phone number to reach THEM → offer to
   // call the business or wait here. Never push email (the team is auto-notified; the owner wants calls).
   const callLine = facts.phone
-    ? ` They can also call us at ${facts.phone}, or just wait here and you'll be right back with an answer.`
-    : " They're welcome to wait here for an answer.";
+    ? ` They can also call us at ${facts.phone}, or just wait here — it might take a bit though.`
+    : " They're welcome to wait here, though it might take a bit.";
   const etaLine = open ? "shortly" : eta ? `by ${eta}` : "as soon as possible";
   const escalationGuide =
     `WHEN YOU ESCALATE: warmly say something like "Great question — I'll have to check with the team on that and get back to you ${etaLine}." ` +
