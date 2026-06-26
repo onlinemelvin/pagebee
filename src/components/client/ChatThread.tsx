@@ -32,13 +32,17 @@ export function ChatThread({ conversation, canReply }: { conversation: Conversat
   const scrollDown = React.useCallback(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), []);
   React.useEffect(scrollDown, [messages, scrollDown]);
 
-  // Poll for new visitor (or teammate) messages while the thread is open.
+  // Poll for new visitor (or teammate) messages while the thread is open. The cache-buster (`?t=`)
+  // guarantees a fresh response — without it an intermediary cache can keep serving the messages from
+  // mount, so nothing new shows until a full refresh.
   React.useEffect(() => {
+    let active = true;
     const load = async () => {
       try {
-        const res = await fetch(`/api/v1/client/chats/${conversation.id}`, { cache: "no-store" });
-        if (!res.ok) return;
+        const res = await fetch(`/api/v1/client/chats/${conversation.id}?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok || !active) return;
         const data = (await res.json()) as { conversation: Conversation };
+        if (!active) return;
         setStatus(data.conversation.status);
         const fresh = data.conversation.messages.filter((m) => !seen.current.has(m.id));
         if (fresh.length) {
@@ -49,8 +53,12 @@ export function ChatThread({ conversation, canReply }: { conversation: Conversat
         /* ignore */
       }
     };
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    load(); // immediately, so there's no initial gap
+    const t = setInterval(load, 4000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
   }, [conversation.id]);
 
   function pushOwn(msg: ChatMessageDTO) {
