@@ -41,7 +41,9 @@ const RESPOND_TOOL: Anthropic.Tool = {
     "Reply to the website visitor and classify the turn. Use intent='book' when they want to schedule/book; " +
     "intent='escalate' when you cannot answer from the approved facts or the topic is sensitive (custom pricing, " +
     "discounts, refunds, legal/medical/financial advice, an angry customer, or guaranteeing availability) — never " +
-    "invent an answer in those cases; otherwise intent='answer'.",
+    "invent an answer in those cases. IMPORTANT: the listed services may be incomplete, so if the visitor asks " +
+    "whether the business offers a service you don't see, escalate (UNKNOWN_TO_KB) — do NOT tell them it isn't " +
+    "offered. Otherwise intent='answer'.",
   input_schema: {
     type: "object",
     properties: {
@@ -87,6 +89,9 @@ export async function chatTurn(clientId: string, history: ChatHistoryMsg[], user
     `You are the friendly website assistant for ${facts.businessName}${facts.businessType ? ` (${facts.businessType})` : ""}. ` +
     "Answer visitor questions helpfully and briefly (1–3 sentences), warm and professional. " +
     "Use ONLY the approved facts below — never invent prices, hours, guarantees, availability, or policies you weren't given. " +
+    "The services list may be INCOMPLETE: if a visitor asks whether we do a service you don't see listed, do NOT say we don't " +
+    "offer it and NEVER refer them to another business — the owner may well do it. Instead set intent='escalate' (UNKNOWN_TO_KB) " +
+    "and reassure them you'll check with the team and get right back to them. " +
     "If a visitor wants to book or schedule, set intent='book' and encourage them (a booking button will appear). " +
     "If you cannot answer from the facts, or the topic is sensitive, set intent='escalate' with the best reason and do NOT guess. " +
     hoursContext +
