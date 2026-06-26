@@ -134,16 +134,18 @@ export async function handleCustomerMessage(params: {
   // (acknowledgments / small talk / simple facts) without answering the escalated question or re-escalating.
   if (conv.status === S.ESCALATED) {
     const history = await getHistory(conv.id);
-    let reply: string | null = null;
+    let hold: { reply: string | null; contact?: { name?: string; phone?: string; email?: string } } = { reply: null };
     try {
-      reply = await holdingReply(clientId, history, message);
+      hold = await holdingReply(clientId, history, message);
     } catch {
-      reply = null;
+      hold = { reply: null };
     }
-    if (reply) {
-      const aiMsg = await addMessage(conv.id, "AI", reply);
+    // If the visitor shared contact details, capture them → creates/updates the lead.
+    if (hold.contact) conv = await captureContact(conv, hold.contact);
+    if (hold.reply) {
+      const aiMsg = await addMessage(conv.id, "AI", hold.reply);
       const aiConv = await prisma.aiConversation.findUnique({ where: { conversationId: conv.id }, select: { id: true } });
-      if (aiConv) await prisma.aiMessage.create({ data: { aiConversationId: aiConv.id, role: "assistant", content: reply } });
+      if (aiConv) await prisma.aiMessage.create({ data: { aiConversationId: aiConv.id, role: "assistant", content: hold.reply } });
       out.push(toDTO(aiMsg));
     }
     return { conversationId: conv.id, publicToken, status: conv.status, messages: out };
@@ -175,6 +177,9 @@ export async function handleCustomerMessage(params: {
   const aiConv = await prisma.aiConversation.findUnique({ where: { conversationId: conv.id }, select: { id: true } });
   if (aiConv) await prisma.aiMessage.create({ data: { aiConversationId: aiConv.id, role: "assistant", content: decision.reply } });
   out.push(toDTO(aiMsg));
+
+  // Capture any contact the visitor shared → creates/updates the lead.
+  if (decision.contact) conv = await captureContact(conv, decision.contact);
 
   let status: string = conv.status;
   if (decision.intent === "escalate") {
@@ -252,6 +257,34 @@ async function createChatLead(conv: { id: string; clientId: string; leadId: stri
   await prisma.conversation.update({ where: { id: conv.id }, data: { leadId: lead.id } });
   await writeAudit({ action: "lead.created", entityType: "Lead", entityId: lead.id, clientId: conv.clientId });
   await emit("lead.created", { lead });
+}
+
+/**
+ * Persist contact the visitor shared in chat, then create the linked Lead (or top up an existing one
+ * with any newly-known detail). Returns the refreshed conversation so callers keep using it.
+ */
+async function captureContact(conv: { id: string }, contact: { name?: string; phone?: string; email?: string }) {
+  const updated = await prisma.conversation.update({
+    where: { id: conv.id },
+    data: {
+      ...(contact.name ? { visitorName: contact.name } : {}),
+      ...(contact.phone ? { visitorPhone: contact.phone } : {}),
+      ...(contact.email ? { visitorEmail: contact.email } : {}),
+    },
+  });
+  if (updated.leadId) {
+    await prisma.lead.update({
+      where: { id: updated.leadId },
+      data: {
+        ...(updated.visitorName ? { name: updated.visitorName } : {}),
+        ...(updated.visitorPhone ? { phone: updated.visitorPhone } : {}),
+        ...(updated.visitorEmail ? { email: updated.visitorEmail } : {}),
+      },
+    }).catch(() => {});
+  } else {
+    await createChatLead(updated);
+  }
+  return updated;
 }
 
 // ── Timeout sweep (worker) ────────────────────────────────────────────────────
