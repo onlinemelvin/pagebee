@@ -32,18 +32,29 @@ async function assertBookingEnabled(clientId: string) {
 }
 
 /**
- * Whether the public booking widget is live for a tenant: the plan includes `booking` AND the owner
- * hasn't turned it off via the feature card. Mirrors leadCaptureEnabled — used by the public booking
- * status feed (serve-time show/hide) and to gate public booking submissions. Default-on when on-plan.
+ * Whether the owner has saved their availability (ClientSetting.calendarSettings is present).
+ * Booking only goes live on the site once this is set, so customers never book into the
+ * unconfigured default hours — and it's the last step of the Appointments onboarding flow.
+ */
+export async function hasSchedulingSettings(clientId: string): Promise<boolean> {
+  const cs = await prisma.clientSetting.findUnique({
+    where: { clientId },
+    select: { calendarSettings: true },
+  });
+  return cs?.calendarSettings != null;
+}
+
+/**
+ * Whether the public booking widget is live for a tenant. Booking is an explicit opt-in (unlike
+ * lead capture): it shows only when the plan includes `booking`, the owner has turned it ON via the
+ * Appointments onboarding (FeatureFlag booking.enabled === true), AND they've saved their
+ * availability. Used by the public booking status feed (serve-time show/hide) and to gate public
+ * submissions, so the scheduler never appears before the owner has finished setting it up.
  */
 export async function bookingEnabled(
   clientId: string,
   planOverride?: { flags: Record<string, unknown>; showcase: boolean },
 ): Promise<boolean> {
-  const override = await prisma.featureFlag.findUnique({
-    where: { clientId_key: { clientId, key: "booking" } },
-    select: { enabled: true },
-  });
   let planFlags = planOverride?.flags;
   if (!planFlags) {
     const client = await prisma.client.findUnique({
@@ -54,7 +65,12 @@ export async function bookingEnabled(
   }
   if (!planFlags.booking) return false; // not on this (previewed or paid) plan
   if (planOverride?.showcase) return true; // previewing a higher tier — showcase the capability
-  return override?.enabled !== false; // default-on unless explicitly disabled
+  const override = await prisma.featureFlag.findUnique({
+    where: { clientId_key: { clientId, key: "booking" } },
+    select: { enabled: true },
+  });
+  if (override?.enabled !== true) return false; // explicit opt-in — OFF until the owner enables it
+  return hasSchedulingSettings(clientId); // live only once availability is configured
 }
 
 /**
