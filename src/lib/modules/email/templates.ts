@@ -66,6 +66,26 @@ export function repInviteEmail(args: { name?: string | null; setPasswordUrl: str
   };
 }
 
+/**
+ * Confirmation that a rep e-signed their commission agreement. The signed PDF is attached by the
+ * caller (sendRepContractSigned); this is the covering message + a link back to the portal copy.
+ */
+export function repContractSignedEmail(args: { name?: string | null; portalUrl: string }): BuiltEmail {
+  return {
+    category: "ACCOUNT",
+    template: "rep_contract_signed",
+    subject: "Your PageBee commission agreement — signed copy 🐝",
+    preheader: "A PDF copy of your signed agreement is attached for your records.",
+    body:
+      h("Your agreement is signed ✅") +
+      greet(args.name) +
+      p(`Thanks for signing your PageBee Sales-Rep Commission Agreement — you're cleared to start selling. 🎉`) +
+      p(`A <strong>PDF copy is attached</strong> for your records. You can also download it any time from your agreement page in the portal.`) +
+      button("View your agreement", args.portalUrl) +
+      note(`Keep this copy somewhere safe. If you have any questions about your terms, reach out to your manager.`),
+  };
+}
+
 // — Auth / security -----------------------------------------------------------
 
 export function passwordResetEmail(args: { name?: string | null; resetUrl: string; expiresMinutes: number }): BuiltEmail {

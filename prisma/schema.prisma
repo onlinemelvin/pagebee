@@ -341,6 +341,7 @@ enum CampaignStatus {
 enum AuthTokenType {
   PASSWORD_RESET
   EMAIL_VERIFY
+  REP_INVITE
 }
 
 enum ConsentChannel {
@@ -535,8 +536,8 @@ model CommissionPlan {
 
   // Base commission per converted client by plan (see docs/SALES_REP_PROGRAM.md §3).
   nectarBase Decimal @default(60) @db.Decimal(12, 2)
-  honeyBase  Decimal @default(110) @db.Decimal(12, 2)
-  hiveBase   Decimal @default(185) @db.Decimal(12, 2)
+  honeyBase  Decimal @default(200) @db.Decimal(12, 2)
+  hiveBase   Decimal @default(500) @db.Decimal(12, 2)
 
   // Optional recurring commission (e.g. 5% of monthly revenue for N months).
   recurringPct    Decimal @default(0) @db.Decimal(5, 2)

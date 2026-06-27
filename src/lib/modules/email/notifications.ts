@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { dispatch } from "./dispatch";
 import { appBase } from "./layout";
+import type { EmailAttachment } from "./send";
 import * as t from "./templates";
 import { createNotificationFromEmail, isEmailAllowed } from "@/lib/modules/notification";
 
@@ -131,6 +132,7 @@ async function toEmail(args: {
   clientId?: string | null;
   recipientUserId?: string | null;
   recipientLabel?: string;
+  attachments?: EmailAttachment[];
   build: t.BuiltEmail;
 }): Promise<void> {
   try {
@@ -144,6 +146,7 @@ async function toEmail(args: {
       clientId: args.clientId ?? null,
       recipientUserId: args.recipientUserId ?? null,
       recipientLabel: args.recipientLabel,
+      attachments: args.attachments,
     });
   } catch (err) {
     console.error(`[email:notify] failed for ${args.to}`, err);
@@ -168,3 +171,6 @@ export const sendNewDeviceLogin = (to: string, args: { name?: string | null; whe
 // — Internal ops (sales reps) -------------------------------------------------
 export const sendRepInvite = (to: string, args: { name?: string | null; setPasswordUrl: string; portalUrl: string; expiresDays: number; userId?: string }) =>
   toEmail({ to, recipientUserId: args.userId ?? null, build: t.repInviteEmail(args) });
+
+export const sendRepContractSigned = (to: string, args: { name?: string | null; portalUrl: string; pdf: EmailAttachment; userId?: string }) =>
+  toEmail({ to, recipientUserId: args.userId ?? null, attachments: [args.pdf], build: t.repContractSignedEmail(args) });

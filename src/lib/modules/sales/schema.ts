@@ -66,7 +66,6 @@ export type FollowUpInput = z.infer<typeof followUpInputSchema>;
 export const provisionRepInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   email: z.string().trim().email("Enter a valid email").max(200),
-  password: z.string().min(8, "Temporary password must be at least 8 characters").max(200),
   title: optionalTrimmed(120),
 });
 export type ProvisionRepInput = z.infer<typeof provisionRepInputSchema>;

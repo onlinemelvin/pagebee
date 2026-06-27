@@ -22,7 +22,7 @@ export interface RepSummaryRow {
 
 const ERROR_COPY: Record<string, string> = {
   email_taken: "A user with that email already exists.",
-  validation_error: "Check the form — name, valid email, and an 8+ character password are required.",
+  validation_error: "Check the form — a name and a valid email are required.",
   supabase_not_configured: "Auth isn't configured in this environment.",
   rep_has_commissions: "This rep has commission history and can't be deleted from here.",
   rep_not_found: "That rep no longer exists.",
@@ -36,7 +36,7 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
   const [done, setDone] = React.useState<string | null>(null);
   const [certifying, setCertifying] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState<string | null>(null);
-  const [form, setForm] = React.useState({ name: "", email: "", title: "", password: "" });
+  const [form, setForm] = React.useState({ name: "", email: "", title: "" });
 
   async function toggleCertify(id: string, certified: boolean) {
     setCertifying(id);
@@ -97,7 +97,7 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
       }
       setDone(`${form.email} created. We've emailed them a link to set their password, sign in, and sign the agreement.`);
       toast.success(`Rep ${form.name} created`);
-      setForm({ name: "", email: "", title: "", password: "" });
+      setForm({ name: "", email: "", title: "" });
       setAdding(false);
       router.refresh();
     } finally {
@@ -136,19 +136,10 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
             <Field label="Title">
               <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Sales rep" />
             </Field>
-            <Field label="Temporary password *">
-              <Input
-                type="text"
-                required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="8+ characters — share with the rep"
-              />
-            </Field>
           </div>
           {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
           <div className="mt-4 flex items-center justify-between">
-            <p className="text-xs text-stone-400">Creates a sales-portal login + a contract for the rep to e-sign.</p>
+            <p className="text-xs text-stone-400">We&apos;ll email them a link to set their password — then they sign in and e-sign their contract.</p>
             <Button type="submit" disabled={busy}>
               {busy ? "Creating…" : "Create rep"}
             </Button>

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { createAuthUser, findAuthUserId, deleteAuthUser } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/modules/audit";
@@ -25,8 +26,10 @@ export async function provisionRep(input: unknown, actor?: { userId?: string }) 
     throw new SalesError("email_taken", 409);
   }
 
-  // Supabase Auth identity (auto-confirmed). Tolerate a pre-existing auth user (reuse its id).
-  const created = await createAuthUser(email, parsed.password);
+  // Supabase Auth identity (auto-confirmed). The rep never uses this password — it's a random
+  // throwaway just to satisfy the auth provider; they set their own via the invite link below.
+  // Tolerate a pre-existing auth user (reuse its id).
+  const created = await createAuthUser(email, crypto.randomBytes(24).toString("base64url"));
   let supabaseUserId: string | undefined;
   if (created.ok) {
     supabaseUserId = created.id;
@@ -89,7 +92,7 @@ export async function provisionRep(input: unknown, actor?: { userId?: string }) 
     const token = await createAuthToken({
       userId: result.userId,
       email,
-      type: "PASSWORD_RESET",
+      type: "REP_INVITE",
       ttlMinutes: REP_INVITE_TTL_DAYS * 24 * 60,
     });
     await sendRepInvite(email, {

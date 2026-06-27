@@ -24,6 +24,7 @@ describe("provisionRep", () => {
     prismaMock.$transaction.mockImplementation(async (arg: unknown) =>
       Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: typeof prismaMock) => unknown)(prismaMock),
     );
+    vi.mocked(createAuthToken).mockResolvedValue("prt_tok");
   });
 
   function wireHappyPath() {
@@ -40,12 +41,13 @@ describe("provisionRep", () => {
   it("creates the auth identity, PLATFORM user + rep employee, and a SENT contract", async () => {
     wireHappyPath();
     const result = await provisionRep(
-      { name: "Jane Rep", email: "Jane@Example.com", password: "supersecret", title: "Closer" },
+      { name: "Jane Rep", email: "Jane@Example.com", title: "Closer" },
       { userId: "admin1" },
     );
 
     expect(result).toEqual({ userId: "u1", repId: "rep1", contractId: "k1" });
-    expect(createAuthUser).toHaveBeenCalledWith("jane@example.com", "supersecret");
+    // No admin-supplied password — a random throwaway is generated for the auth provider.
+    expect(createAuthUser).toHaveBeenCalledWith("jane@example.com", expect.any(String));
     expect(prismaMock.user.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: "PLATFORM", email: "jane@example.com", supabaseUserId: "sb-1" }) }),
     );
@@ -59,10 +61,10 @@ describe("provisionRep", () => {
 
   it("emails the new rep a secure set-password invite link", async () => {
     wireHappyPath();
-    await provisionRep({ name: "Jane Rep", email: "Jane@Example.com", password: "supersecret" }, { userId: "admin1" });
+    await provisionRep({ name: "Jane Rep", email: "Jane@Example.com" }, { userId: "admin1" });
 
     expect(createAuthToken).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "u1", email: "jane@example.com", type: "PASSWORD_RESET" }),
+      expect.objectContaining({ userId: "u1", email: "jane@example.com", type: "REP_INVITE" }),
     );
     expect(sendRepInvite).toHaveBeenCalledWith(
       "jane@example.com",
@@ -73,14 +75,14 @@ describe("provisionRep", () => {
   it("still provisions the rep when the invite email fails (fail-soft)", async () => {
     wireHappyPath();
     vi.mocked(sendRepInvite).mockRejectedValueOnce(new Error("smtp down"));
-    const result = await provisionRep({ name: "Jane", email: "jane@example.com", password: "supersecret" });
+    const result = await provisionRep({ name: "Jane", email: "jane@example.com" });
     expect(result).toEqual({ userId: "u1", repId: "rep1", contractId: "k1" });
   });
 
   it("409 when the email already belongs to a user", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ id: "existing" });
     await expect(
-      provisionRep({ name: "Jane", email: "jane@example.com", password: "supersecret" }),
+      provisionRep({ name: "Jane", email: "jane@example.com" }),
     ).rejects.toMatchObject({ code: "email_taken", status: 409 });
     expect(createAuthUser).not.toHaveBeenCalled();
   });
@@ -89,13 +91,13 @@ describe("provisionRep", () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     vi.mocked(createAuthUser).mockResolvedValue({ ok: false, status: 500, error: "auth_down" });
     await expect(
-      provisionRep({ name: "Jane", email: "jane@example.com", password: "supersecret" }),
+      provisionRep({ name: "Jane", email: "jane@example.com" }),
     ).rejects.toBeInstanceOf(SalesError);
   });
 
-  it("rejects invalid input (short password)", async () => {
+  it("rejects invalid input (bad email)", async () => {
     await expect(
-      provisionRep({ name: "Jane", email: "jane@example.com", password: "short" }),
+      provisionRep({ name: "Jane", email: "not-an-email" }),
     ).rejects.toBeTruthy();
   });
 });
