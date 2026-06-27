@@ -46,6 +46,13 @@ export {
   clawbackClientCommissions,
 } from "./accrual";
 export { convertQuoteToClient } from "./conversion";
+export {
+  listSettlementQueue,
+  approveCommission,
+  markCommissionsPaid,
+  repCommissionStatement,
+} from "./settlement";
+export type { SettlementRow, RepSettlement } from "./settlement";
 export { listRepResources, createRepResource, deleteRepResource } from "./resources";
 export type { ResourceItem, ResourceGroup } from "./resources";
 export { sweepFollowUpReminders } from "./reminders";

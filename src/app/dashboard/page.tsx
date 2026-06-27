@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext } from "@/lib/auth/session";
+import { getAuthContext, getRepContext } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +9,7 @@ export default async function DashboardPage() {
   if (!ctx) redirect("/login");
   if (ctx.isAdmin) redirect("/admin");
   if (ctx.type === "CLIENT") redirect("/client");
+  // A PLATFORM user who is a commission rep (not admin) belongs in the rep portal.
+  if (ctx.type === "PLATFORM" && (await getRepContext())) redirect("/rep");
   redirect("/login");
 }

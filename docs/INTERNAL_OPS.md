@@ -61,20 +61,25 @@ rep scoping is enforced server-side regardless of what the UI shows.
 Ordered by business value. We are **hiring contract sales reps now**, so Phase 1 is
 the priority; the rest follow as headcount and revenue grow.
 
-### Phase 1 — Sales-rep program (NOW)  → [SALES_REP_PROGRAM.md](SALES_REP_PROGRAM.md)
-Onboard contract reps, get them productive, attribute and pay commissions. Delivers:
+### Phase 1 — Sales-rep program (✅ BUILT)  → [SALES_REP_PROGRAM.md](SALES_REP_PROGRAM.md)
+Onboard contract reps, get them productive, attribute and pay commissions. Delivered:
 `Employee`(COMMISSION_REP) onboarding + e-signed `Contract`, the rep CRM portal
 (prospects, activities, follow-ups, reminders), guardrailed `Quote`s, the resource
-/ training hub, and conversion + commission tracking with clawback.
+/ training hub, and conversion + commission tracking with clawback. Admins also get a
+rep roster with provision/certify/delete.
 
-### Phase 2 — Quote approval & discount governance
-Admin approval queue for out-of-guardrail quotes (`QuoteApproval`), discount-impact
-analytics, and the link from accepted `Quote` → `Client` onboarding.
+### Phase 2 — Quote approval & discount governance (🟡 approval queue + onboarding link BUILT)
+Admin approval queue for out-of-guardrail quotes (`QuoteApproval`) ✅ and the accepted
+`Quote` → `Client` onboarding link (`convertQuoteToClient`) ✅. Still to add:
+discount-impact / conversion analytics.
 
-### Phase 3 — Commission settlement & payouts
-Turn `CommissionRecord`s into actual money out the door: eligibility sweep, clawback
-window enforcement, statements per rep, and a **payout rail** (the one piece *not* in
-the schema yet — see §4). Approvals via `PayrollRecord`/`PayPeriod`.
+### Phase 3 — Commission settlement & payouts (✅ BUILT)
+`CommissionRecord` settlement ledger: accrual + eligibility sweep, clawback,
+**per-rep statements** (`/rep/earnings`), and the admin **settlement queue**
+(`/admin/commissions`) — approve ELIGIBLE → APPROVED, then mark PAID with a payout
+reference. Payout **rail is manual** by decision (Upwork/Fiverr milestones — see
+SALES_REP_PROGRAM.md §11); no in-app money movement. (`PayrollRecord`/`PayPeriod`
+integration deferred to Phase 4.)
 
 ### Phase 4 — Employees & payroll
 Salaried/hourly internal staff, time, `PayPeriod`/`PayrollRecord`, and integration

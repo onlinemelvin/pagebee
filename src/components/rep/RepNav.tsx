@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, CalendarClock, BookOpen, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, CalendarClock, BookOpen, DollarSign, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface RepTab {
@@ -18,6 +18,7 @@ const REP_TABS: RepTab[] = [
   { key: "dashboard", label: "Dashboard", href: "/rep", icon: LayoutDashboard },
   { key: "prospects", label: "Prospects", href: "/rep/prospects", icon: Users },
   { key: "follow-ups", label: "Follow-ups", href: "/rep/follow-ups", icon: CalendarClock },
+  { key: "earnings", label: "Earnings", href: "/rep/earnings", icon: DollarSign },
   { key: "resources", label: "Resources", href: "/rep/resources", icon: BookOpen },
 ];
 
