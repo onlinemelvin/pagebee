@@ -37,6 +37,8 @@ export default async function RepDashboardPage() {
   ]);
   const monthName = now.toLocaleDateString("en-US", { month: "long" });
   const leaderPct = standing.leaderCloses > 0 ? Math.round((standing.closes / standing.leaderCloses) * 100) : 0;
+  // With no closes yet, a rank (#1 of 1) is meaningless — show an honest kickoff state instead.
+  const noCloses = standing.closes === 0;
 
   const firstName = ws.name.split(/[\s@]/)[0];
   const closed = stats.byStatus.closed ?? 0;
@@ -79,8 +81,12 @@ export default async function RepDashboardPage() {
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{monthName} standing</p>
               <p className="font-display text-2xl">
-                {standing.rank === 1 ? "Leading the hive 🐝" : `Rank #${standing.rank}`}
-                <span className="ml-2 text-sm font-normal text-stone-400">of {standing.totalReps} reps</span>
+                {noCloses ? "Let's get buzzing 🐝" : standing.rank === 1 ? "Leading the hive 🐝" : `Rank #${standing.rank}`}
+                {!noCloses ? (
+                  <span className="ml-2 text-sm font-normal text-stone-400">
+                    of {standing.totalReps} rep{standing.totalReps === 1 ? "" : "s"}
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>
@@ -88,7 +94,9 @@ export default async function RepDashboardPage() {
             <p className="text-sm text-stone-300">
               <span className="font-display text-2xl text-white">{standing.closes}</span> close{standing.closes === 1 ? "" : "s"} this month
             </p>
-            {standing.rank === 1 ? (
+            {noCloses ? (
+              <p className="mt-1 text-xs text-stone-400">Your first close this month puts you on the board.</p>
+            ) : standing.rank === 1 ? (
               <p className="mt-1 text-xs text-amber-300">You&apos;re setting the pace. Keep it buzzing.</p>
             ) : (
               <>

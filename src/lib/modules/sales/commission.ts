@@ -8,7 +8,7 @@ export interface CommissionBases {
 }
 
 /** Default bases — keep in sync with the `CommissionPlan` schema defaults (docs/SALES_REP_PROGRAM.md §3). */
-export const DEFAULT_COMMISSION_BASES: CommissionBases = { nectar: 60, honey: 110, hive: 185 };
+export const DEFAULT_COMMISSION_BASES: CommissionBases = { nectar: 60, honey: 200, hive: 500 };
 
 /** Discount up to this many cents off the setup fee earns full commission (no reduction). */
 export const FREE_DISCOUNT_ALLOWANCE_CENTS = 5000; // $50

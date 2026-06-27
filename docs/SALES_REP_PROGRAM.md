@@ -65,8 +65,8 @@ tracks our own margin):
 | Plan | Setup fee | Monthly | **Rep base commission** | Notes |
 | --- | --- | --- | --- | --- |
 | Nectar | $399 | $39 | **$60** | entry tier |
-| Honey | $699 | $89 | **$110** | the "$100" target tier |
-| Hive | $999 | $179 | **$185** | highest effort/value |
+| Honey | $699 | $89 | **$200** | mid tier |
+| Hive | $999 | $179 | **$500** | highest effort/value |
 
 > ⚠️ These supersede the schema defaults (`launchBase`/`connectBase`/`automateBase`
 > = 25/50/75), which use stale plan names and are too low. Rename the fields to
@@ -279,7 +279,7 @@ Commission programs invite gaming. Controls:
 
 **Locked (2026-06-26):**
 
-1. **Commission amounts** — **Nectar $60 / Honey $110 / Hive $185** per converted
+1. **Commission amounts** — **Nectar $60 / Honey $200 / Hive $500** per converted
    client (§3), computed on collected revenue with the discount-coupling rule.
 2. **Recurring tail** — **off** for now; revisit after the base program is stable.
 3. **Recorded calls** — **deferred** out of Phase 1 (build the all-party-consent flow

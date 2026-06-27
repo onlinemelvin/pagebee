@@ -16,6 +16,7 @@ export default async function RepContractPage() {
         title: contract.title,
         signedAt: contract.signedAt ? contract.signedAt.toISOString() : null,
         commissionTerms: contract.commissionTerms,
+        documentUrl: contract.documentUrl,
       }
     : null;
 
