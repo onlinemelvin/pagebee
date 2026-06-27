@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { getRepWorkspace, getProspect, listQuotes, SalesError } from "@/lib/modules/sales";
+import { getRepWorkspace, getProspect, getProspectPreview, listQuotes, SalesError } from "@/lib/modules/sales";
 import { ProspectDetail, type ProspectDetailData, type TimelineItem } from "@/components/rep/ProspectDetail";
 import { QuotesPanel, type QuoteRow, type PlanPricing } from "@/components/rep/QuotesPanel";
+import { PreviewPanel, type PreviewView } from "@/components/rep/PreviewPanel";
 
 async function planPricing(): Promise<PlanPricing> {
   const plans = await prisma.plan.findMany({ select: { name: true, setupFee: true, monthlyFee: true } });
@@ -62,7 +63,11 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
     timeline,
   };
 
-  const [quotes, pricing] = await Promise.all([listQuotes(ws.employee.id, { prospectId: id }), planPricing()]);
+  const [quotes, pricing, preview] = await Promise.all([
+    listQuotes(ws.employee.id, { prospectId: id }),
+    planPricing(),
+    getProspectPreview(ws.employee.id, id),
+  ]);
   const quoteRows: QuoteRow[] = quotes.map((q) => ({
     id: q.id,
     status: q.status,
@@ -71,6 +76,10 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
     offeredMonthlyFee: q.offeredMonthlyFee,
     requiresApproval: q.requiresApproval,
   }));
+  const previewView: PreviewView | null = preview
+    ? { id: preview.id, status: preview.status, publicToken: preview.publicToken, selectedPlan: preview.selectedPlan, sentAt: preview.sentAt ? preview.sentAt.toISOString() : null }
+    : null;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
 
   return (
     <div className="space-y-5">
@@ -78,6 +87,7 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
         <ArrowLeft size={15} /> Back to prospects
       </Link>
       <ProspectDetail data={data} />
+      <PreviewPanel prospectId={id} preview={previewView} canRequest={ws.hasActiveContract} appUrl={appUrl} />
       <QuotesPanel
         prospectId={id}
         quotes={quoteRows}

@@ -136,12 +136,24 @@ export async function markPreviewSent(repId: string, previewId: string) {
   return { publicToken: preview.publicToken };
 }
 
-/** The rep's preview for a prospect (status + share token), or null. Scoped to the rep. */
+/**
+ * The rep's preview for a prospect (status + share token), or null. Scoped to the rep. Lazily
+ * reconciles a still-"generating" preview to PREVIEW_READY once the website actually has a generated
+ * version — the generation pipeline updates the Website/job, not this Preview row, so we settle it here.
+ */
 export async function getProspectPreview(repId: string, prospectId: string) {
   await assertAssigned(repId, prospectId);
-  return prisma.preview.findFirst({
+  const preview = await prisma.preview.findFirst({
     where: { prospectId, assignedSalesRepId: repId },
     orderBy: { createdAt: "desc" },
-    select: { id: true, status: true, publicToken: true, selectedPlan: true, sentAt: true, viewedAt: true, createdAt: true },
+    select: { id: true, status: true, publicToken: true, selectedPlan: true, sentAt: true, viewedAt: true, websiteId: true, createdAt: true },
   });
+  if (preview?.status === "PREVIEW_GENERATING" && preview.websiteId) {
+    const version = await prisma.websiteVersion.findFirst({ where: { websiteId: preview.websiteId }, select: { id: true } });
+    if (version) {
+      await prisma.preview.update({ where: { id: preview.id }, data: { status: "PREVIEW_READY", generatedAt: new Date() } }).catch(() => {});
+      preview.status = "PREVIEW_READY";
+    }
+  }
+  return preview;
 }
