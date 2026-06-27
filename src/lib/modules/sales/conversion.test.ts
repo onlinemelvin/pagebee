@@ -3,9 +3,11 @@ import { prismaMock } from "@/test/setup";
 
 vi.mock("@/lib/modules/audit", () => ({ writeAudit: vi.fn() }));
 vi.mock("@/lib/modules/registration", () => ({ registerClient: vi.fn() }));
+vi.mock("@/lib/supabase/admin", () => ({ createAuthUser: vi.fn(), findAuthUserId: vi.fn() }));
 
 import { convertQuoteToClient } from "./conversion";
 import { registerClient } from "@/lib/modules/registration";
+import { createAuthUser } from "@/lib/supabase/admin";
 
 function quote(overrides: Record<string, unknown> = {}) {
   return {
@@ -73,11 +75,33 @@ describe("convertQuoteToClient", () => {
     await expect(convertQuoteToClient("rep1", "q1")).rejects.toMatchObject({ code: "prospect_email_required" });
   });
 
-  it("409 when the prospect already converted to a client", async () => {
+  it("409 when a real client already exists for the prospect", async () => {
     prismaMock.quote.findFirst.mockResolvedValue(quote());
-    prismaMock.client.findFirst.mockResolvedValue({ id: "existing" });
+    prismaMock.client.findFirst.mockResolvedValue({ id: "existing", isTest: false, sourceQuoteId: null });
     await expect(convertQuoteToClient("rep1", "q1")).rejects.toMatchObject({ code: "prospect_already_converted", status: 409 });
     expect(registerClient).not.toHaveBeenCalled();
+  });
+
+  it("adopts a provisional preview client instead of creating a new one", async () => {
+    prismaMock.quote.findFirst.mockResolvedValue(quote());
+    prismaMock.client.findFirst.mockResolvedValue({ id: "prov1", isTest: true, sourceQuoteId: null });
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    vi.mocked(createAuthUser).mockResolvedValue({ ok: true, id: "sb1" } as never);
+    prismaMock.user.create.mockResolvedValue({ id: "u1" });
+    prismaMock.clientUser.create.mockResolvedValue({});
+    prismaMock.client.update.mockResolvedValue({});
+    prismaMock.subscription.update.mockResolvedValue({});
+    prismaMock.quote.update.mockResolvedValue({});
+    prismaMock.prospect.update.mockResolvedValue({});
+
+    const res = await convertQuoteToClient("rep1", "q1", { userId: "u9" });
+    expect(res).toEqual({ clientId: "prov1" });
+    expect(registerClient).not.toHaveBeenCalled(); // adopted, not freshly registered
+    expect(createAuthUser).toHaveBeenCalledWith("jo@acme.com", expect.any(String));
+    expect(prismaMock.clientUser.create).toHaveBeenCalledWith({ data: { clientId: "prov1", userId: "u1", role: "owner" } });
+    expect(prismaMock.client.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "prov1" }, data: expect.objectContaining({ isTest: false, sourceQuoteId: "q1" }) }),
+    );
   });
 
   it("404 when the quote isn't the rep's", async () => {
