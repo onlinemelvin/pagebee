@@ -1,8 +1,8 @@
 import { TrendingUp, Percent } from "lucide-react";
 import type { RepPerformance, DiscountImpact } from "@/lib/modules/sales";
+import { usd, pct } from "@/lib/format";
 
-const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-const pct = (n: number) => `${Math.round(n * 100)}%`;
+const money = usd;
 
 /** Read-only sales analytics: per-rep performance table + discount-impact comparison. */
 export function SalesAnalytics({ reps, discount }: { reps: RepPerformance[]; discount: DiscountImpact }) {

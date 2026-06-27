@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, DollarSign, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { usd } from "@/lib/format";
 
 export interface SettlementRecord {
   id: string;
@@ -22,7 +23,7 @@ export interface RepSettlementGroup {
   records: SettlementRecord[];
 }
 
-const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+const money = (n: number) => usd(n, { cents: true });
 
 export function SettlementQueue({ initial }: { initial: RepSettlementGroup[] }) {
   const router = useRouter();
@@ -102,14 +103,7 @@ export function SettlementQueue({ initial }: { initial: RepSettlementGroup[] }) 
                     {r.clientName ?? "—"} <span className="text-stone-400">· {r.basis.replace("_", " ")}</span>
                   </span>
                   <span className="font-semibold text-stone-900">{money(r.amount)}</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-2.5 py-1 text-xs font-medium",
-                      r.status === "ELIGIBLE" ? "bg-sky-100 text-sky-700" : "bg-emerald-100 text-emerald-700",
-                    )}
-                  >
-                    {r.status.toLowerCase()}
-                  </span>
+                  <StatusBadge status={r.status} />
                   {r.status === "ELIGIBLE" ? (
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => approve(r.id)}>
                       <Check size={14} /> Approve

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, X, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { usdFromCents } from "@/lib/format";
 
 export interface ApprovalRow {
   id: string;
@@ -27,7 +28,7 @@ const REASON_COPY: Record<string, string> = {
   multiple_discounts: "Multiple discounts",
 };
 
-const fmt = (cents: number) => `$${(cents / 100).toLocaleString("en-US")}`;
+const fmt = usdFromCents;
 
 export function ApprovalQueue({ initial }: { initial: ApprovalRow[] }) {
   const router = useRouter();

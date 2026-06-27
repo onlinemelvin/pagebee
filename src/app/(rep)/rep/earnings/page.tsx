@@ -1,18 +1,11 @@
 import { DollarSign } from "lucide-react";
 import { getRepWorkspace, repCommissionStatement } from "@/lib/modules/sales";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { usd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-
-const STATUS_STYLES: Record<string, string> = {
-  PENDING: "bg-stone-100 text-stone-600",
-  ELIGIBLE: "bg-sky-100 text-sky-700",
-  APPROVED: "bg-amber-100 text-amber-700",
-  PAID: "bg-emerald-100 text-emerald-700",
-  CLAWED_BACK: "bg-rose-100 text-rose-700",
-};
+const money = (n: number) => usd(n, { cents: true });
 
 export default async function RepEarningsPage() {
   const ws = await getRepWorkspace();
@@ -56,9 +49,7 @@ export default async function RepEarningsPage() {
                 </span>
                 <span className="text-stone-500">on {money(r.collectedRevenue)}</span>
                 <span className="font-semibold text-stone-900">{money(r.amount)}</span>
-                <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", STATUS_STYLES[r.status] ?? STATUS_STYLES.PENDING)}>
-                  {r.status.replace("_", " ").toLowerCase()}
-                </span>
+                <StatusBadge status={r.status} />
               </li>
             ))}
           </ul>

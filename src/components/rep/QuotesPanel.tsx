@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FileText, Plus, X, Send, Clock, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { usdFromCents } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export interface QuoteRow {
@@ -22,18 +24,6 @@ export interface PlanPricing {
   HIVE: { setup: number; monthly: number };
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-stone-100 text-stone-600",
-  NEEDS_APPROVAL: "bg-amber-100 text-amber-700",
-  APPROVED: "bg-sky-100 text-sky-700",
-  SENT: "bg-violet-100 text-violet-700",
-  VIEWED: "bg-violet-100 text-violet-700",
-  ACCEPTED: "bg-emerald-100 text-emerald-700",
-  REJECTED: "bg-rose-100 text-rose-700",
-  EXPIRED: "bg-stone-100 text-stone-500",
-  CONVERTED: "bg-emerald-100 text-emerald-700",
-};
-
 const ERROR_COPY: Record<string, string> = {
   certification_required: "You must be certified before sending quotes. Ask your manager.",
   contract_required: "Your agreement must be active before quoting.",
@@ -48,7 +38,7 @@ const ERROR_COPY: Record<string, string> = {
 
 const CONVERTIBLE = new Set(["DRAFT", "APPROVED", "SENT", "VIEWED", "ACCEPTED"]);
 
-const fmt = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+const fmt = usdFromCents;
 
 export function QuotesPanel({
   prospectId,
@@ -212,14 +202,7 @@ export function QuotesPanel({
               <span className="text-sm text-stone-500">
                 {fmt(q.offeredSetupFee)} setup · {fmt(q.offeredMonthlyFee)}/mo
               </span>
-              <span
-                className={cn(
-                  "ml-auto rounded-full px-2.5 py-1 text-xs font-medium",
-                  STATUS_STYLES[q.status] ?? "bg-stone-100 text-stone-600",
-                )}
-              >
-                {q.status.replace("_", " ").toLowerCase()}
-              </span>
+              <StatusBadge status={q.status} className="ml-auto" />
               {q.status === "DRAFT" || q.status === "APPROVED" ? (
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => send(q.id)}>
                   <Send size={14} /> Send

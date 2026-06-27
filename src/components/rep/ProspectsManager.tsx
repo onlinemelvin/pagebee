@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Plus, Search, X, Building2, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export interface ProspectRow {
   id: string;
@@ -19,16 +19,6 @@ export interface ProspectRow {
   updatedAt: string;
   counts: { activities: number; followUps: number; quotes: number };
 }
-
-const STATUS_STYLES: Record<string, string> = {
-  new: "bg-stone-100 text-stone-600",
-  contacted: "bg-sky-100 text-sky-700",
-  qualified: "bg-indigo-100 text-indigo-700",
-  preview_sent: "bg-violet-100 text-violet-700",
-  quoted: "bg-amber-100 text-amber-700",
-  closed: "bg-emerald-100 text-emerald-700",
-  lost: "bg-rose-100 text-rose-700",
-};
 
 const ERROR_COPY: Record<string, string> = {
   prospect_claimed: "Another rep already owns this business.",
@@ -165,14 +155,7 @@ export function ProspectsManager({
                 <span className="hidden text-xs text-stone-400 sm:inline">
                   {p.counts.activities} activities · {p.counts.quotes} quotes
                 </span>
-                <span
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-xs font-medium capitalize",
-                    STATUS_STYLES[p.status] ?? STATUS_STYLES.new,
-                  )}
-                >
-                  {p.status.replace("_", " ")}
-                </span>
+                <StatusBadge status={p.status} />
               </Link>
             </li>
           ))}

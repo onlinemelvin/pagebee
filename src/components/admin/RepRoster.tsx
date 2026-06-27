@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, X, UserPlus, CheckCircle2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export interface RepSummaryRow {
   id: string;
@@ -18,15 +18,6 @@ export interface RepSummaryRow {
   prospects: number;
   conversions: number;
 }
-
-const CONTRACT_STYLES: Record<string, string> = {
-  ACTIVE: "bg-emerald-100 text-emerald-700",
-  SIGNED: "bg-emerald-100 text-emerald-700",
-  SENT: "bg-amber-100 text-amber-700",
-  DRAFT: "bg-stone-100 text-stone-600",
-  EXPIRED: "bg-rose-100 text-rose-700",
-  TERMINATED: "bg-rose-100 text-rose-700",
-};
 
 const ERROR_COPY: Record<string, string> = {
   email_taken: "A user with that email already exists.",
@@ -183,14 +174,7 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
                     <p className="text-xs text-stone-400">{r.email}</p>
                   </td>
                   <td className="px-5 py-3">
-                    <span
-                      className={cn(
-                        "rounded-full px-2.5 py-1 text-xs font-medium",
-                        CONTRACT_STYLES[r.contractStatus ?? ""] ?? "bg-stone-100 text-stone-500",
-                      )}
-                    >
-                      {r.contractStatus ?? "none"}
-                    </span>
+                    <StatusBadge status={r.contractStatus ?? "none"} />
                   </td>
                   <td className="px-5 py-3 text-stone-600">{r.certified ? "Yes" : "—"}</td>
                   <td className="px-5 py-3 text-right text-stone-700">{r.prospects}</td>
