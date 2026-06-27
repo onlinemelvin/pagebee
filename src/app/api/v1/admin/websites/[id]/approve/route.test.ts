@@ -10,14 +10,14 @@ vi.mock("@/lib/auth/session", () => ({
 vi.mock("@/lib/modules/website", () => ({
   publishUpdate: vi.fn(),
 }));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
 import { requireReview } from "@/lib/auth/session";
 import { publishUpdate } from "@/lib/modules/website";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const params = Promise.resolve({ id: "v1" });
 
@@ -48,7 +48,6 @@ describe("POST /api/v1/admin/websites/[id]/approve", () => {
   it("publishes update and returns ok on success", async () => {
     vi.mocked(requireReview).mockResolvedValue({ userId: "u1" } as never);
     vi.mocked(publishUpdate).mockResolvedValue(undefined as never);
-    vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 
     const req = new Request("http://localhost/api/v1/admin/websites/v1/approve", {
       method: "POST",
@@ -60,16 +59,14 @@ describe("POST /api/v1/admin/websites/[id]/approve", () => {
   });
 
   it("captures posthog event on success", async () => {
-    const mockCapture = vi.fn();
     vi.mocked(requireReview).mockResolvedValue({ userId: "u1" } as never);
     vi.mocked(publishUpdate).mockResolvedValue(undefined as never);
-    vi.mocked(getPostHogClient).mockReturnValue({ capture: mockCapture } as never);
 
     const req = new Request("http://localhost/api/v1/admin/websites/v1/approve", {
       method: "POST",
     });
     await POST(req, { params });
-    expect(mockCapture).toHaveBeenCalledWith(
+    expect(posthogCapture).toHaveBeenCalledWith(
       expect.objectContaining({ event: "website_update_published" }),
     );
   });

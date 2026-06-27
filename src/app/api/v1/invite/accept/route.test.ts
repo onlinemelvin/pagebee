@@ -18,14 +18,14 @@ vi.mock("@/lib/modules/team", () => ({
     }
   },
 }));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
 import { getAuthContext } from "@/lib/auth/session";
 import { acceptInvite, acceptInviteSchema, TeamError } from "@/lib/modules/team";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 function makeReq(body: unknown = { token: "invite_token_abc" }) {
   return new Request("http://localhost/api/v1/invite/accept", {
@@ -80,8 +80,6 @@ describe("POST /api/v1/invite/accept", () => {
     vi.mocked(getAuthContext).mockResolvedValue({ userId: "user_existing" } as never);
     vi.mocked(acceptInvite).mockResolvedValue({ email: "bob@example.com", createdAccount: false } as never);
 
-    const mockCapture = vi.fn();
-    vi.mocked(getPostHogClient).mockReturnValue({ capture: mockCapture } as never);
 
     const res = await POST(makeReq());
     expect(res.status).toBe(200);
@@ -97,7 +95,6 @@ describe("POST /api/v1/invite/accept", () => {
     mockSchemaParse(true, { token: "t1", name: "Alice", password: "pass123" });
     vi.mocked(getAuthContext).mockResolvedValue(null);
     vi.mocked(acceptInvite).mockResolvedValue({ email: "alice@example.com", createdAccount: true } as never);
-    vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 
     const res = await POST(makeReq({ token: "t1", name: "Alice", password: "pass123" }));
     expect(res.status).toBe(200);
@@ -114,11 +111,9 @@ describe("POST /api/v1/invite/accept", () => {
     mockSchemaParse(true, { token: "t2" });
     vi.mocked(getAuthContext).mockResolvedValue(null);
     vi.mocked(acceptInvite).mockResolvedValue({ email: "carol@example.com", createdAccount: false } as never);
-    const capture = vi.fn();
-    vi.mocked(getPostHogClient).mockReturnValue({ capture } as never);
 
     await POST(makeReq({ token: "t2" }));
-    expect(capture).toHaveBeenCalledWith(
+    expect(posthogCapture).toHaveBeenCalledWith(
       expect.objectContaining({ event: "team_invite_accepted", distinctId: "carol@example.com" }),
     );
   });

@@ -23,13 +23,13 @@ vi.mock("@/lib/modules/registration", () => ({
   registerSchema,
   RegistrationError,
 }));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
 import { registerClient } from "@/lib/modules/registration";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const valid = {
   email: "a@b.com",
@@ -48,7 +48,6 @@ const req = (body: unknown) =>
 beforeEach(() => {
   vi.clearAllMocks();
   // resetAllMocks (global setup) wipes factory implementations — re-apply.
-  vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 });
 
 describe("POST /api/v1/public/register", () => {

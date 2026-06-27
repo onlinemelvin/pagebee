@@ -20,8 +20,9 @@ vi.mock("@/lib/modules/billing", () => ({
 vi.mock("@/lib/stripe/client", () => ({
   stripeConfigured: vi.fn(),
 }));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
@@ -29,7 +30,6 @@ import { requireOwner } from "@/lib/auth/session";
 import { requestUpgrade, SubscriptionError } from "@/lib/modules/subscription";
 import { upgradeSubscription, BillingError } from "@/lib/modules/billing";
 import { stripeConfigured } from "@/lib/stripe/client";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const mockCtx = { userId: "user-1" };
 
@@ -43,7 +43,6 @@ function makeReq(body: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   // re-apply factory default wiped by vi.resetAllMocks() in global setup
-  vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 });
 
 describe("POST /api/v1/client/subscription/upgrade", () => {

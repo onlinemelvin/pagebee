@@ -12,14 +12,14 @@ vi.mock("@/lib/modules/finance", () => ({
     constructor(public status: number, public code: string) { super(code); }
   },
 }));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { GET, POST } from "./route";
 import { requireCapability } from "@/lib/auth/session";
 import { listDocuments, createDocument, FinanceError } from "@/lib/modules/finance";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const mockClient = { id: "client-1" };
 const mockCtx = { userId: "user-1" };
@@ -27,7 +27,6 @@ const mockCtx = { userId: "user-1" };
 beforeEach(() => {
   vi.clearAllMocks();
   // re-apply factory default wiped by vi.resetAllMocks() in global setup
-  vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 });
 
 describe("GET /api/v1/client/finance/documents", () => {

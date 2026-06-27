@@ -27,14 +27,14 @@ vi.mock("@/lib/modules/booking", () => ({
   BookingError,
 }));
 vi.mock("@/lib/events/subscribers", () => ({}));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
 import { resolveSite } from "@/lib/auth/site-token";
 import { createBooking, bookingEnabled } from "@/lib/modules/booking";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const valid = { name: "Sam", service: "Cut", startAt: "2026-01-01T10:00:00Z" };
 const req = (body: unknown) =>
@@ -47,7 +47,6 @@ const req = (body: unknown) =>
 beforeEach(() => {
   vi.clearAllMocks();
   // resetAllMocks (global setup) wipes factory implementations — re-apply.
-  vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 });
 
 describe("POST /api/v1/public/bookings", () => {

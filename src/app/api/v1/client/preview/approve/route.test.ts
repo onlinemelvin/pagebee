@@ -17,14 +17,14 @@ vi.mock("@/lib/modules/preview", () => {
   }
   return { approve: vi.fn(), PreviewError };
 });
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
 import { requireClient } from "@/lib/auth/session";
 import { approve, PreviewError } from "@/lib/modules/preview";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const makeClient = (id = "c1") => ({ id, businessName: "Acme" });
 const makeCtx = (userId = "u1") => ({ userId });
@@ -69,13 +69,11 @@ describe("POST /api/v1/client/preview/approve", () => {
     vi.mocked(requireClient).mockResolvedValue({ client, ctx } as never);
     const result = { ok: true, launched: true };
     vi.mocked(approve).mockResolvedValue(result as never);
-    const captureMock = vi.fn();
-    vi.mocked(getPostHogClient).mockReturnValue({ capture: captureMock } as never);
     const res = await POST();
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual(result);
     expect(approve).toHaveBeenCalledWith("c1");
-    expect(captureMock).toHaveBeenCalledWith(
+    expect(posthogCapture).toHaveBeenCalledWith(
       expect.objectContaining({ event: "preview_approved", distinctId: "u1" }),
     );
   });

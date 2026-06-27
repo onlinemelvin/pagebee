@@ -24,14 +24,14 @@ vi.mock("@/lib/modules/lead", () => ({
   leadInputSchema,
 }));
 vi.mock("@/lib/events/subscribers", () => ({}));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { POST } from "./route";
 import { resolveSite } from "@/lib/auth/site-token";
 import { createLead, leadCaptureEnabled } from "@/lib/modules/lead";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const valid = { name: "Sam", email: "a@b.com" };
 const req = (body: unknown) =>
@@ -44,7 +44,6 @@ const req = (body: unknown) =>
 beforeEach(() => {
   vi.clearAllMocks();
   // resetAllMocks (global setup) wipes factory implementations — re-apply.
-  vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 });
 
 describe("POST /api/v1/public/leads", () => {

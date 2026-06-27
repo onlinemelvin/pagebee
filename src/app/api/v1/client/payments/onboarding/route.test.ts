@@ -19,14 +19,14 @@ vi.mock("@/lib/modules/payments", () => ({
     }
   },
 }));
+const posthogCapture = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/posthog-server", () => ({
-  getPostHogClient: vi.fn(() => ({ capture: vi.fn() })),
+  getPostHogClient: () => ({ capture: posthogCapture }),
 }));
 
 import { GET, POST } from "./route";
 import { requireOwner } from "@/lib/auth/session";
 import { submitOnboarding, getOnboardingState, PaymentError } from "@/lib/modules/payments";
-import { getPostHogClient } from "@/lib/posthog-server";
 
 const makeOwner = (clientId = "c1") => ({
   client: { id: clientId },
@@ -43,7 +43,6 @@ const postReq = (body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(getPostHogClient).mockReturnValue({ capture: vi.fn() } as never);
 });
 
 describe("GET /api/v1/client/payments/onboarding", () => {
