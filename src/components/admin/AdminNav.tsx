@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Inbox, ArrowUpCircle, Globe, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Inbox, ArrowUpCircle, Globe, Users, FileCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface AdminTab {
@@ -15,6 +15,8 @@ export interface AdminTab {
 const ICONS: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
   leads: Inbox,
+  reps: Users,
+  quotes: FileCheck,
   upgrades: ArrowUpCircle,
   websites: Globe,
 };

@@ -20,11 +20,12 @@ export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
   if (auth !== `Bearer ${expected}`) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const [{ sweepBookingReminders }, { sweepInvoiceReminders, sweepRecurringPlans }, { sweepScheduledCampaigns, sweepEmailReminders }, { sweepSendingDomains }] = await Promise.all([
+  const [{ sweepBookingReminders }, { sweepInvoiceReminders, sweepRecurringPlans }, { sweepScheduledCampaigns, sweepEmailReminders }, { sweepSendingDomains }, { runCommissionAccrualSweep, runCommissionEligibilitySweep, sweepFollowUpReminders }] = await Promise.all([
     import("@/lib/modules/booking"),
     import("@/lib/modules/finance"),
     import("@/lib/modules/email/sweep"),
     import("@/lib/modules/email/sending-domains"),
+    import("@/lib/modules/sales"),
   ]);
 
   const results: Record<string, unknown> = {};
@@ -43,6 +44,9 @@ export async function GET(req: NextRequest) {
   await run("scheduledCampaigns", () => sweepScheduledCampaigns());
   await run("emailReminders", () => sweepEmailReminders());
   await run("sendingDomains", () => sweepSendingDomains());
+  await run("commissionAccrual", () => runCommissionAccrualSweep());
+  await run("commissionEligibility", () => runCommissionEligibilitySweep(new Date()));
+  await run("followUpReminders", () => sweepFollowUpReminders());
 
   return NextResponse.json({ ok: true, ...results });
 }

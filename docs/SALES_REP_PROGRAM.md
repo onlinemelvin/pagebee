@@ -182,10 +182,25 @@ A new scoped surface (e.g. `/rep/*`), rep-isolated. Pages:
   objection handling (see §8).
 - **My contract** — view the signed agreement and commission terms.
 
-**Build order inside Phase 1:** (a) rep auth + scoping + contract e-sign →
-(b) Prospect CRM + activities/follow-ups + reminders → (c) resource hub →
-(d) quotes + guardrails → (e) conversion attribution + commission accrual →
-(f) earnings dashboard. Each ships behind the rep role; admins get the mirror/rollup.
+**Build order inside Phase 1 (status):**
+- ✅ (a) rep auth + scoping (`requireRep`/`requireContractedRep`) + **contract e-sign**
+  (`/rep/contract`, `signContract`) + admin rep provisioning (`/admin/reps`, `provisionRep`)
+- ✅ (b) Prospect CRM + activities/call-notes/follow-ups (`/rep/prospects`, `/rep/follow-ups`)
+  — reminder *sweep* (cron → notify) still to wire
+- ✅ (c) **resource/enablement hub** (`resources.ts`, `InternalDocument` namespaced `rep:<group>`;
+  rep `/rep/resources` + admin manager on `/admin/reps`) + **certification gate**
+  (`requireCertifiedRep`, admin certify toggle)
+- ✅ **follow-up reminder cron** (`sweepFollowUpReminders`, `FollowUp.remindedAt`, fires once via email)
+- ✅ (d) **quotes + guardrails + admin approval queue** (`/rep/quotes`, `evaluateGuardrails`,
+  `/admin/quotes` approval queue, NEEDS_APPROVAL→APPROVED/DRAFT flow)
+- ✅ (e) **conversion attribution + commission accrual**: rep "Convert" on a quote
+  (`convertQuoteToClient`) registers the tenant via shared `registerClient`, links
+  `Client.sourceQuoteId`/`prospectId` + offered pricing, marks quote CONVERTED. `accrual.ts`
+  then attributes via the source quote (falls back to prospect first-touch) on setup-fee payment;
+  accrual + eligibility sweeps wired into `/api/v1/cron/sweep`; clawback on in-window cancellation.
+- ⬜ (f) earnings dashboard (basic version live on `/rep`; admin rollup live on `/admin/reps`)
+
+Each ships behind the rep role; admins get the mirror/rollup.
 
 ---
 
@@ -260,17 +275,25 @@ Commission programs invite gaming. Controls:
 
 ---
 
-## 11. Open decisions (need the user) {#open-decisions}
+## 11. Decisions {#open-decisions}
 
-1. **Exact commission amounts** per plan (recommendation in §3).
-2. **Recurring tail** — enable now or after the base program is stable? (recommend
-   after.)
-3. **Payout rail** — Wise / PayPal / Stripe payouts / Upwork milestones?
-4. **Upwork strategy** — pay through-platform vs convert off-platform.
-5. **Attribution window** length and **stale-lead** release period.
+**Locked (2026-06-26):**
+
+1. **Commission amounts** — **Nectar $60 / Honey $110 / Hive $185** per converted
+   client (§3), computed on collected revenue with the discount-coupling rule.
+2. **Recurring tail** — **off** for now; revisit after the base program is stable.
+3. **Recorded calls** — **deferred** out of Phase 1 (build the all-party-consent flow
+   before enabling). Reminders + Zoom scheduling stay in Phase 1.
+4. **Payout rail** — pay commissions **through Upwork/Fiverr milestones** (ToS-safe;
+   platform fee is the rep's, per contract §10.2). No direct Wise/PayPal rail in Phase 1;
+   commissions are tracked in-app and settled manually via the hiring platform.
+
+**Still to confirm (don't block Phase 1):**
+
+5. **Attribution window** length and **stale-lead** release period (defaults: 60 days
+   attribution, 30 days stale-release — adjustable).
 6. **Exclusivity / quota / ramp** — any minimum activity to stay active?
-7. **Recorded calls** — ship in Phase 1 or defer until the consent flow is built?
-   (recommend defer.)
+7. **Contract legal review** — attorney sign-off on the template before first real use.
 
 ---
 

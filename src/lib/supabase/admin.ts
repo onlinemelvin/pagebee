@@ -72,6 +72,19 @@ export async function confirmAuthUserEmail(supabaseUserId: string): Promise<{ ok
   return { ok: false, error: body.msg ?? `auth_error_${res.status}` };
 }
 
+/** Permanently delete a Supabase Auth user (best-effort cleanup when a rep is removed). */
+export async function deleteAuthUser(supabaseUserId: string): Promise<{ ok: boolean; error?: string }> {
+  const cfg = adminConfig();
+  if (!cfg) return { ok: false, error: "supabase_not_configured" };
+  const res = await fetch(`${cfg.url}/auth/v1/admin/users/${supabaseUserId}`, {
+    method: "DELETE",
+    headers: cfg.headers,
+  });
+  if (res.ok) return { ok: true };
+  const body = (await res.json().catch(() => ({}))) as { msg?: string };
+  return { ok: false, error: body.msg ?? `auth_error_${res.status}` };
+}
+
 /** Look up an existing auth user id by email (used when create reports a conflict). */
 export async function findAuthUserId(email: string): Promise<string | undefined> {
   const cfg = adminConfig();

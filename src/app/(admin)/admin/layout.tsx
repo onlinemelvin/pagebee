@@ -16,6 +16,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     tabs.push(
       { key: "overview", label: "Overview", href: "/admin" },
       { key: "leads", label: "Leads", href: "/admin/leads" },
+      { key: "reps", label: "Reps", href: "/admin/reps" },
+      { key: "quotes", label: "Quotes", href: "/admin/quotes" },
       { key: "upgrades", label: "Upgrades", href: "/admin/upgrade-requests" },
       { key: "analytics", label: "Analytics", href: "/admin/analytics" },
       { key: "email", label: "Email", href: "/admin/email" },
