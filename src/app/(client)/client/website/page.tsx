@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Wand2, Eye, Rocket, MessageSquareHeart, ExternalLink, CreditCard } from "lucide-react";
+import { Wand2, Eye, Rocket, MessageSquareHeart, ExternalLink, CreditCard, BrainCircuit, ArrowRight } from "lucide-react";
 import { getClientWebsite, getLatestJobStatus, getDomainState } from "@/lib/modules/website";
 import { DomainCard } from "@/components/client/DomainCard";
 import { getClientWorkspace } from "@/lib/modules/client";
@@ -280,6 +281,18 @@ export default async function ClientWebsitePage() {
           title="Add features"
           prepend={ws.caps.customDomain ? <DomainCard initial={domainState} testModeActive={ws.testMode} /> : null}
         />
+      )}
+
+      {/* AI knowledge base — always available (grounds generation + powers chat). */}
+      {ws.access.website.view && (
+        <Link href="/client/website/knowledge-base" className="anim-rise flex items-center gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-card transition hover:border-violet-300 hover:shadow-card-hover">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700"><BrainCircuit size={22} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-base text-stone-900">AI knowledge base</span>
+            <span className="block text-sm text-stone-500">Teach your AI about your business — policies, details, documents &amp; photos. Grounds your website copy and powers your chat assistant.</span>
+          </span>
+          <ArrowRight size={18} className="shrink-0 text-stone-300" />
+        </Link>
       )}
 
       {/* Staff (non-owner) — status only */}

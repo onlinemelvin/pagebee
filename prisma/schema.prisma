@@ -919,6 +919,7 @@ model Client {
   accountBalances AccountBalance[]
   supportTickets SupportTicket[]
   aiKnowledgeBase AiKnowledgeBase?
+  knowledgeDocuments KnowledgeDocument[]
   contracts      Contract[]
   commissionRecords CommissionRecord[]
   analyticsEvents AnalyticsEvent[]
@@ -2082,6 +2083,24 @@ model AiKnowledgeBase {
   prompts AiPrompt[]
 
   @@map("ai_knowledge_bases")
+}
+
+/// An uploaded knowledge-base source: a parsed document (PDF/DOCX/TXT → extracted text) or a company
+/// image (→ a Claude-vision caption). `text` is what the AI actually reads; the original file stays in
+/// the client-uploads bucket at `url`. Many per client. Assembled into the AI context by buildKbContext.
+model KnowledgeDocument {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  url       String // public bucket URL of the original file
+  kind      String // pdf | docx | text | image
+  text      String // extracted document text OR the image's vision caption
+  charCount Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@map("knowledge_documents")
 }
 
 model AiPrompt {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { buildKbContext } from "@/lib/modules/knowledge";
 
 export interface BusinessFacts {
   businessName: string;
@@ -15,9 +16,9 @@ export interface BusinessFacts {
  * (chatTurn) and the legacy sendAiReply endpoint — nothing outside this is allowed into the prompt.
  */
 export async function loadBusinessFacts(clientId: string): Promise<BusinessFacts> {
-  const [client, kb, services] = await Promise.all([
+  const [client, kbContext, services] = await Promise.all([
     prisma.client.findUnique({ where: { id: clientId }, select: { businessName: true, businessType: true, ownerPhone: true, ownerEmail: true } }),
-    prisma.aiKnowledgeBase.findUnique({ where: { clientId }, select: { data: true } }),
+    buildKbContext(clientId),
     prisma.service.findMany({ where: { clientId, showOnWebsite: true }, select: { title: true, description: true, durationMinutes: true, price: true }, take: 40 }),
   ]);
 
@@ -28,7 +29,7 @@ export async function loadBusinessFacts(clientId: string): Promise<BusinessFacts
     services.length
       ? `Services: ${services.map((s) => `${s.title}${s.price != null ? ` ($${(s.price / 100).toFixed(0)})` : ""}`).join(", ")}`
       : "",
-    kb?.data ? `Approved facts: ${JSON.stringify(kb.data)}` : "",
+    kbContext ? `Knowledge base (curated facts, documents & image notes):\n${kbContext}` : "",
   ].filter(Boolean);
 
   return {

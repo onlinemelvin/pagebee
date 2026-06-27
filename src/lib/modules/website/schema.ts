@@ -52,6 +52,9 @@ export const websiteIntakeSchema = z.object({
     .max(30)
     .optional(),
   customInstructions: z.string().trim().max(2000).optional(),
+  // Free-text business details/policies for the AI knowledge base (grounds generated copy + chat).
+  // Seeds AiKnowledgeBase at generation; the owner can expand it later in the knowledge-base editor.
+  knowledgeDetails: z.string().trim().max(20000).optional(),
   // Set when regenerating for a requested preview revision — steers the new draft.
   revisionNote: z.string().trim().max(2000).optional(),
 });

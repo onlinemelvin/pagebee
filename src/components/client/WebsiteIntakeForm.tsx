@@ -359,6 +359,7 @@ export function WebsiteIntakeForm({
     const tone = String(data.get("tone") ?? "").trim() || undefined;
     const primaryGoal = canUseForms ? String(data.get("primaryGoal") ?? "").trim() || undefined : undefined;
     const customInstructions = String(data.get("customInstructions") ?? "").trim() || undefined;
+    const knowledgeDetails = String(data.get("knowledgeDetails") ?? "").trim() || undefined;
 
     const errs = { about: !about, services: services.length === 0 };
     if (errs.about || errs.services) {
@@ -412,6 +413,7 @@ export function WebsiteIntakeForm({
             return rows.length ? rows : undefined;
           })(),
           customInstructions,
+          knowledgeDetails,
         }),
       });
       if (res.status !== 202 && !res.ok) {
@@ -903,6 +905,22 @@ export function WebsiteIntakeForm({
           onChange={(e) => setCustomInstructions(e.target.value)}
           placeholder="e.g. Emphasize that we're family-owned and eco-friendly. Add a section for seasonal promotions. Keep the hero short."
         />
+      </div>
+
+      {/* Knowledge base — facts the AI should know (grounds the copy + powers chat) */}
+      <div className="grid gap-2">
+        <Label htmlFor="knowledgeDetails">
+          What should your AI know? <span className="font-normal text-stone-400">— policies, details, anything customers ask</span>
+        </Label>
+        <Textarea
+          id="knowledgeDetails"
+          name="knowledgeDetails"
+          rows={5}
+          placeholder="e.g. We're open 8–6 Mon–Sat, closed Sundays. Free estimates. 1-year workmanship warranty. We serve the whole metro area within 30 miles. We don't do roofing. Deposits are 50% upfront, refundable up to 48h before."
+        />
+        <p className="text-xs text-stone-400">
+          This trains your website copy and your AI chat assistant. You can upload documents (policies, price lists) and add more anytime in your knowledge base after launch.
+        </p>
       </div>
 
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}

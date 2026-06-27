@@ -25,6 +25,7 @@ import { getLeadFormMeta } from "@/lib/modules/lead";
 import { getBookingMeta } from "@/lib/modules/booking";
 import { getUpdateQuota, type UpdateQuota } from "@/lib/modules/subscription";
 import { seedServicesFromNames, listWebsiteServices, serviceDurationLabel } from "@/lib/modules/service";
+import { seedKnowledgeFromIntake, buildKbContext } from "@/lib/modules/knowledge";
 import type { WebsiteIntakeForm } from "./schema";
 
 /** Stored generation input: the client intake plus revision context the client never sends
@@ -232,9 +233,16 @@ export async function runGenerationJob(jobId: string): Promise<void> {
       priceLabel: s.price != null ? `$${(s.price / 100).toFixed(2)}` : null,
     }));
 
+    // Knowledge base: seed the curated fields from intake (only fills empties — never clobbers owner
+    // edits), then assemble the AI context (curated facts + parsed documents + image notes) that
+    // grounds the generated copy. Fail-soft — generation must never break on a KB hiccup.
+    await seedKnowledgeFromIntake(client.id, { about: form.about, details: form.knowledgeDetails, faqs: form.faqs }).catch(() => {});
+    const knowledgeBase = await buildKbContext(client.id).catch(() => "");
+
     const intake: WebsiteIntake = {
       businessName: client.businessName,
       businessType: client.businessType,
+      knowledgeBase: knowledgeBase || undefined,
       // Contact section: the owner's confirmed/edited values take precedence over registration.
       phone: form.contact?.phone || client.ownerPhone,
       email: form.contact?.email || client.ownerEmail,
