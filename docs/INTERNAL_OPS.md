@@ -68,10 +68,11 @@ Onboard contract reps, get them productive, attribute and pay commissions. Deliv
 / training hub, and conversion + commission tracking with clawback. Admins also get a
 rep roster with provision/certify/delete.
 
-### Phase 2 — Quote approval & discount governance (🟡 approval queue + onboarding link BUILT)
-Admin approval queue for out-of-guardrail quotes (`QuoteApproval`) ✅ and the accepted
-`Quote` → `Client` onboarding link (`convertQuoteToClient`) ✅. Still to add:
-discount-impact / conversion analytics.
+### Phase 2 — Quote approval & discount governance (✅ BUILT)
+Admin approval queue for out-of-guardrail quotes (`QuoteApproval`) ✅, the accepted
+`Quote` → `Client` onboarding link (`convertQuoteToClient`) ✅, and **sales analytics** ✅
+(`analytics.ts`: per-rep performance — funnel, revenue sourced, commission — plus
+discount-impact comparison; on `/admin/reps`).
 
 ### Phase 3 — Commission settlement & payouts (✅ BUILT)
 `CommissionRecord` settlement ledger: accrual + eligibility sweep, clawback,
@@ -81,9 +82,14 @@ reference. Payout **rail is manual** by decision (Upwork/Fiverr milestones — s
 SALES_REP_PROGRAM.md §11); no in-app money movement. (`PayrollRecord`/`PayPeriod`
 integration deferred to Phase 4.)
 
-### Phase 4 — Employees & payroll
-Salaried/hourly internal staff, time, `PayPeriod`/`PayrollRecord`, and integration
-references to an external payroll provider (Gusto/QuickBooks/ADP — `Employee.payrollRef`).
+### Phase 4 — Employees & payroll (✅ BUILT)
+`src/lib/modules/payroll/`: internal-staff employee CRUD (salaried/hourly/support/
+admin/contractor — commission reps excluded, they settle via sales) at `/admin/employees`,
+and the pay-period lifecycle at `/admin/payroll` — create period → generate draft
+`PayrollRecord`s for active staff (salaried prefilled from base; hourly = rate × hours) →
+edit → **DRAFT → APPROVED → PAID**. Net = base + hourly + commission + bonus +
+reimbursements − deductions. Actual disbursement stays with an external provider
+(`Employee.payrollRef` → Gusto/QuickBooks/ADP); this is the internal ledger + approval.
 
 ### Phase 5 — Company finances
 `VendorInvoice` (Resend, Twilio, hosting, contractor bills), `CompanyExpense`,

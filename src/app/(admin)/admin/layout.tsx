@@ -19,6 +19,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       { key: "reps", label: "Reps", href: "/admin/reps" },
       { key: "quotes", label: "Quotes", href: "/admin/quotes" },
       { key: "commissions", label: "Commissions", href: "/admin/commissions" },
+      { key: "employees", label: "Employees", href: "/admin/employees" },
+      { key: "payroll", label: "Payroll", href: "/admin/payroll" },
       { key: "upgrades", label: "Upgrades", href: "/admin/upgrade-requests" },
       { key: "analytics", label: "Analytics", href: "/admin/analytics" },
       { key: "email", label: "Email", href: "/admin/email" },

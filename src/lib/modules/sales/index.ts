@@ -53,6 +53,8 @@ export {
   repCommissionStatement,
 } from "./settlement";
 export type { SettlementRow, RepSettlement } from "./settlement";
+export { repPerformance, discountImpact } from "./analytics";
+export type { RepPerformance, DiscountImpact } from "./analytics";
 export { listRepResources, createRepResource, deleteRepResource } from "./resources";
 export type { ResourceItem, ResourceGroup } from "./resources";
 export { sweepFollowUpReminders } from "./reminders";
