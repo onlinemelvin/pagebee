@@ -20,8 +20,8 @@ export {
   listFollowUps,
   completeFollowUp,
 } from "./prospects";
-export { repFunnelStats } from "./dashboard";
-export type { RepFunnelStats } from "./dashboard";
+export { repFunnelStats, repMonthlyStanding } from "./dashboard";
+export type { RepFunnelStats, RepStanding } from "./dashboard";
 export { getRepWorkspace } from "./workspace";
 export type { RepWorkspace } from "./workspace";
 export { getCommissionTerms, renderCommissionTerms, getRepContract, signContract } from "./contracts";

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { CalendarClock, Users, TrendingUp, ArrowRight, Sparkles, CheckCircle2 } from "lucide-react";
-import { getRepWorkspace, repFunnelStats, listFollowUps } from "@/lib/modules/sales";
+import { CalendarClock, Users, TrendingUp, ArrowRight, Sparkles, CheckCircle2, Trophy } from "lucide-react";
+import { getRepWorkspace, repFunnelStats, repMonthlyStanding, listFollowUps } from "@/lib/modules/sales";
 import { usd, pct } from "@/lib/format";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { TrackView } from "@/components/ui/TrackView";
@@ -30,10 +30,13 @@ export default async function RepDashboardPage() {
   if (!ws) return null;
 
   const now = new Date();
-  const [stats, followUps] = await Promise.all([
+  const [stats, followUps, standing] = await Promise.all([
     repFunnelStats(ws.employee.id, now),
     listFollowUps(ws.employee.id),
+    repMonthlyStanding(ws.employee.id, now),
   ]);
+  const monthName = now.toLocaleDateString("en-US", { month: "long" });
+  const leaderPct = standing.leaderCloses > 0 ? Math.round((standing.closes / standing.leaderCloses) * 100) : 0;
 
   const firstName = ws.name.split(/[\s@]/)[0];
   const closed = stats.byStatus.closed ?? 0;
@@ -65,6 +68,41 @@ export default async function RepDashboardPage() {
         <Kpi icon={CalendarClock} label="Follow-ups due" value={String(stats.overdueFollowUps)} accent={stats.overdueFollowUps > 0 ? "amber" : "stone"} href="/rep/follow-ups" />
         <Kpi icon={Sparkles} label="Earnings" value={usd(stats.earnings.paid)} sub={`${usd(outstanding)} in the pipe`} accent="honey" href="/rep/earnings" />
       </div>
+
+      {/* Monthly standing — motivation, anonymized */}
+      <section className={cn(CARD, "overflow-hidden bg-gradient-to-br from-stone-900 to-stone-800 text-white")}>
+        <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-400/15 text-amber-300">
+              <Trophy size={22} />
+            </span>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{monthName} standing</p>
+              <p className="font-display text-2xl">
+                {standing.rank === 1 ? "Leading the hive 🐝" : `Rank #${standing.rank}`}
+                <span className="ml-2 text-sm font-normal text-stone-400">of {standing.totalReps} reps</span>
+              </p>
+            </div>
+          </div>
+          <div className="min-w-[200px] sm:text-right">
+            <p className="text-sm text-stone-300">
+              <span className="font-display text-2xl text-white">{standing.closes}</span> close{standing.closes === 1 ? "" : "s"} this month
+            </p>
+            {standing.rank === 1 ? (
+              <p className="mt-1 text-xs text-amber-300">You&apos;re setting the pace. Keep it buzzing.</p>
+            ) : (
+              <>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-amber-500" style={{ width: `${leaderPct}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-stone-400">
+                  {standing.toLeader} more to catch #1
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         {/* Focus today */}
