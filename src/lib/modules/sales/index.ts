@@ -46,6 +46,8 @@ export {
   clawbackClientCommissions,
 } from "./accrual";
 export { convertQuoteToClient } from "./conversion";
+export { requestPreview, getProspectPreview, previewRequestSchema } from "./previews";
+export type { PreviewRequestInput } from "./previews";
 export {
   listSettlementQueue,
   approveCommission,

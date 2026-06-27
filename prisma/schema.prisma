@@ -1413,6 +1413,9 @@ model Preview {
   status       PreviewStatus @default(INTAKE_STARTED)
 
   previewUrl   String? // temporary host, e.g. {token}.preview.pagebee.com
+  // Unguessable capability token for the public, unauthenticated preview viewer (/p/{token}).
+  // Lets a rep share a prospect's preview before any account exists. See docs/SALES_REP_PROGRAM.md.
+  publicToken  String?   @unique
   generatedAt  DateTime?
   sentAt       DateTime?
   viewedAt     DateTime?
