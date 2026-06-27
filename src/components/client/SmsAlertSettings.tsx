@@ -97,6 +97,7 @@ export function SmsAlertSettings({ initial, available, planLabel }: { initial: S
           </div>
           <p className="mt-1 text-sm text-stone-500">
             Get a text the second a new lead or booking comes in, with a link to reply in your dashboard.
+            PageBee only texts you alerts you turn on — never marketing or promotions.
           </p>
         </div>
       </div>
@@ -113,8 +114,21 @@ export function SmsAlertSettings({ initial, available, planLabel }: { initial: S
               placeholder="(555) 123-4567"
               className="max-w-xs rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100"
             />
-            <span className="text-xs text-stone-400">US/Canada numbers. Standard message &amp; data rates apply. Reply STOP anytime to opt out.</span>
+            <span className="text-xs text-stone-400">US &amp; Canada numbers only.</span>
           </label>
+
+          <p className="mt-3 rounded-xl border border-stone-200 bg-stone-50 px-3.5 py-3 text-xs leading-relaxed text-stone-500">
+            By entering your mobile number and turning on text alerts below, you agree to receive
+            automated SMS text messages from PageBee notifying you of new leads and booking requests
+            for your business at the number provided. Consent is not a condition of purchase. Message
+            frequency varies by your activity. Message and data rates may apply. Reply{" "}
+            <span className="font-semibold text-stone-600">STOP</span> to cancel or{" "}
+            <span className="font-semibold text-stone-600">HELP</span> for help. We never sell or share
+            your mobile number, and your opt-in is never shared with third parties. See our{" "}
+            <Link href="/privacy" className="font-medium text-amber-700 hover:text-amber-800 underline">Privacy Policy</Link>{" "}
+            and{" "}
+            <Link href="/terms" className="font-medium text-amber-700 hover:text-amber-800 underline">Terms</Link>.
+          </p>
 
           <div className={cn("mt-4 space-y-1 transition", !prefs.enabled && "pointer-events-none opacity-50")}>
             {GROUPS.map((g) => (
@@ -134,7 +148,7 @@ export function SmsAlertSettings({ initial, available, planLabel }: { initial: S
             ) : saved ? (
               <><Check size={13} className="text-emerald-500" /> <span className="text-emerald-600">Saved</span></>
             ) : (
-              <span className="text-stone-400">You can opt out anytime by replying STOP to any alert.</span>
+              <span className="text-stone-400">Turning this on confirms your consent to receive these SMS alerts. Reply STOP anytime to opt out, HELP for help.</span>
             )}
           </div>
         </div>

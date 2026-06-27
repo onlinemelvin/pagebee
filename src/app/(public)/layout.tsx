@@ -69,6 +69,8 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
               links={[
                 { href: "/#contact", label: "Contact" },
                 { href: "/login", label: "Sign in" },
+                { href: "/privacy", label: "Privacy Policy" },
+                { href: "/terms", label: "Terms of Service" },
               ]}
             />
             <div>
