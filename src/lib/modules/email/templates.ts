@@ -44,6 +44,28 @@ export function welcomeEmail(args: { businessName: string; ownerName?: string | 
   };
 }
 
+/**
+ * Invitation for a newly provisioned commission sales rep. Carries a secure set-password link
+ * (the password-reset flow, longer-lived) so the rep chooses their own credentials, plus a pointer
+ * to sign the commission agreement in the portal. No plaintext password is ever emailed.
+ */
+export function repInviteEmail(args: { name?: string | null; setPasswordUrl: string; portalUrl: string; expiresDays: number }): BuiltEmail {
+  return {
+    category: "ACCOUNT",
+    template: "rep_invite",
+    subject: "You're invited to the PageBee sales team 🐝",
+    preheader: "Set your password to access the rep portal and sign your commission agreement.",
+    body:
+      h("Welcome to the PageBee sales team 👋") +
+      greet(args.name) +
+      p(`An account has been created for you on the PageBee rep portal. To get started, set your password with the secure link below — it expires in <strong>${args.expiresDays} days</strong>.`) +
+      button("Set your password", args.setPasswordUrl) +
+      linkFallback(args.setPasswordUrl) +
+      p(`Once you're in, sign your commission agreement and you're ready to start selling. You can sign in any time at <a href="${args.portalUrl}" style="color:#b45309;font-weight:600">${escapeHtml(args.portalUrl)}</a>.`) +
+      note(`If you weren't expecting this invitation, you can safely ignore this email.`),
+  };
+}
+
 // — Auth / security -----------------------------------------------------------
 
 export function passwordResetEmail(args: { name?: string | null; resetUrl: string; expiresMinutes: number }): BuiltEmail {

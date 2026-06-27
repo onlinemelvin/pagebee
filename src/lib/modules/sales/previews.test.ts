@@ -8,7 +8,7 @@ vi.mock("@/lib/modules/website", async () => {
   return { ...actual, startGeneration: vi.fn(async () => ({ jobId: "job1", websiteId: "web1" })) };
 });
 
-import { requestPreview, getProspectPreview } from "./previews";
+import { requestPreview, getProspectPreview, markPreviewSent } from "./previews";
 import { startGeneration } from "@/lib/modules/website";
 
 const intake = { about: "Best pizza in town", services: ["Dine-in", "Delivery"] };
@@ -76,6 +76,25 @@ describe("requestPreview", () => {
       status: 409,
     });
     expect(prismaMock.client.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("markPreviewSent", () => {
+  it("marks the preview SENT, stamps sentAt, advances the prospect, returns the token", async () => {
+    prismaMock.preview.findFirst.mockResolvedValue({ id: "pv1", prospectId: "p1", publicToken: "tok", sentAt: null });
+    prismaMock.preview.update.mockResolvedValue({});
+    prismaMock.prospect.update.mockResolvedValue({});
+    const res = await markPreviewSent("rep1", "pv1");
+    expect(res).toEqual({ publicToken: "tok" });
+    expect(prismaMock.preview.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "pv1" }, data: expect.objectContaining({ status: "PREVIEW_SENT" }) }),
+    );
+    expect(prismaMock.prospect.update).toHaveBeenCalledWith({ where: { id: "p1" }, data: { status: "preview_sent" } });
+  });
+
+  it("404 when the preview isn't the rep's", async () => {
+    prismaMock.preview.findFirst.mockResolvedValue(null);
+    await expect(markPreviewSent("rep1", "pv1")).rejects.toMatchObject({ code: "preview_not_found", status: 404 });
   });
 });
 

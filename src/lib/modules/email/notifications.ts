@@ -164,3 +164,7 @@ export const sendEmailChanged = (to: string, args: { name?: string | null; newEm
 
 export const sendNewDeviceLogin = (to: string, args: { name?: string | null; when: string; context: string; userId?: string }) =>
   toEmail({ to, recipientUserId: args.userId ?? null, build: t.newDeviceLoginEmail({ ...args, supportUrl: supportUrl() }) });
+
+// — Internal ops (sales reps) -------------------------------------------------
+export const sendRepInvite = (to: string, args: { name?: string | null; setPasswordUrl: string; portalUrl: string; expiresDays: number; userId?: string }) =>
+  toEmail({ to, recipientUserId: args.userId ?? null, build: t.repInviteEmail(args) });

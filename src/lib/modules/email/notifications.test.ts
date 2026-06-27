@@ -23,7 +23,7 @@ vi.mock("./send", () => ({
   escapeHtml: (s: string) => s,
 }));
 
-import { sendWelcome, sendPaymentFailed, sendPasswordReset, clientRecipient } from "./notifications";
+import { sendWelcome, sendPaymentFailed, sendPasswordReset, sendRepInvite, clientRecipient } from "./notifications";
 import { dispatch } from "./dispatch";
 import { createNotificationFromEmail, isEmailAllowed } from "@/lib/modules/notification";
 
@@ -152,5 +152,14 @@ describe("sendPasswordReset (via toEmail)", () => {
   it("fails soft when dispatch throws (no throw to caller)", async () => {
     vi.mocked(dispatch).mockRejectedValue(new Error("send failed"));
     await expect(sendPasswordReset("u@x.com", { resetUrl: "r", expiresMinutes: 10 })).resolves.toBeUndefined();
+  });
+});
+
+describe("sendRepInvite (via toEmail)", () => {
+  it("dispatches an ACCOUNT invite to the rep's address", async () => {
+    await sendRepInvite("rep@example.com", { name: "Jane", setPasswordUrl: "https://x.com/set", portalUrl: "https://x.com/rep", expiresDays: 7 });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "rep@example.com", category: "ACCOUNT", template: "rep_invite" }),
+    );
   });
 });

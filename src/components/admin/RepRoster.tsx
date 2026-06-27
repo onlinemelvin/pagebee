@@ -95,7 +95,7 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
         setError(ERROR_COPY[data.error ?? ""] ?? "Could not create rep.");
         return;
       }
-      setDone(`${form.email} created. Share their temporary password so they can sign in and sign the agreement.`);
+      setDone(`${form.email} created. We've emailed them a link to set their password, sign in, and sign the agreement.`);
       toast.success(`Rep ${form.name} created`);
       setForm({ name: "", email: "", title: "", password: "" });
       setAdding(false);

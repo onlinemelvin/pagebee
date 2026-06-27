@@ -117,6 +117,25 @@ export async function requestPreview(repId: string, input: unknown, actor?: { us
   return { previewId: preview.id, jobId, clientId: client.id, publicToken: preview.publicToken };
 }
 
+/** Mark a preview as sent to the prospect (the rep is sharing the link). Scoped to the rep. */
+export async function markPreviewSent(repId: string, previewId: string) {
+  const preview = await prisma.preview.findFirst({
+    where: { id: previewId, assignedSalesRepId: repId },
+    select: { id: true, prospectId: true, publicToken: true, sentAt: true },
+  });
+  if (!preview) throw new SalesError("preview_not_found", 404);
+
+  await prisma.preview.update({
+    where: { id: preview.id },
+    data: { status: "PREVIEW_SENT", ...(preview.sentAt ? {} : { sentAt: new Date() }) },
+  });
+  if (preview.prospectId) {
+    await prisma.prospect.update({ where: { id: preview.prospectId }, data: { status: "preview_sent" } }).catch(() => {});
+  }
+  await writeAudit({ action: "preview.sent", entityType: "Preview", entityId: preview.id, metadata: { repId } });
+  return { publicToken: preview.publicToken };
+}
+
 /** The rep's preview for a prospect (status + share token), or null. Scoped to the rep. */
 export async function getProspectPreview(repId: string, prospectId: string) {
   await assertAssigned(repId, prospectId);

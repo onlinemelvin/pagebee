@@ -3,16 +3,29 @@ import { prismaMock } from "@/test/setup";
 
 vi.mock("@/lib/modules/audit", () => ({ writeAudit: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAuthUser: vi.fn(), findAuthUserId: vi.fn(), deleteAuthUser: vi.fn() }));
+vi.mock("@/lib/modules/auth/tokens", () => ({ createAuthToken: vi.fn().mockResolvedValue("prt_tok") }));
+vi.mock("@/lib/modules/email/notifications", () => ({ sendRepInvite: vi.fn() }));
+vi.mock("@/lib/modules/email", () => ({ appBase: () => "https://app.test" }));
 
 import { provisionRep, listReps, certifyRep, deleteRep } from "./reps";
 import { SalesError } from "./errors";
 import { createAuthUser, deleteAuthUser } from "@/lib/supabase/admin";
+import { createAuthToken } from "@/lib/modules/auth/tokens";
+import { sendRepInvite } from "@/lib/modules/email/notifications";
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("provisionRep", () => {
+  // resetAllMocks wipes the prisma mock's lazily-created $transaction implementation between tests;
+  // re-establish the interactive-callback form so the tx body actually runs here.
+  beforeEach(() => {
+    prismaMock.$transaction.mockImplementation(async (arg: unknown) =>
+      Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: typeof prismaMock) => unknown)(prismaMock),
+    );
+  });
+
   function wireHappyPath() {
     prismaMock.user.findUnique.mockResolvedValue(null);
     vi.mocked(createAuthUser).mockResolvedValue({ ok: true, id: "sb-1" });
@@ -42,6 +55,26 @@ describe("provisionRep", () => {
     expect(prismaMock.contract.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ type: "SALES_REP_COMMISSION", status: "SENT", employeeId: "rep1" }) }),
     );
+  });
+
+  it("emails the new rep a secure set-password invite link", async () => {
+    wireHappyPath();
+    await provisionRep({ name: "Jane Rep", email: "Jane@Example.com", password: "supersecret" }, { userId: "admin1" });
+
+    expect(createAuthToken).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "u1", email: "jane@example.com", type: "PASSWORD_RESET" }),
+    );
+    expect(sendRepInvite).toHaveBeenCalledWith(
+      "jane@example.com",
+      expect.objectContaining({ setPasswordUrl: "https://app.test/reset-password/prt_tok", portalUrl: "https://app.test/rep", userId: "u1" }),
+    );
+  });
+
+  it("still provisions the rep when the invite email fails (fail-soft)", async () => {
+    wireHappyPath();
+    vi.mocked(sendRepInvite).mockRejectedValueOnce(new Error("smtp down"));
+    const result = await provisionRep({ name: "Jane", email: "jane@example.com", password: "supersecret" });
+    expect(result).toEqual({ userId: "u1", repId: "rep1", contractId: "k1" });
   });
 
   it("409 when the email already belongs to a user", async () => {

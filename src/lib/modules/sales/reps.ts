@@ -1,9 +1,15 @@
 import { prisma } from "@/lib/db";
 import { createAuthUser, findAuthUserId, deleteAuthUser } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/modules/audit";
+import { createAuthToken } from "@/lib/modules/auth/tokens";
+import { appBase } from "@/lib/modules/email";
+import { sendRepInvite } from "@/lib/modules/email/notifications";
 import { SalesError } from "./errors";
 import { provisionRepInputSchema } from "./schema";
 import { getCommissionTerms, renderCommissionTerms } from "./contracts";
+
+// Invite (set-password) link is long-lived so a rep can onboard at their own pace.
+const REP_INVITE_TTL_DAYS = 7;
 
 /**
  * Provision a commission sales rep (admin action). Creates the Supabase Auth identity, then — in one
@@ -75,6 +81,28 @@ export async function provisionRep(input: unknown, actor?: { userId?: string }) 
     actorId: actor?.userId ?? null,
     metadata: { email, contractId: result.contractId },
   });
+
+  // Invite email: a secure set-password link (reuses the password-reset flow) so the rep chooses
+  // their own credentials, plus a pointer to sign the commission agreement. Fail-soft — the rep
+  // record exists regardless, and the admin can re-send if delivery fails.
+  try {
+    const token = await createAuthToken({
+      userId: result.userId,
+      email,
+      type: "PASSWORD_RESET",
+      ttlMinutes: REP_INVITE_TTL_DAYS * 24 * 60,
+    });
+    await sendRepInvite(email, {
+      name: parsed.name,
+      setPasswordUrl: `${appBase()}/reset-password/${token}`,
+      portalUrl: `${appBase()}/rep`,
+      expiresDays: REP_INVITE_TTL_DAYS,
+      userId: result.userId,
+    });
+  } catch (err) {
+    console.error(`[rep:invite] failed to send invite to ${email}`, err);
+  }
+
   return result;
 }
 
