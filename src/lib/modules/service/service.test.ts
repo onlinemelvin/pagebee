@@ -21,7 +21,6 @@ import {
   seedServicesFromNames,
   serviceDurationLabel,
   OTHER_TITLE,
-  ServiceError,
 } from "./service";
 import { writeAudit } from "@/lib/modules/audit";
 import { generateServiceMeta, uniqueIcon } from "@/lib/ai/service-meta";

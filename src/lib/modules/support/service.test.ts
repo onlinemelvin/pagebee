@@ -3,7 +3,7 @@ import { prismaMock } from "@/test/setup";
 
 vi.mock("@/lib/modules/audit", () => ({ writeAudit: vi.fn() }));
 
-import { listTickets, getTicket, createTicket, addComment, SupportError } from "./service";
+import { listTickets, getTicket, createTicket, addComment } from "./service";
 import { writeAudit } from "@/lib/modules/audit";
 
 describe("listTickets", () => {

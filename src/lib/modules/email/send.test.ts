@@ -53,8 +53,6 @@ describe("sendEmail (live mode — RESEND_API_KEY set)", () => {
   });
 
   it("adds List-Unsubscribe headers when listUnsubscribeUrl is provided", async () => {
-    // Import fresh module with the key set
-    const { sendEmail: send } = await import("./send");
     const mockSend = vi.fn().mockResolvedValue({ data: { id: "rid" }, error: null });
     const ResendMock = Resend as unknown as ReturnType<typeof vi.fn>;
     ResendMock.mockImplementation(() => ({ emails: { send: mockSend } }));

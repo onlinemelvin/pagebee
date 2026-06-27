@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import { prismaMock } from "@/test/setup";
 
 vi.mock("./service", () => ({
   sendSms: vi.fn(),

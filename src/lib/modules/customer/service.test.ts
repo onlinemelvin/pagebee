@@ -13,7 +13,6 @@ import {
   deleteCustomer,
   mergeCustomers,
   upsertCustomerFromLead,
-  CustomerError,
 } from "./service";
 import { writeAudit } from "@/lib/modules/audit";
 

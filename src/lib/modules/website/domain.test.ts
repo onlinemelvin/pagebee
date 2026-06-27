@@ -22,16 +22,14 @@ import {
   removeCustomDomain,
   pollDomainVerification,
   verifyClientDomains,
-  LIVE_STATES,
 } from "./domain";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
-import { vercelConfigured, addProjectDomain, verifyProjectDomain, removeProjectDomain } from "@/lib/vercel/domains";
+import { vercelConfigured, addProjectDomain, verifyProjectDomain } from "@/lib/vercel/domains";
 
 const mockVercelConfigured = vercelConfigured as ReturnType<typeof vi.fn>;
 const mockAddProjectDomain = addProjectDomain as ReturnType<typeof vi.fn>;
 const mockVerifyProjectDomain = verifyProjectDomain as ReturnType<typeof vi.fn>;
-const mockRemoveProjectDomain = removeProjectDomain as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();

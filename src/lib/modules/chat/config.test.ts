@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { prismaMock } from "@/test/setup";
 
 import { getChatConfig, setChatConfig, isChatLive, DEFAULT_CHAT_CONFIG, DEFAULT_GREETING } from "./config";

@@ -34,9 +34,7 @@ import {
   ownerReply,
   closeConversation,
   getConversation,
-  listConversations,
   sweepChatEscalations,
-  ChatError,
 } from "./service";
 import { chatTurn, holdingReply } from "./orchestrator";
 import { getChatConfig } from "./config";

@@ -17,6 +17,9 @@ Start with these — they are the source of truth for design decisions:
 | [docs/ONBOARDING.md](docs/ONBOARDING.md) | **Official acquisition model**: Preview-before-you-pay, pricing, sales flow, monetization |
 | [docs/DOMAINS.md](docs/DOMAINS.md) | Domain registration, the registrar abstraction (swap providers via one adapter), scaling risks + migration triggers |
 | [docs/MESSAGING.md](docs/MESSAGING.md) | SMS (Twilio, one-way owner alerts) + chat model, the notification fan-out, STOP/opt-in compliance, WhatsApp/mobile roadmap |
+| [docs/INTERNAL_OPS.md](docs/INTERNAL_OPS.md) | **Internal ops platform** (sales/CRM, quotes, contracts, commissions, employees/payroll, company finances): the gap, actor/access model, phased roadmap |
+| [docs/SALES_REP_PROGRAM.md](docs/SALES_REP_PROGRAM.md) | Commission contract-rep program (Phase 1 of ops): economics, funnel/tracking, guardrails, rep portal, enablement, compliance, anti-abuse |
+| [docs/contracts/sales-rep-commission-agreement.md](docs/contracts/sales-rep-commission-agreement.md) | E-signable independent-contractor + commission agreement template |
 | [prisma/schema.prisma](prisma/schema.prisma) | Full data model (~55 models) |
 
 **Project state:** design phase. Schema + docs exist; no application code, no

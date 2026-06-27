@@ -24,7 +24,7 @@ vi.mock("@/lib/modules/email", () => ({
   sendEmail: vi.fn(),
 }));
 
-import { sendAiReply, sendSms, sendClientEmail, MessagingError } from "./service";
+import { sendAiReply, sendSms, sendClientEmail } from "./service";
 import { requireWithinLimit, recordUsage, UsageError } from "@/lib/modules/usage";
 import { sendProviderSms } from "@/lib/sms/twilio";
 import { sendEmail } from "@/lib/modules/email";
