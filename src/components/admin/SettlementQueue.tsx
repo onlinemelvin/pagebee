@@ -6,6 +6,7 @@ import { Check, DollarSign, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { toast } from "@/components/ui/toast";
 import { usd } from "@/lib/format";
 
 export interface SettlementRecord {
@@ -35,7 +36,12 @@ export function SettlementQueue({ initial }: { initial: RepSettlementGroup[] }) 
     setBusy(true);
     try {
       const res = await fetch(`/api/v1/admin/commissions/${id}/approve`, { method: "POST" });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success("Commission approved");
+        router.refresh();
+      } else {
+        toast.error("Could not approve commission");
+      }
     } finally {
       setBusy(false);
     }
@@ -55,7 +61,10 @@ export function SettlementQueue({ initial }: { initial: RepSettlementGroup[] }) 
       if (res.ok) {
         setSelected({});
         setPayoutRef((p) => ({ ...p, [group.repId]: "" }));
+        toast.success(`Marked ${ids.length} commission${ids.length === 1 ? "" : "s"} paid for ${group.repName}`);
         router.refresh();
+      } else {
+        toast.error("Could not record payout");
       }
     } finally {
       setBusy(false);

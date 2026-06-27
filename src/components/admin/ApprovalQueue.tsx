@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, X, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import { usdFromCents } from "@/lib/format";
 
 export interface ApprovalRow {
@@ -43,7 +44,12 @@ export function ApprovalQueue({ initial }: { initial: ApprovalRow[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, comment: comments[id] || undefined }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success(decision === "APPROVED" ? "Quote approved" : "Quote sent back to the rep");
+        router.refresh();
+      } else {
+        toast.error("Could not record decision");
+      }
     } finally {
       setBusyId(null);
     }

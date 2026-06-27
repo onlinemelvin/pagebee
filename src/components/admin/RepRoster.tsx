@@ -6,6 +6,7 @@ import { Plus, X, UserPlus, CheckCircle2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { toast } from "@/components/ui/toast";
 
 export interface RepSummaryRow {
   id: string;
@@ -45,7 +46,12 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ certified }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success(certified ? "Rep certified — they can now quote" : "Certification removed");
+        router.refresh();
+      } else {
+        toast.error("Could not update certification");
+      }
     } finally {
       setCertifying(null);
     }
@@ -62,10 +68,11 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
     try {
       const res = await fetch(`/api/v1/admin/reps/${rep.id}${hasHistory ? "?force=1" : ""}`, { method: "DELETE" });
       if (res.ok) {
+        toast.success(`${rep.name} removed`);
         router.refresh();
       } else {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(ERROR_COPY[data.error ?? ""] ?? "Could not delete rep.");
+        toast.error(ERROR_COPY[data.error ?? ""] ?? "Could not delete rep.");
       }
     } finally {
       setRemoving(null);
@@ -89,6 +96,7 @@ export function RepRoster({ initialReps }: { initialReps: RepSummaryRow[] }) {
         return;
       }
       setDone(`${form.email} created. Share their temporary password so they can sign in and sign the agreement.`);
+      toast.success(`Rep ${form.name} created`);
       setForm({ name: "", email: "", title: "", password: "" });
       setAdding(false);
       router.refresh();

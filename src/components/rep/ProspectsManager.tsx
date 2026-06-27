@@ -7,6 +7,7 @@ import { Plus, Search, X, Building2, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { toast } from "@/components/ui/toast";
 
 export interface ProspectRow {
   id: string;
@@ -66,6 +67,7 @@ export function ProspectsManager({
       }
       setForm({ businessName: "", contactName: "", email: "", phone: "", notes: "" });
       setAdding(false);
+      toast.success(`${form.businessName} added to your pipeline`);
       router.refresh();
     } finally {
       setBusy(false);

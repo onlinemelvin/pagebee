@@ -6,6 +6,7 @@ import { Phone, Mail, Building2, NotebookPen, PhoneCall, CalendarPlus } from "lu
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 export interface TimelineItem {
@@ -46,7 +47,7 @@ export function ProspectDetail({ data }: { data: ProspectDetailData }) {
 
   async function changeStatus(next: string) {
     setStatus(next);
-    await patch({ status: next });
+    if (await patch({ status: next })) toast.success(`Moved to ${next.replace("_", " ")}`);
   }
 
   return (
@@ -150,7 +151,7 @@ function TabBtn({
   );
 }
 
-function usePost(url: string, onDone: () => void) {
+function usePost(url: string, onDone: () => void, successMsg: string) {
   const [busy, setBusy] = React.useState(false);
   const send = async (body: unknown) => {
     setBusy(true);
@@ -160,7 +161,12 @@ function usePost(url: string, onDone: () => void) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (res.ok) onDone();
+      if (res.ok) {
+        toast.success(successMsg);
+        onDone();
+      } else {
+        toast.error("Something went wrong. Please try again.");
+      }
       return res.ok;
     } finally {
       setBusy(false);
@@ -170,7 +176,7 @@ function usePost(url: string, onDone: () => void) {
 }
 
 function ActivityForm({ prospectId, onDone }: { prospectId: string; onDone: () => void }) {
-  const { busy, send } = usePost(`/api/v1/rep/prospects/${prospectId}/activities`, onDone);
+  const { busy, send } = usePost(`/api/v1/rep/prospects/${prospectId}/activities`, onDone, "Activity logged");
   const [type, setType] = React.useState("note");
   const [summary, setSummary] = React.useState("");
   return (
@@ -202,7 +208,7 @@ function ActivityForm({ prospectId, onDone }: { prospectId: string; onDone: () =
 }
 
 function CallNoteForm({ prospectId, onDone }: { prospectId: string; onDone: () => void }) {
-  const { busy, send } = usePost(`/api/v1/rep/prospects/${prospectId}/call-notes`, onDone);
+  const { busy, send } = usePost(`/api/v1/rep/prospects/${prospectId}/call-notes`, onDone, "Call note saved");
   const [outcome, setOutcome] = React.useState("interested");
   const [note, setNote] = React.useState("");
   return (
@@ -234,7 +240,7 @@ function CallNoteForm({ prospectId, onDone }: { prospectId: string; onDone: () =
 }
 
 function FollowUpForm({ prospectId, onDone }: { prospectId: string; onDone: () => void }) {
-  const { busy, send } = usePost(`/api/v1/rep/prospects/${prospectId}/follow-ups`, onDone);
+  const { busy, send } = usePost(`/api/v1/rep/prospects/${prospectId}/follow-ups`, onDone, "Follow-up scheduled");
   const [dueAt, setDueAt] = React.useState("");
   const [note, setNote] = React.useState("");
   return (

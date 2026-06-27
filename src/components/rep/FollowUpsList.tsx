@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 export interface FollowUpRow {
@@ -23,7 +24,10 @@ export function FollowUpsList({ initial }: { initial: FollowUpRow[] }) {
     setBusyId(id);
     try {
       const res = await fetch(`/api/v1/rep/follow-ups/${id}`, { method: "PATCH" });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast.success("Follow-up cleared");
+        router.refresh();
+      }
     } finally {
       setBusyId(null);
     }

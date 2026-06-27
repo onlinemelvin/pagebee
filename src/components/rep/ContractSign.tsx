@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 
 export interface ContractTermsView {
   planName: string;
@@ -55,6 +56,7 @@ export function ContractSign({ contract, terms }: { contract: ContractView | nul
         setError(ERROR_COPY[data.error ?? ""] ?? "Could not sign. Please try again.");
         return;
       }
+      toast.success("Agreement signed — you're cleared to sell 🐝");
       router.refresh();
       router.push("/rep");
     } finally {

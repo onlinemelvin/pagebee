@@ -6,6 +6,7 @@ import { FileText, Plus, X, Send, Clock, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { toast } from "@/components/ui/toast";
 import { usdFromCents } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +94,7 @@ export function QuotesPanel({
       }
       setAdding(false);
       setReason("");
+      toast.success(willNeedApproval ? "Quote created — sent for admin approval" : "Quote created");
       router.refresh();
     } finally {
       setBusy(false);
@@ -106,9 +108,10 @@ export function QuotesPanel({
       const res = await fetch(`/api/v1/rep/quotes/${id}/send`, { method: "POST" });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(ERROR_COPY[data.error ?? ""] ?? "Could not send quote.");
+        toast.error(ERROR_COPY[data.error ?? ""] ?? "Could not send quote.");
         return;
       }
+      toast.success("Quote sent to the prospect");
       router.refresh();
     } finally {
       setBusy(false);
@@ -122,9 +125,10 @@ export function QuotesPanel({
       const res = await fetch(`/api/v1/rep/quotes/${id}/convert`, { method: "POST" });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(ERROR_COPY[data.error ?? ""] ?? "Could not convert quote.");
+        toast.error(ERROR_COPY[data.error ?? ""] ?? "Could not convert quote.");
         return;
       }
+      toast.success("Converted — the prospect is now a client 🎉");
       router.refresh();
     } finally {
       setBusy(false);
