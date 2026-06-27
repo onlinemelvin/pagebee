@@ -64,6 +64,26 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Staggered entrance for internal dashboards — gentle rise+fade. Pair with inline
+   animation-delay (or the .pb-stagger parent) for a sequenced page-load reveal. */
+@keyframes pb-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pb-rise {
+  animation: pb-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Children of a .pb-stagger reveal in sequence (up to 8). */
+.pb-stagger > * { animation: pb-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.pb-stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.pb-stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.pb-stagger > *:nth-child(3) { animation-delay: 0.14s; }
+.pb-stagger > *:nth-child(4) { animation-delay: 0.20s; }
+.pb-stagger > *:nth-child(5) { animation-delay: 0.26s; }
+.pb-stagger > *:nth-child(6) { animation-delay: 0.32s; }
+.pb-stagger > *:nth-child(7) { animation-delay: 0.38s; }
+.pb-stagger > *:nth-child(8) { animation-delay: 0.44s; }
+
 /* Animated honey-gradient text */
 .text-gradient {
   background: linear-gradient(100deg, #f59e0b, #f97316, #fb7185, #f59e0b);
@@ -201,6 +221,7 @@ body {
   .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
   .anim-rise { opacity: 1 !important; animation: none !important; }
   .anim-pop { animation: none !important; }
+  .pb-rise, .pb-stagger > * { opacity: 1 !important; transform: none !important; animation: none !important; }
   .lift:hover { transform: none; }
   .shimmer-sweep:hover::after { animation: none; }
   .chart-draw, .bar-grow { transition: none !important; }
