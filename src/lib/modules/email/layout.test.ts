@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderLayout, button, linkFallback, panel, divider, detailTable, usageBar, appBase, logoUrl } from "./layout";
+import { renderLayout, button, linkFallback, panel, divider, detailTable, usageBar, appBase } from "./layout";
 
 describe("appBase", () => {
   it("returns NEXT_PUBLIC_APP_URL when set", () => {

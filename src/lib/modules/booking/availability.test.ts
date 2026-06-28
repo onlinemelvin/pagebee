@@ -15,16 +15,6 @@ import {
 /** Default Mon–Fri 9–5 settings in New York. */
 const baseSettings = schedulingSettingsSchema.parse({ timezone: "America/New_York" });
 
-/** A "now" that is a Wednesday 2026-07-01 06:00 EDT (10:00 UTC), so minNotice + maxAdvance
- *  land well within our test window without touching weekends for the simplest cases. */
-const NOW = new Date("2026-07-01T10:00:00Z"); // Wed 06:00 EDT
-
-/** Return a "now" that is before business hours so we can test minNotice across a window. */
-function nowBefore9am() {
-  // 2026-07-06 (Mon) 12:00 UTC = 08:00 EDT → still before 9am open
-  return new Date("2026-07-06T12:00:00Z");
-}
-
 // ── tzParts ───────────────────────────────────────────────────────────────────
 
 describe("tzParts", () => {

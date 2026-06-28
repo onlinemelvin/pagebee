@@ -16,7 +16,6 @@ import {
   cancelCampaign,
   sendCampaign,
   createTemplate,
-  CampaignError,
 } from "./bulk";
 import { dispatch } from "./dispatch";
 

@@ -117,6 +117,24 @@ describe("resetPassword", () => {
     );
   });
 
+  it("first-time rep invite: sets the password but skips the 'password changed' email", async () => {
+    // No PASSWORD_RESET token matches; it's a REP_INVITE token instead.
+    vi.mocked(consumeAuthToken).mockResolvedValueOnce(null).mockResolvedValueOnce({ userId: "u1", email: "rep@b.com" });
+    prismaMock.user.findUnique.mockResolvedValue({ id: "u1", name: "Jane", email: "rep@b.com", supabaseUserId: "sb1" });
+    vi.mocked(updateAuthUserPassword).mockResolvedValue({ ok: true });
+    prismaMock.user.update.mockResolvedValue({ id: "u1" });
+
+    await resetPassword("rit_token", "newpass123");
+
+    expect(consumeAuthToken).toHaveBeenNthCalledWith(1, "rit_token", "PASSWORD_RESET");
+    expect(consumeAuthToken).toHaveBeenNthCalledWith(2, "rit_token", "REP_INVITE");
+    expect(updateAuthUserPassword).toHaveBeenCalledWith("sb1", "newpass123");
+    expect(writeAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "auth.invite_accepted", entityId: "u1" }),
+    );
+    expect(notify.sendPasswordChanged).not.toHaveBeenCalled();
+  });
+
   it("AuthFlowError is an instance of Error", () => {
     const e = new AuthFlowError(403, "forbidden");
     expect(e).toBeInstanceOf(Error);

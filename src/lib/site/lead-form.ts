@@ -50,6 +50,9 @@ export function defaultLeadFormHtml(opts?: { heading?: string; blurb?: string; c
     `<label class="pb-lf-field"><span>Email</span><input name="email" type="email" required autocomplete="email"/></label>` +
     `<label class="pb-lf-field"><span>Phone</span><input name="phone" type="tel" required autocomplete="tel"/></label>` +
     `<label class="pb-lf-field"><span>How can we help?</span><textarea name="message" rows="4"></textarea></label>` +
+    // Honeypot: hidden from real users (off-screen, not focusable, not announced). Bots that fill every
+    // field populate it; the server silently drops any submission where it's non-empty.
+    `<div class="pb-lf-hp" aria-hidden="true"><label>Company<input name="company" tabindex="-1" autocomplete="off"/></label></div>` +
     `<button type="submit" class="pb-lf-btn">${cta}</button>` +
     `<p class="pb-lf-status" data-pb-lead-status role="status" aria-live="polite"></p>` +
     `</form>` +
@@ -85,6 +88,8 @@ export const LEADFORM_CSS =
   `.pb-lf-status{margin:2px 0 0;text-align:center;font-size:.9rem;min-height:1.2em;opacity:.85}` +
   `.pb-lf-status[data-tone=err]{color:#dc2626}` +
   `.pb-lf-status[data-tone=ok]{color:#16a34a}` +
+  // Honeypot: kept in the DOM (so bots find + fill it) but off-screen and inert for real users.
+  `.pb-lf-hp{position:absolute!important;left:-9999px!important;top:auto;width:1px;height:1px;overflow:hidden}` +
   SUCCESS_CHECK_CSS +
   `</style>`;
 
@@ -98,6 +103,9 @@ export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null, pr
   return (
     "<script>(function(){try{" +
     "var TOKEN=" + JSON.stringify(token) + ";" +
+    // When the script first ran — used as the submit-timing baseline (elapsed sent as _t on submit, so
+    // the server can drop implausibly fast = automated submissions).
+    "var LOADED=Date.now();" +
     // In preview, ask the status feed for the PREVIEWED tier's state (so a free higher-tier preview
     // shows the form); empty on the live site → paid-plan state.
     "var PVQS=" + JSON.stringify(preview ? "?preview=1" : "") + ";" +
@@ -116,9 +124,11 @@ export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null, pr
     "var fd=new FormData(f);var name=(fd.get('name')||'').toString().trim();var email=(fd.get('email')||'').toString().trim();var phone=(fd.get('phone')||'').toString().trim();" +
     "if(!name||!email||!phone){set('Please add your name, email and phone.','err');return;}" +
     "var type=f.getAttribute('data-pb-lead-type')||'CONTACT_FORM';" +
+    // Bot signals sent to the server: the honeypot value (empty for real users) and ms-since-load.
+    "var hp=(fd.get('company')||'').toString();var elapsed=Date.now()-LOADED;" +
     "if(btn)btn.disabled=true;set('Sending\\u2026');" +
     "fetch('/api/v1/public/leads',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN}," +
-    "body:JSON.stringify({type:type,name:name,email:email,phone:phone,message:(fd.get('message')||'')||undefined,source:'site'})})" +
+    "body:JSON.stringify({type:type,name:name,email:email,phone:phone,message:(fd.get('message')||'')||undefined,source:'site',company:hp,_t:elapsed})})" +
     ".then(function(r){return r.json().catch(function(){return{};}).then(function(d){return{ok:r.ok,d:d};});})" +
     ".then(function(x){if(btn)btn.disabled=false;" +
     "if(x.d&&x.d.demo){set(\"Preview mode \\u2014 this form isn't live yet, so your message was not sent.\");return;}" +
@@ -199,6 +209,8 @@ export function leadFormFeedScript(token: string, meta?: LeadFormMeta | null, pr
     "if(d.messagePrompt){[].forEach.call(document.querySelectorAll('form[data-pb-leadform] textarea[name=\"message\"]'),function(ta){var lab=ta.closest('label');var sp=lab?lab.querySelector('span'):null;if(sp)pbSetText(sp,d.messagePrompt);});}" +
     // phone is required: enforce it on injected forms (incl. legacy ones baked with an optional phone)
     "[].forEach.call(document.querySelectorAll('form[data-pb-leadform] input[name=\"phone\"]'),function(inp){inp.required=true;inp.setAttribute('type','tel');var lab=inp.closest('label');var sp=lab?lab.querySelector('span'):null;if(sp)sp.textContent='Phone';});" +
+    // Ensure a honeypot exists on every injected form — legacy forms baked before this field existed.
+    "[].forEach.call(document.querySelectorAll('form[data-pb-leadform]'),function(f){if(f.querySelector('input[name=\"company\"]'))return;var hp=document.createElement('input');hp.name='company';hp.tabIndex=-1;hp.setAttribute('autocomplete','off');hp.setAttribute('aria-hidden','true');hp.style.cssText='position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden';f.appendChild(hp);});" +
     // Already submitted this session → show the confirmation instead of the form again.
     "try{if(sessionStorage.getItem('pb_lead_'+TOKEN)){[].forEach.call(document.querySelectorAll('form[data-pb-leadform]'),function(f){pbLeadDone(f,false);});}}catch(_){}" +
     "}).catch(function(){});" +

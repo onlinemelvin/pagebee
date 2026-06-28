@@ -6,7 +6,6 @@ import { Plus, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import type { FinanceSettings as FS, TaxRateDTO } from "@/lib/modules/finance";
 
 export function FinanceSettings({ initialSettings, initialTaxRates, taxMode }: { initialSettings: FS; initialTaxRates: TaxRateDTO[]; taxMode?: "manual" | "automatic" }) {

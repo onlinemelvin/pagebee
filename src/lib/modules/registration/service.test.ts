@@ -9,7 +9,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 vi.mock("@/lib/slug", () => ({ uniqueClientSlug: vi.fn() }));
 vi.mock("@/lib/modules/email/notifications", () => ({ sendWelcome: vi.fn() }));
 
-import { registerClient, RegistrationError } from "./service";
+import { registerClient } from "./service";
 import { writeAudit } from "@/lib/modules/audit";
 import { createAuthUser, findAuthUserId } from "@/lib/supabase/admin";
 import { uniqueClientSlug } from "@/lib/slug";

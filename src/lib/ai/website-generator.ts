@@ -184,7 +184,7 @@ function integrationContract(limits: PlanLimits): string {
  * them. The platform owns styling (the `pb-lf-*` classes) and submission — the model only emits the
  * marked markup, steered by the owner's chosen primary goal (or inferred when unset).
  */
-function leadCaptureDirective(intake: WebsiteIntake, _limits: PlanLimits): string {
+function leadCaptureDirective(intake: WebsiteIntake): string {
   const goal = intake.primaryGoal?.trim();
   const goalLine = goal
     ? `The owner's chosen primary goal for the site is: "${goal}". Tailor the heading, sub-text, button label, and data-pb-lead-type to it.`
@@ -372,7 +372,7 @@ export async function generateSiteHtml(
       console.error("[ai] Claude HTML generation failed; using stub:", err);
     }
   }
-  return { html: markNoGallery(await inlineTailwind(stubHtml(intake, limits)), intake), engine: "stub" };
+  return { html: markNoGallery(await inlineTailwind(stubHtml(intake)), intake), engine: "stub" };
 }
 
 /**
@@ -657,7 +657,7 @@ export function buildHtmlPrompt(
     "",
     capabilityBoundary(limits),
     "",
-    leadCaptureDirective(intake, limits),
+    leadCaptureDirective(intake),
     "",
     bookingDirective(intake, limits),
   ];
@@ -855,7 +855,7 @@ function escapeHtml(s: string): string {
   );
 }
 
-function stubHtml(intake: WebsiteIntake, limits: PlanLimits): string {
+function stubHtml(intake: WebsiteIntake): string {
   // Services as a live-feed grid: [data-pb-services] container + identical [data-pb-service-card]
   // cards. The rich text (name/desc/duration/price) is server-rendered for SEO/first-paint; the
   // platform hydrator refreshes it on the client. The icon slot is left empty (hydrator fills it).

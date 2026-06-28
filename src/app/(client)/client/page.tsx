@@ -17,7 +17,6 @@ import { SectionCard } from "@/components/client/ui/SectionCard";
 import { EmptyState } from "@/components/client/ui/EmptyState";
 import { BarChart } from "@/components/client/ui/BarChart";
 import { DonutChart, DonutLegend, type DonutSegment } from "@/components/client/ui/DonutChart";
-import { fmt } from "@/components/client/finance/money-format";
 
 export const dynamic = "force-dynamic";
 

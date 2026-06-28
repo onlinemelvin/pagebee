@@ -341,6 +341,12 @@ enum CampaignStatus {
 enum AuthTokenType {
   PASSWORD_RESET
   EMAIL_VERIFY
+  REP_INVITE
+}
+
+enum HelpRequestStatus {
+  OPEN
+  RESOLVED
 }
 
 enum ConsentChannel {
@@ -459,6 +465,9 @@ model Employee {
   title            String?
   startDate        DateTime
   endDate          DateTime?
+  // Sales reps may add prospects + log activity once ACTIVE, but cannot send quotes
+  // until certified (completed the required enablement modules). See docs/SALES_REP_PROGRAM.md §2.
+  certifiedAt      DateTime?
   managerId        String?
   manager          Employee?        @relation("EmployeeManager", fields: [managerId], references: [id])
   reports          Employee[]       @relation("EmployeeManager")
@@ -530,10 +539,10 @@ model CommissionPlan {
   description String?
   active      Boolean  @default(true)
 
-  // Base commission per closed deal by plan.
-  launchBase   Decimal @default(25) @db.Decimal(12, 2)
-  connectBase  Decimal @default(50) @db.Decimal(12, 2)
-  automateBase Decimal @default(75) @db.Decimal(12, 2)
+  // Base commission per converted client by plan (see docs/SALES_REP_PROGRAM.md §3).
+  nectarBase Decimal @default(60) @db.Decimal(12, 2)
+  honeyBase  Decimal @default(200) @db.Decimal(12, 2)
+  hiveBase   Decimal @default(500) @db.Decimal(12, 2)
 
   // Optional recurring commission (e.g. 5% of monthly revenue for N months).
   recurringPct    Decimal @default(0) @db.Decimal(5, 2)
@@ -706,6 +715,9 @@ model Prospect {
   source       String? // "cold_call", "seo", "ads", "referral"...
   status       String   @default("new") // new, contacted, qualified, closed, lost
   notes        String?
+  // Normalized business-name|phone|email fingerprint for dedup + first-touch assignment
+  // lock (anti lead-stealing). See docs/SALES_REP_PROGRAM.md §10.
+  dedupeKey    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -717,6 +729,7 @@ model Prospect {
   convertedClient Client? @relation("ProspectToClient")
 
   @@index([status])
+  @@index([dedupeKey])
   @@map("prospects")
 }
 
@@ -754,6 +767,7 @@ model FollowUp {
   completed  Boolean  @default(false)
   note       String?
   assignedToId String?
+  remindedAt DateTime? // set when the due-reminder email goes out, so it fires once
   createdAt  DateTime @default(now())
 
   @@index([prospectId])
@@ -1405,6 +1419,9 @@ model Preview {
   status       PreviewStatus @default(INTAKE_STARTED)
 
   previewUrl   String? // temporary host, e.g. {token}.preview.pagebee.com
+  // Unguessable capability token for the public, unauthenticated preview viewer (/p/{token}).
+  // Lets a rep share a prospect's preview before any account exists. See docs/SALES_REP_PROGRAM.md.
+  publicToken  String?   @unique
   generatedAt  DateTime?
   sentAt       DateTime?
   viewedAt     DateTime?
@@ -2340,6 +2357,23 @@ model AuthToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("auth_tokens")
+}
+
+/// A sales rep's request for technical help, routed to admins (in-app inbox + email). Denormalized
+/// (no FK relations) — it's a lightweight internal ticket. See docs/SALES_REP_PROGRAM.md.
+model HelpRequest {
+  id         String            @id @default(cuid())
+  employeeId String // the rep who asked
+  repName    String?
+  previewId  String?
+  prospectId String?
+  message    String
+  status     HelpRequestStatus @default(OPEN)
+  createdAt  DateTime          @default(now())
+  resolvedAt DateTime?
+
+  @@index([status])
+  @@map("help_requests")
 }
 
 model SmsLog {

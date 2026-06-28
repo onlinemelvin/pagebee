@@ -38,7 +38,14 @@ export async function requestPasswordReset(rawEmail: string): Promise<void> {
  * or expired token.
  */
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  const consumed = await consumeAuthToken(token, "PASSWORD_RESET");
+  // The same page/endpoint serves genuine resets and first-time rep invites (different token types).
+  // A type mismatch returns null without consuming, so trying both is safe.
+  let consumed = await consumeAuthToken(token, "PASSWORD_RESET");
+  let isInvite = false;
+  if (!consumed) {
+    consumed = await consumeAuthToken(token, "REP_INVITE");
+    isInvite = Boolean(consumed);
+  }
   if (!consumed) throw new AuthFlowError(400, "invalid_or_expired_token");
 
   const user = await prisma.user.findUnique({ where: { id: consumed.userId }, select: { id: true, name: true, email: true, supabaseUserId: true } });
@@ -48,6 +55,9 @@ export async function resetPassword(token: string, newPassword: string): Promise
   if (!res.ok) throw new AuthFlowError(502, res.error ?? "password_update_failed");
 
   await prisma.user.update({ where: { id: user.id }, data: { updatedAt: new Date() } });
-  await writeAudit({ action: "auth.password_reset", entityType: "User", entityId: user.id });
-  await notify.sendPasswordChanged(user.email, { name: user.name, userId: user.id });
+  await writeAudit({ action: isInvite ? "auth.invite_accepted" : "auth.password_reset", entityType: "User", entityId: user.id });
+
+  // First-time rep invites: the rep is *setting* their password, not changing an existing one — the
+  // "your password was changed" security email would just confuse them, so skip it.
+  if (!isInvite) await notify.sendPasswordChanged(user.email, { name: user.name, userId: user.id });
 }

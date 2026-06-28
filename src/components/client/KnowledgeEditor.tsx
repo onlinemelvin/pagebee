@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { BrainCircuit, FileText, Image as ImageIcon, Upload, Trash2, Check, Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import type { KnowledgeData, KnowledgeDocDTO } from "@/lib/modules/knowledge";
 
 const inputCls = "w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100";

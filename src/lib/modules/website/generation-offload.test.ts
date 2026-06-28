@@ -57,7 +57,7 @@ vi.mock("./service", async (importOriginal) => {
 import { prepareGeneration, finalizeGeneration } from "./generation-offload";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";
-import { generateWebsiteConfig, prepareHtmlPrompt, finalizeHtmlFromText, markNoGallery, htmlPromptDebug } from "@/lib/ai/website-generator";
+import { finalizeHtmlFromText, markNoGallery, htmlPromptDebug } from "@/lib/ai/website-generator";
 import { runGenerationJob } from "./service";
 import { topPlan } from "@/lib/plans";
 import { inlineTailwind } from "@/lib/site/tailwind";
@@ -65,8 +65,6 @@ import { splitLeadForm } from "@/lib/site/lead-form";
 import { splitBookingSection } from "@/lib/site/booking";
 import { isLeadGoal } from "@/lib/site/lead-goals";
 
-const mockGenerateWebsiteConfig = generateWebsiteConfig as ReturnType<typeof vi.fn>;
-const mockPrepareHtmlPrompt = prepareHtmlPrompt as ReturnType<typeof vi.fn>;
 const mockRunGenerationJob = runGenerationJob as ReturnType<typeof vi.fn>;
 const mockTopPlan = topPlan as ReturnType<typeof vi.fn>;
 const mockWriteAudit = writeAudit as ReturnType<typeof vi.fn>;

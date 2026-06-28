@@ -44,6 +44,87 @@ export function welcomeEmail(args: { businessName: string; ownerName?: string | 
   };
 }
 
+/**
+ * Invitation for a newly provisioned commission sales rep. Carries a secure set-password link
+ * (the password-reset flow, longer-lived) so the rep chooses their own credentials, plus a pointer
+ * to sign the commission agreement in the portal. No plaintext password is ever emailed.
+ */
+export function repInviteEmail(args: { name?: string | null; setPasswordUrl: string; portalUrl: string; expiresDays: number }): BuiltEmail {
+  return {
+    category: "ACCOUNT",
+    template: "rep_invite",
+    subject: "You're invited to the PageBee sales team 🐝",
+    preheader: "Set your password to access the rep portal and sign your commission agreement.",
+    body:
+      h("Welcome to the PageBee sales team 👋") +
+      greet(args.name) +
+      p(`An account has been created for you on the PageBee rep portal. To get started, set your password with the secure link below — it expires in <strong>${args.expiresDays} days</strong>.`) +
+      button("Set your password", args.setPasswordUrl) +
+      linkFallback(args.setPasswordUrl) +
+      p(`Once you're in, sign your commission agreement and you're ready to start selling. You can sign in any time at <a href="${args.portalUrl}" style="color:#b45309;font-weight:600">${escapeHtml(args.portalUrl)}</a>.`) +
+      note(`If you weren't expecting this invitation, you can safely ignore this email.`),
+  };
+}
+
+/**
+ * Internal: a sales rep has asked for technical help. Sent to the admin inbox address so the team
+ * sees it even when not in the console. Plain, scannable — links straight to the admin Help inbox.
+ */
+export function adminHelpRequestEmail(args: { repName: string; repEmail?: string | null; message: string; previewUrl?: string; inboxUrl: string }): BuiltEmail {
+  return {
+    category: "ACCOUNT",
+    template: "admin_help_request",
+    subject: `🛠️ Help request from ${args.repName}`,
+    preheader: args.message.slice(0, 120),
+    body:
+      h("A rep needs technical help") +
+      p(`<strong>${escapeHtml(args.repName)}</strong>${args.repEmail ? ` (${escapeHtml(args.repEmail)})` : ""} requested help:`) +
+      panel(escapeHtml(args.message)) +
+      (args.previewUrl ? p(`Preview: <a href="${args.previewUrl}" style="color:#b45309;font-weight:600">${escapeHtml(args.previewUrl)}</a>`) : "") +
+      button("Open the Help inbox", args.inboxUrl),
+  };
+}
+
+/**
+ * A sales rep sends a prospect their free AI website preview. Outreach to a not-yet-customer, so it
+ * dispatches directly (no client opt-in gating) — the link is the unguessable /p/{token} viewer.
+ */
+export function repPreviewToProspectEmail(args: { businessName: string; contactName?: string | null; previewUrl: string }): BuiltEmail {
+  const fn = firstName(args.contactName);
+  return {
+    category: "WEBSITE",
+    template: "rep_preview_to_prospect",
+    subject: `A website preview for ${args.businessName} 🐝`,
+    preheader: "Take a look — built for your business, no signup needed.",
+    body:
+      h(fn ? `Hi ${escapeHtml(fn)} — here's your website 👋` : "Here's your website preview 👋") +
+      p(`We put together a real, working website preview for <strong>${escapeHtml(args.businessName)}</strong> so you can see exactly what we'd build for you — no account or payment needed.`) +
+      button("View your preview", args.previewUrl) +
+      linkFallback(args.previewUrl) +
+      note(`Like what you see? Just reply to this email and we'll get you set up.`),
+  };
+}
+
+/**
+ * Confirmation that a rep e-signed their commission agreement. The signed PDF is attached by the
+ * caller (sendRepContractSigned); this is the covering message + a link back to the portal copy.
+ */
+export function repContractSignedEmail(args: { name?: string | null; portalUrl: string }): BuiltEmail {
+  return {
+    category: "ACCOUNT",
+    template: "rep_contract_signed",
+    subject: "Your PageBee commission agreement — signed copy 🐝",
+    preheader: "A PDF copy of your signed agreement is attached for your records.",
+    body:
+      h("Your agreement is signed ✅") +
+      greet(args.name) +
+      p(`Thanks for signing your PageBee Sales-Rep Commission Agreement — you're cleared to start selling. 🎉`) +
+      p(`A <strong>PDF copy is attached</strong> for your records. You can also download it any time from your agreement page in the portal.`) +
+      button("View your agreement", args.portalUrl) +
+      note(`Keep this copy somewhere safe. If you have any questions about your terms, reach out to your manager.`),
+  };
+}
+
 // — Auth / security -----------------------------------------------------------
 
 export function passwordResetEmail(args: { name?: string | null; resetUrl: string; expiresMinutes: number }): BuiltEmail {

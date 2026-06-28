@@ -19,7 +19,6 @@ import {
   checkSendingDomain,
   sweepSendingDomains,
   removeSendingDomain,
-  SendingDomainError,
 } from "./sending-domains";
 import { getDomainState } from "@/lib/modules/website/domain";
 import { createResendDomain, getResendDomain, verifyResendDomain, deleteResendDomain } from "@/lib/resend/domains";

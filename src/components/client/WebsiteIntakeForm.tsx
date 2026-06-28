@@ -68,6 +68,13 @@ export function WebsiteIntakeForm({
   canBook = false,
   canUseForms = true,
   contactDefaults,
+  onSubmit,
+  uploadUrl = "/api/v1/client/uploads",
+  mediaUrl = "/api/v1/client/media",
+  faqUrl = "/api/v1/client/website/faq-suggest",
+  uploadFields,
+  draftKey = ABOUT_DRAFT_KEY,
+  footerNote = "Free preview · no charge until you approve & launch",
 }: {
   submitLabel?: string;
   maxPages?: number;
@@ -77,6 +84,24 @@ export function WebsiteIntakeForm({
   canUseForms?: boolean;
   /** Contact info prefilled into the Contact section (from registration). */
   contactDefaults?: { email?: string; phone?: string };
+  /** Override the default client submit (POST to /generate + poll). When provided, the form assembles
+   *  the same intake payload and hands it off — used by the rep preview flow, which posts elsewhere and
+   *  refreshes its own UI instead of polling. The form shows no in-place "building" view in this mode. */
+  onSubmit?: (intake: Record<string, unknown>) => Promise<void>;
+  /** Upload endpoint for logo/images/gallery (returns { url }). */
+  uploadUrl?: string;
+  /** Reusable media-library endpoint (GET list + POST upload). Null disables the "choose from library"
+   *  picker and routes gallery uploads through `uploadUrl` — used when no library exists yet (rep preview). */
+  mediaUrl?: string | null;
+  /** AI FAQ-suggestion endpoint. */
+  faqUrl?: string;
+  /** Extra multipart fields appended to every upload (e.g. { prospectId } for rep uploads). */
+  uploadFields?: Record<string, string>;
+  /** localStorage key for persisting the "about" draft. Null disables persistence (rep preview, where
+   *  the draft would otherwise leak between prospects). */
+  draftKey?: string | null;
+  /** Small reassurance line under the submit button. */
+  footerNote?: string;
 }) {
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
@@ -84,12 +109,14 @@ export function WebsiteIntakeForm({
   const [fieldErrors, setFieldErrors] = React.useState<{ about?: boolean; services?: boolean }>({});
   // The "about" field is controlled so we can persist its draft locally (restored on mount).
   const [aboutDraft, setAboutDraft] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
   React.useEffect(() => {
+    if (!draftKey) return;
     try {
-      const saved = localStorage.getItem(ABOUT_DRAFT_KEY);
+      const saved = localStorage.getItem(draftKey);
       if (saved) setAboutDraft(saved);
     } catch {}
-  }, []);
+  }, [draftKey]);
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Field state
@@ -194,6 +221,8 @@ export function WebsiteIntakeForm({
   }, [checkOnce, router, stopPolling]);
 
   React.useEffect(() => {
+    // Resume polling only in the default client flow — the rep flow (onSubmit) has no client job to poll.
+    if (onSubmit) return;
     (async () => {
       if ((await checkOnce()) === "working") {
         setPhase("working");
@@ -201,13 +230,14 @@ export function WebsiteIntakeForm({
       }
     })();
     return stopPolling;
-  }, [checkOnce, startPolling, stopPolling]);
+  }, [checkOnce, startPolling, stopPolling, onSubmit]);
 
   // ── Uploads ──
   async function uploadFile(file: File): Promise<string | null> {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch("/api/v1/client/uploads", { method: "POST", body: fd });
+    for (const [k, v] of Object.entries(uploadFields ?? {})) fd.append(k, v);
+    const res = await fetch(uploadUrl, { method: "POST", body: fd });
     if (!res.ok) return null;
     const { url } = (await res.json()) as { url?: string };
     return url ?? null;
@@ -236,16 +266,23 @@ export function WebsiteIntakeForm({
     e.target.value = "";
   }
 
-  // Gallery photos upload to the reusable media library (so they're saved for later too).
+  // Gallery photos. With a media library (client), they upload there so they're saved for reuse; without
+  // one (rep preview), they go through the plain upload endpoint and are just attached to this preview.
   async function onGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
     setUploading(true);
     for (const f of files) {
+      if (!mediaUrl) {
+        const url = await uploadFile(f);
+        if (url) setGalleryImages((prev) => (prev.includes(url) ? prev : [...prev, url]));
+        else setError("A gallery image failed to upload — try a smaller file (max 5MB).");
+        continue;
+      }
       const fd = new FormData();
       fd.append("file", f);
       try {
-        const res = await fetch("/api/v1/client/media", { method: "POST", body: fd });
+        const res = await fetch(mediaUrl, { method: "POST", body: fd });
         if (!res.ok) throw new Error(String(res.status));
         const { item } = (await res.json()) as { item: { id: string; url: string; alt: string | null } };
         setGalleryImages((prev) => (prev.includes(item.url) ? prev : [...prev, item.url]));
@@ -259,11 +296,12 @@ export function WebsiteIntakeForm({
   }
 
   async function toggleLibrary() {
+    if (!mediaUrl) return;
     const next = !showLibrary;
     setShowLibrary(next);
     if (next && library === null) {
       try {
-        const res = await fetch("/api/v1/client/media", { cache: "no-store" });
+        const res = await fetch(mediaUrl, { cache: "no-store" });
         const { items } = (await res.json()) as { items: { id: string; url: string; alt: string | null }[] };
         setLibrary(items ?? []);
       } catch {
@@ -306,7 +344,7 @@ export function WebsiteIntakeForm({
     setFaqLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/client/website/faq-suggest", {
+      const res = await fetch(faqUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ about: aboutDraft, services }),
@@ -343,7 +381,7 @@ export function WebsiteIntakeForm({
   function prefillTestData() {
     setAboutDraft(TEST_PREFILL.about);
     try {
-      localStorage.setItem(ABOUT_DRAFT_KEY, TEST_PREFILL.about);
+      if (draftKey) localStorage.setItem(draftKey, TEST_PREFILL.about);
     } catch {}
     setServices(TEST_PREFILL.services);
     setServiceAreas(TEST_PREFILL.serviceAreas);
@@ -373,57 +411,78 @@ export function WebsiteIntakeForm({
     const colorPalette = chosen && chosen.key !== "auto" ? `${chosen.name} (${chosen.colors.join(", ")})` : undefined;
     const pagesArr = PAGE_CATALOG.filter((p) => pages.has(p.key)).map((p) => p.label);
 
+    // The complete intake payload — identical in both flows (client self-serve and rep preview).
+    const payload = {
+      about,
+      services,
+      serviceAreas: serviceAreas.length ? serviceAreas : undefined,
+      tone,
+      primaryGoal,
+      colorPalette,
+      pages: pagesArr,
+      businessHours: hours,
+      logoUrl: logoUrl ?? undefined,
+      imageUrls: imageUrls.length ? imageUrls : undefined,
+      galleryImageUrls: galleryOn && galleryImages.length ? galleryImages : undefined,
+      contact: contactOn
+        ? {
+            email: contact.email.trim() || undefined,
+            phone: contact.phone.trim() || undefined,
+            address: contact.address.trim() || undefined,
+          }
+        : undefined,
+      pricing: (() => {
+        if (!pricingOn) return undefined;
+        const rows = pricing.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), price: p.price.trim() || undefined }));
+        return rows.length ? rows : undefined;
+      })(),
+      faqs: (() => {
+        if (!faqOn) return undefined;
+        const rows = faqs.filter((f) => f.q.trim() && f.a.trim()).map((f) => ({ q: f.q.trim(), a: f.a.trim() }));
+        return rows.length ? rows : undefined;
+      })(),
+      team: (() => {
+        if (!teamOn) return undefined;
+        const rows = team.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), role: m.role.trim() || undefined, photoUrl: m.photoUrl || undefined }));
+        return rows.length ? rows : undefined;
+      })(),
+      customInstructions,
+      knowledgeDetails,
+    };
+    const clearDraft = () => {
+      try {
+        if (draftKey) localStorage.removeItem(draftKey);
+      } catch {}
+    };
+
+    // Rep preview flow: the caller submits + drives its own post-submit UI (refresh). No in-place
+    // "building" view and no polling — the form stays put until the parent refresh unmounts it.
+    if (onSubmit) {
+      setSubmitting(true);
+      try {
+        await onSubmit(payload);
+        clearDraft();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setPhase("working");
     try {
       const res = await fetch("/api/v1/client/website/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          about,
-          services,
-          serviceAreas: serviceAreas.length ? serviceAreas : undefined,
-          tone,
-          primaryGoal,
-          colorPalette,
-          pages: pagesArr,
-          businessHours: hours,
-          logoUrl: logoUrl ?? undefined,
-          imageUrls: imageUrls.length ? imageUrls : undefined,
-          galleryImageUrls: galleryOn && galleryImages.length ? galleryImages : undefined,
-          contact: contactOn
-            ? {
-                email: contact.email.trim() || undefined,
-                phone: contact.phone.trim() || undefined,
-                address: contact.address.trim() || undefined,
-              }
-            : undefined,
-          pricing: (() => {
-            if (!pricingOn) return undefined;
-            const rows = pricing.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), price: p.price.trim() || undefined }));
-            return rows.length ? rows : undefined;
-          })(),
-          faqs: (() => {
-            if (!faqOn) return undefined;
-            const rows = faqs.filter((f) => f.q.trim() && f.a.trim()).map((f) => ({ q: f.q.trim(), a: f.a.trim() }));
-            return rows.length ? rows : undefined;
-          })(),
-          team: (() => {
-            if (!teamOn) return undefined;
-            const rows = team.filter((m) => m.name.trim()).map((m) => ({ name: m.name.trim(), role: m.role.trim() || undefined, photoUrl: m.photoUrl || undefined }));
-            return rows.length ? rows : undefined;
-          })(),
-          customInstructions,
-          knowledgeDetails,
-        }),
+        body: JSON.stringify(payload),
       });
       if (res.status !== 202 && !res.ok) {
         const b = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(b?.error ?? `Failed (${res.status})`);
       }
       // Submitted successfully → clear the saved draft so it doesn't linger.
-      try {
-        localStorage.removeItem(ABOUT_DRAFT_KEY);
-      } catch {}
+      clearDraft();
       startPolling();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -479,7 +538,7 @@ export function WebsiteIntakeForm({
           onChange={(e) => {
             setAboutDraft(e.target.value);
             try {
-              localStorage.setItem(ABOUT_DRAFT_KEY, e.target.value);
+              if (draftKey) localStorage.setItem(draftKey, e.target.value);
             } catch {}
           }}
           className={cn(fieldErrors.about && "border-red-400")}
@@ -635,24 +694,32 @@ export function WebsiteIntakeForm({
             <span className="font-normal text-stone-400">— add 4–5 of your best images (you can skip)</span>
           </Label>
           <p className="text-xs text-stone-500">
-            These appear in your Gallery. They&apos;re also saved to your{" "}
-            <a href="/client/media" target="_blank" rel="noreferrer" className="font-medium text-amber-700 hover:underline">
-              media library
-            </a>{" "}
-            so you can reuse or update them later.
+            {mediaUrl ? (
+              <>
+                These appear in your Gallery. They&apos;re also saved to your{" "}
+                <a href="/client/media" target="_blank" rel="noreferrer" className="font-medium text-amber-700 hover:underline">
+                  media library
+                </a>{" "}
+                so you can reuse or update them later.
+              </>
+            ) : (
+              <>These appear in the Gallery.</>
+            )}
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <label className="w-fit cursor-pointer rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50">
               Upload photos
               <input type="file" accept="image/*" multiple onChange={onGalleryChange} className="hidden" />
             </label>
-            <button
-              type="button"
-              onClick={toggleLibrary}
-              className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-            >
-              {showLibrary ? "Hide library" : "Choose from library"}
-            </button>
+            {mediaUrl && (
+              <button
+                type="button"
+                onClick={toggleLibrary}
+                className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+              >
+                {showLibrary ? "Hide library" : "Choose from library"}
+              </button>
+            )}
             <span className="text-xs text-stone-500">{galleryImages.length} selected</span>
           </div>
 
@@ -926,10 +993,10 @@ export function WebsiteIntakeForm({
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       <div className="sticky bottom-4 z-10 mt-2 rounded-2xl border border-stone-200 bg-white/90 p-3 shadow-sm backdrop-blur">
-        <Button type="submit" size="lg" disabled={uploading} className="w-full">
-          <Sparkles size={18} /> {uploading ? "Uploading images…" : submitLabel}
+        <Button type="submit" size="lg" disabled={uploading || submitting} className="w-full">
+          <Sparkles size={18} /> {uploading ? "Uploading images…" : submitting ? "Starting…" : submitLabel}
         </Button>
-        <p className="mt-2 text-center text-xs text-stone-400">Free preview · no charge until you approve &amp; launch</p>
+        <p className="mt-2 text-center text-xs text-stone-400">{footerNote}</p>
       </div>
     </form>
   );

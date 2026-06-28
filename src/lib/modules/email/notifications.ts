@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { dispatch } from "./dispatch";
 import { appBase } from "./layout";
+import type { EmailAttachment } from "./send";
 import * as t from "./templates";
 import { createNotificationFromEmail, isEmailAllowed } from "@/lib/modules/notification";
 
@@ -131,6 +132,7 @@ async function toEmail(args: {
   clientId?: string | null;
   recipientUserId?: string | null;
   recipientLabel?: string;
+  attachments?: EmailAttachment[];
   build: t.BuiltEmail;
 }): Promise<void> {
   try {
@@ -144,6 +146,7 @@ async function toEmail(args: {
       clientId: args.clientId ?? null,
       recipientUserId: args.recipientUserId ?? null,
       recipientLabel: args.recipientLabel,
+      attachments: args.attachments,
     });
   } catch (err) {
     console.error(`[email:notify] failed for ${args.to}`, err);
@@ -164,3 +167,17 @@ export const sendEmailChanged = (to: string, args: { name?: string | null; newEm
 
 export const sendNewDeviceLogin = (to: string, args: { name?: string | null; when: string; context: string; userId?: string }) =>
   toEmail({ to, recipientUserId: args.userId ?? null, build: t.newDeviceLoginEmail({ ...args, supportUrl: supportUrl() }) });
+
+// — Internal ops (sales reps) -------------------------------------------------
+export const sendRepInvite = (to: string, args: { name?: string | null; setPasswordUrl: string; portalUrl: string; expiresDays: number; userId?: string }) =>
+  toEmail({ to, recipientUserId: args.userId ?? null, build: t.repInviteEmail(args) });
+
+export const sendRepContractSigned = (to: string, args: { name?: string | null; portalUrl: string; pdf: EmailAttachment; userId?: string }) =>
+  toEmail({ to, recipientUserId: args.userId ?? null, attachments: [args.pdf], build: t.repContractSignedEmail(args) });
+
+export const sendPreviewToProspect = (to: string, args: { businessName: string; contactName?: string | null; previewUrl: string }) =>
+  toEmail({ to, build: t.repPreviewToProspectEmail(args) });
+
+/** Route a rep's help request to the admin inbox address (ADMIN_EMAIL, falling back to support). */
+export const sendAdminHelpRequest = (args: { repName: string; repEmail?: string | null; message: string; previewUrl?: string; inboxUrl: string }) =>
+  toEmail({ to: process.env.ADMIN_EMAIL || process.env.PDF_COMPANY_EMAIL || "hello@pagebee.com", build: t.adminHelpRequestEmail(args) });

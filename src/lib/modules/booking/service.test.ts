@@ -32,7 +32,6 @@ import {
   getBookingHistory,
   createManualBooking,
   sweepBookingReminders,
-  BookingError,
 } from "./service";
 import { writeAudit } from "@/lib/modules/audit";
 import { emit } from "@/lib/events";

@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated/transient artifacts that aren't source we lint.
+    "coverage/**",
+    ".claude/worktrees/**",
+    ".clone/worktrees/**",
   ]),
   {
     // The newest react-hooks plugin ships experimental rules (set-state-in-effect,

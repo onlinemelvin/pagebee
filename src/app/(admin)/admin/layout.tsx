@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { getAuthContext, hasPermission } from "@/lib/auth/session";
+import { countOpenHelpRequests } from "@/lib/modules/sales";
 import { SignOutButton } from "@/components/admin/SignOutButton";
-import { AdminNav, type AdminTab } from "@/components/admin/AdminNav";
+import { AdminNav, type AdminNavGroup } from "@/components/admin/AdminNav";
 import { LogoMark, Wordmark } from "@/components/brand/Logo";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -11,17 +12,44 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const canReview = ctx ? hasPermission(ctx, "website:review") : false;
   if (!ctx || (!ctx.isAdmin && !canReview)) redirect("/login");
 
-  const tabs: AdminTab[] = [];
-  if (ctx.isAdmin) {
-    tabs.push(
-      { key: "overview", label: "Overview", href: "/admin" },
-      { key: "leads", label: "Leads", href: "/admin/leads" },
-      { key: "upgrades", label: "Upgrades", href: "/admin/upgrade-requests" },
-      { key: "analytics", label: "Analytics", href: "/admin/analytics" },
-      { key: "email", label: "Email", href: "/admin/email" },
-    );
-  }
-  tabs.push({ key: "websites", label: "Websites", href: "/admin/websites" });
+  const openHelp = ctx.isAdmin ? await countOpenHelpRequests() : 0;
+
+  // Grouped nav so the console scales as more ops surfaces land (Sales / Team / Platform).
+  const groups: AdminNavGroup[] = ctx.isAdmin
+    ? [
+        {
+          tabs: [
+            { key: "overview", label: "Overview", href: "/admin" },
+            { key: "leads", label: "Leads", href: "/admin/leads" },
+            { key: "websites", label: "Websites", href: "/admin/websites" },
+          ],
+        },
+        {
+          label: "Sales",
+          tabs: [
+            { key: "reps", label: "Reps", href: "/admin/reps" },
+            { key: "quotes", label: "Quotes", href: "/admin/quotes" },
+            { key: "commissions", label: "Commissions", href: "/admin/commissions" },
+            { key: "help", label: "Help requests", href: "/admin/help", badge: openHelp || undefined },
+          ],
+        },
+        {
+          label: "Team",
+          tabs: [
+            { key: "employees", label: "Employees", href: "/admin/employees" },
+            { key: "payroll", label: "Payroll", href: "/admin/payroll" },
+          ],
+        },
+        {
+          label: "Platform",
+          tabs: [
+            { key: "upgrades", label: "Upgrades", href: "/admin/upgrade-requests" },
+            { key: "analytics", label: "Analytics", href: "/admin/analytics" },
+            { key: "email", label: "Email", href: "/admin/email" },
+          ],
+        },
+      ]
+    : [{ tabs: [{ key: "websites", label: "Websites", href: "/admin/websites" }] }];
 
   return (
     <div className="grid min-h-screen grid-cols-[240px_1fr] bg-stone-50">
@@ -34,7 +62,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </div>
 
-        <AdminNav tabs={tabs} />
+        <AdminNav groups={groups} />
 
         <div className="mt-auto rounded-2xl border border-stone-200 bg-stone-50 p-3">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-stone-600">

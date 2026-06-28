@@ -4,7 +4,7 @@ import { writeAudit } from "@/lib/modules/audit";
 import { getFinanceSettings, saveFinanceSettings } from "@/lib/modules/finance";
 import { getStripe, stripeConfigured } from "@/lib/stripe/client";
 import { PaymentError, refreshAccountStatus } from "./service";
-import { onboardingSubmitSchema, type OnboardingSubmit } from "./schema";
+import { onboardingSubmitSchema } from "./schema";
 
 const SUPPORTED = new Set(["US", "CA", "GB", "AU", "NZ", "IE", "DE", "FR", "ES", "IT", "NL", "SE", "SG", "AE", "IN"]);
 

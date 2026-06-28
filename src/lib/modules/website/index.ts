@@ -61,4 +61,6 @@ export {
 export type { DomainLookup, DomainSuggestion, ConnectInstructions } from "./domain-purchase";
 export { websiteIntakeSchema } from "./schema";
 export type { WebsiteIntakeForm } from "./schema";
+export { suggestFaqs, faqSuggestSchema, FaqUnavailableError } from "./faq";
+export type { FaqSuggestInput, FaqSuggestion } from "./faq";
 export type { GenerationForm } from "./service";

@@ -51,7 +51,6 @@ import {
 import { writeAudit } from "@/lib/modules/audit";
 import * as notify from "@/lib/modules/email/notifications";
 import { getStripe, stripeConfigured } from "@/lib/stripe/client";
-import { requestUpgrade } from "@/lib/modules/subscription";
 
 beforeEach(() => {
   vi.clearAllMocks();

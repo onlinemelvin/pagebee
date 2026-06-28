@@ -5,6 +5,7 @@ import type { AuthTokenType } from "@prisma/client";
 const PREFIX: Record<AuthTokenType, string> = {
   PASSWORD_RESET: "prt",
   EMAIL_VERIFY: "evt",
+  REP_INVITE: "rit",
 };
 
 function hash(raw: string): string {

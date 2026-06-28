@@ -93,7 +93,8 @@ export async function requestRevision(clientId: string, note?: string) {
   const revisionEdits = [...pins.edits];
   const typed = note?.trim();
   if (typed) revisionEdits.push({ pagePath: "", selector: null, anchorText: null, instruction: typed });
-  const form = { ...base, revisionNote: combined, revisionEdits } as GenerationForm;
+  // Client-initiated revisions auto-show to the client when ready (no admin review step).
+  const form = { ...base, revisionNote: combined, revisionEdits, autoRelease: true } as GenerationForm;
 
   await prisma.preview.update({
     where: { id: preview.id },

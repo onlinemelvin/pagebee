@@ -118,6 +118,59 @@ export async function requireCapability(
   return result;
 }
 
+/**
+ * The sales rep (if any) behind the current user. A rep is a PLATFORM user linked to an
+ * ACTIVE `Employee` of type `COMMISSION_REP`. This is the rep-portal's isolation anchor: every
+ * rep-scoped query filters by `employee.id`, derived here from the session — never from the
+ * request body. See docs/INTERNAL_OPS.md §2 and docs/SALES_REP_PROGRAM.md.
+ */
+async function getRepContextRaw() {
+  const ctx = await getAuthContext();
+  if (!ctx || ctx.type !== "PLATFORM") return null;
+  const employee = await prisma.employee.findFirst({
+    where: { userId: ctx.userId, employeeType: "COMMISSION_REP", employmentStatus: "ACTIVE" },
+  });
+  return employee ? { ctx, employee } : null;
+}
+
+/**
+ * For rep API routes: throws AuthError(401) when not signed in, AuthError(403) when the caller
+ * isn't an active commission rep. Returns `{ ctx, employee }`; scope all rep queries by `employee.id`.
+ */
+export async function requireRep() {
+  const result = await getRepContext();
+  if (!result) {
+    const ctx = await getAuthContext();
+    throw new AuthError(ctx ? 403 : 401);
+  }
+  return result;
+}
+
+/**
+ * Stricter rep guard for actions that require a signed, ACTIVE commission contract (e.g. selling).
+ * Reads + dashboards use `requireRep`; selling actions use this. Throws 403 (`contract_required`)
+ * when the rep has no ACTIVE SALES_REP_COMMISSION contract. See SALES_REP_PROGRAM.md §2.
+ */
+export async function requireContractedRep() {
+  const result = await requireRep();
+  const contract = await prisma.contract.findFirst({
+    where: { employeeId: result.employee.id, type: "SALES_REP_COMMISSION", status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (!contract) throw new AuthError(403, "contract_required");
+  return result;
+}
+
+/**
+ * Strictest rep guard: an active contract AND certification (completed enablement). Gates quoting —
+ * reps can run the CRM before certification but can't send offers. Throws 403 (`certification_required`).
+ */
+export async function requireCertifiedRep() {
+  const result = await requireContractedRep();
+  if (!result.employee.certifiedAt) throw new AuthError(403, "certification_required");
+  return result;
+}
+
 /** The client business (tenant) owned by the current user, with subscription + plan. */
 async function getCurrentClientRaw() {
   const ctx = await getAuthContext();
@@ -136,3 +189,4 @@ async function getCurrentClientRaw() {
 // scoped to a single server request, so there's no cross-request staleness.)
 export const getAuthContext = cache(getAuthContextRaw);
 export const getCurrentClient = cache(getCurrentClientRaw);
+export const getRepContext = cache(getRepContextRaw);

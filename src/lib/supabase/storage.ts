@@ -71,7 +71,7 @@ async function ensureBucket(url: string, serviceKey: string) {
 /** Upload bytes to the public bucket at `path`; returns the public URL (or null). */
 export async function uploadPublicFile(
   path: string,
-  bytes: ArrayBuffer,
+  bytes: ArrayBuffer | Uint8Array,
   contentType: string,
 ): Promise<string | null> {
   const c = cfg();
@@ -85,7 +85,7 @@ export async function uploadPublicFile(
       Authorization: `Bearer ${c.serviceKey}`,
       "x-upsert": "true",
     },
-    body: new Blob([bytes], { type: contentType }),
+    body: new Blob([bytes as BlobPart], { type: contentType }),
   });
   if (!res.ok) {
     console.error("[storage] upload failed", res.status, await res.text().catch(() => ""));

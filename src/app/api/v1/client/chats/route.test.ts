@@ -13,8 +13,6 @@ import { GET } from "./route";
 import { requireCapability } from "@/lib/auth/session";
 import { listConversations } from "@/lib/modules/chat";
 
-const req = () => new Request("http://localhost/api/v1/client/chats");
-
 beforeEach(() => {
   vi.clearAllMocks();
 });

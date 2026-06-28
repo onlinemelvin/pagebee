@@ -18,11 +18,32 @@ export interface CreateLeadParams {
   ip?: string | null;
 }
 
+// Window within which a second identical submission is treated as a duplicate (double-clicks, retries,
+// naive bots re-posting the same identity) rather than a new lead.
+const DEDUPE_WINDOW_MS = 10 * 60_000;
+
 /**
  * Create a lead for a tenant. Persists, writes an audit entry, and emits
  * `lead.created` (which fans out to owner notification, analytics, etc.).
+ *
+ * Collapses rapid duplicates: an identical (clientId, email, name) submitted within DEDUPE_WINDOW_MS
+ * returns the existing lead without creating a new row, notifying again, or re-running analytics — so
+ * a double-submit or a bot replaying one identity can't flood the inbox. (Distinct-per-submit random
+ * identities are caught upstream by the honeypot/timing traps + per-tenant rate cap.)
  */
 export async function createLead({ clientId, input, ip }: CreateLeadParams) {
+  const recent = await prisma.lead.findFirst({
+    where: {
+      clientId,
+      email: input.email,
+      name: input.name,
+      createdAt: { gte: new Date(Date.now() - DEDUPE_WINDOW_MS) },
+    },
+    select: { id: true, status: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (recent) return recent;
+
   const lead = await prisma.lead.create({
     data: {
       clientId,

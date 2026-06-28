@@ -1,4 +1,3 @@
-import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/modules/audit";
 import { getFinanceSettings, saveFinanceSettings } from "@/lib/modules/finance";

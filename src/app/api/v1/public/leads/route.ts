@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSiteToken, resolveSite } from "@/lib/auth/site-token";
-import { rateLimited } from "@/lib/ratelimit";
-import { createLead, leadCaptureEnabled, leadInputSchema } from "@/lib/modules/lead";
+import { rateLimited, rateLimitedKey } from "@/lib/ratelimit";
+import { createLead, leadCaptureEnabled, leadInputSchema, looksLikeBotSubmission } from "@/lib/modules/lead";
 import "@/lib/events/subscribers"; // register lead.created handlers
 import { getPostHogClient } from "@/lib/posthog-server";
 
@@ -38,7 +38,20 @@ export async function POST(req: Request) {
     return json({ error: "unauthorized" }, 401);
   }
 
+  // Per-tenant flood cap (on top of the per-IP limit above): a single site shouldn't receive a
+  // torrent of leads, and distributed bots rotating source IPs still funnel into one token. Generous
+  // enough for any real small business (30/hour), tight enough to blunt an automated spray.
+  const flood = await rateLimitedKey(`leads:token:${site.clientId}`, { limit: 30, windowMs: 60 * 60_000 }, CORS);
+  if (flood) return flood;
+
   const body = await req.json().catch(() => null);
+
+  // Bot traps (a filled honeypot field, or a submit faster than any human could type). Respond like a
+  // normal success so the bot gets no signal to adapt — but never store or deliver the lead.
+  if (looksLikeBotSubmission(body)) {
+    return json({ id: "ok", status: "RECEIVED" }, 200);
+  }
+
   const parsed = leadInputSchema.safeParse(body);
   if (!parsed.success) {
     return json({ error: "validation_error", issues: parsed.error.flatten() }, 400);

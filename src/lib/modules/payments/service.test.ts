@@ -37,16 +37,10 @@ import {
   chargeInvoiceOffSession,
   processStripeEvent,
   refundPayment,
-  createTaxDocumentsSession,
   createInvoicePaymentIntent,
-  mintPlanAuthToken,
-  getPlanAuthContext,
-  createPlanSetupIntent,
   savePlanCard,
-  PaymentError,
 } from "./service";
 import { writeAudit } from "@/lib/modules/audit";
-import { sendEmail } from "@/lib/modules/email";
 import { createNotification, isGroupEmailAllowed } from "@/lib/modules/notification";
 import { getFinanceSettings } from "@/lib/modules/finance";
 import { stripeConfigured, getStripe, connectClientId } from "@/lib/stripe/client";
