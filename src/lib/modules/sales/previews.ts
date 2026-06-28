@@ -4,7 +4,9 @@ import type { PlanName } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/modules/audit";
 import { uniqueClientSlug } from "@/lib/slug";
-import { startGeneration, websiteIntakeSchema } from "@/lib/modules/website";
+import { startGeneration, claimAndRun, regenerateFromScratch, websiteIntakeSchema } from "@/lib/modules/website";
+import { appBase } from "@/lib/modules/email";
+import { sendPreviewToProspect } from "@/lib/modules/email/notifications";
 import { SalesError } from "./errors";
 
 /**
@@ -26,8 +28,9 @@ function publicToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-/** Throws 404 unless `repId` is assigned to `prospectId`. */
-async function assertAssigned(repId: string, prospectId: string): Promise<void> {
+/** Throws 404 unless `repId` is assigned to `prospectId`. Exported for routes that act on a
+ *  prospect's preview assets (e.g. rep uploads) and need the same tenancy guard. */
+export async function assertRepAssignedToProspect(repId: string, prospectId: string): Promise<void> {
   const link = await prisma.salesAssignment.findFirst({
     where: { prospectId, employeeId: repId },
     select: { id: true },
@@ -42,7 +45,7 @@ async function assertAssigned(repId: string, prospectId: string): Promise<void> 
  */
 export async function requestPreview(repId: string, input: unknown, actor?: { userId?: string }) {
   const parsed = previewRequestSchema.parse(input);
-  await assertAssigned(repId, parsed.prospectId);
+  await assertRepAssignedToProspect(repId, parsed.prospectId);
 
   const prospect = await prisma.prospect.findUnique({
     where: { id: parsed.prospectId },
@@ -90,6 +93,7 @@ export async function requestPreview(repId: string, input: unknown, actor?: { us
   const { jobId, websiteId } = await startGeneration(client.id, {
     ...parsed.intake,
     previewPlan: parsed.selectedPlan as PlanName,
+    autoRelease: true, // rep previews skip platform review — the rep is the reviewer
   });
 
   const preview = await prisma.preview.create({
@@ -137,18 +141,118 @@ export async function markPreviewSent(repId: string, previewId: string) {
 }
 
 /**
+ * Email the prospect their preview link (the rep is happy with it and wants to send it over). Scoped
+ * to the rep; uses the prospect's CRM email and the unguessable /p/{token} viewer. Marks PREVIEW_SENT.
+ */
+export async function emailPreviewToProspect(repId: string, previewId: string, actor?: { userId?: string }) {
+  const preview = await prisma.preview.findFirst({
+    where: { id: previewId, assignedSalesRepId: repId },
+    select: { id: true, prospectId: true, publicToken: true, sentAt: true },
+  });
+  if (!preview) throw new SalesError("preview_not_found", 404);
+  if (!preview.publicToken) throw new SalesError("not_ready", 409);
+
+  const prospect = preview.prospectId
+    ? await prisma.prospect.findUnique({ where: { id: preview.prospectId }, select: { email: true, businessName: true, contactName: true } })
+    : null;
+  if (!prospect?.email) throw new SalesError("no_prospect_email", 400);
+
+  await sendPreviewToProspect(prospect.email, {
+    businessName: prospect.businessName,
+    contactName: prospect.contactName,
+    previewUrl: `${appBase()}/p/${preview.publicToken}`,
+  });
+
+  await prisma.preview.update({
+    where: { id: preview.id },
+    data: { status: "PREVIEW_SENT", ...(preview.sentAt ? {} : { sentAt: new Date() }) },
+  });
+  if (preview.prospectId) {
+    await prisma.prospect.update({ where: { id: preview.prospectId }, data: { status: "preview_sent" } }).catch(() => {});
+  }
+  await writeAudit({ action: "preview.emailed_to_prospect", entityType: "Preview", entityId: preview.id, actorId: actor?.userId ?? null, metadata: { repId, to: prospect.email } });
+  return { ok: true as const, to: prospect.email };
+}
+
+/** A rep-owned preview ready for a generation action (regenerate / request-changes). Scoped to the rep. */
+async function repPreviewForAction(repId: string, previewId: string) {
+  const preview = await prisma.preview.findFirst({
+    where: { id: previewId, assignedSalesRepId: repId },
+    select: { id: true, websiteId: true, clientId: true, status: true },
+  });
+  if (!preview?.websiteId || !preview.clientId) throw new SalesError("preview_not_found", 404);
+  if (preview.status === "PREVIEW_GENERATING") throw new SalesError("already_generating", 409);
+  return preview as { id: string; websiteId: string; clientId: string; status: string };
+}
+
+/**
+ * Rep "regenerate from scratch": a fresh full rebuild of the preview from the same intake (no edits),
+ * reusing the admin engine. Rep-scoped; stays auto-released (the stored intake already carries
+ * autoRelease), so it never re-enters platform review.
+ */
+export async function repRegeneratePreview(repId: string, previewId: string, actor?: { userId?: string }) {
+  const preview = await repPreviewForAction(repId, previewId);
+  const version = await prisma.websiteVersion.findFirst({
+    where: { websiteId: preview.websiteId },
+    orderBy: { version: "desc" },
+    select: { id: true },
+  });
+  if (!version) throw new SalesError("not_ready", 409);
+  await prisma.preview.update({ where: { id: preview.id }, data: { status: "PREVIEW_GENERATING" } });
+  await regenerateFromScratch(version.id, actor?.userId ?? null);
+  await writeAudit({ action: "preview.rep_regenerated", entityType: "Preview", entityId: preview.id, clientId: preview.clientId, actorId: actor?.userId ?? null });
+  return { ok: true as const };
+}
+
+/**
+ * Rep "request changes": a free-text instruction the AI applies as a surgical edit (mirrors the
+ * client revision path), regenerating the preview. Rep-scoped and auto-released.
+ */
+export async function repRequestChanges(repId: string, previewId: string, note: string, actor?: { userId?: string }) {
+  const text = (note ?? "").trim();
+  if (!text) throw new SalesError("no_content", 400);
+  const preview = await repPreviewForAction(repId, previewId);
+
+  const lastJob = await prisma.websiteGenerationJob.findFirst({
+    where: { websiteId: preview.websiteId },
+    orderBy: { createdAt: "desc" },
+    select: { inputIntake: true },
+  });
+  const base = (lastJob?.inputIntake ?? {}) as Record<string, unknown>;
+  const form = {
+    ...base,
+    revisionNote: text,
+    revisionEdits: [{ pagePath: "", selector: null, anchorText: null, instruction: text }],
+    autoRelease: true,
+  } as unknown as Parameters<typeof startGeneration>[1];
+
+  await prisma.preview.update({ where: { id: preview.id }, data: { status: "PREVIEW_GENERATING" } });
+  await prisma.previewRevision.create({ data: { previewId: preview.id, requestedBy: repId, requestText: text, status: "in_progress" } });
+
+  const { jobId } = await startGeneration(preview.clientId, form);
+  void claimAndRun(jobId).catch((e) => console.error("[rep/preview] request-changes job failed", jobId, e));
+  await writeAudit({ action: "preview.rep_revision_requested", entityType: "Preview", entityId: preview.id, clientId: preview.clientId, actorId: actor?.userId ?? null });
+  return { ok: true as const, jobId };
+}
+
+/**
  * The rep's preview for a prospect (status + share token), or null. Scoped to the rep. Lazily
- * reconciles a still-"generating" preview to PREVIEW_READY once the website actually has a generated
- * version — the generation pipeline updates the Website/job, not this Preview row, so we settle it here.
+ * settles the preview to PREVIEW_READY once the website actually has a generated version.
+ *
+ * Rep-originated previews skip platform (admin) review: the generation pipeline lands the Preview in
+ * PREVIEW_GENERATING (created here) and then IN_REVIEW (set by runGenerationJob's generic path), but
+ * for a rep preview the rep is the reviewer — so as soon as a version exists we settle it to
+ * PREVIEW_READY. (The public /p/{token} viewer never gated on admin review anyway.)
  */
 export async function getProspectPreview(repId: string, prospectId: string) {
-  await assertAssigned(repId, prospectId);
+  await assertRepAssignedToProspect(repId, prospectId);
   const preview = await prisma.preview.findFirst({
     where: { prospectId, assignedSalesRepId: repId },
     orderBy: { createdAt: "desc" },
     select: { id: true, status: true, publicToken: true, selectedPlan: true, sentAt: true, viewedAt: true, websiteId: true, createdAt: true },
   });
-  if (preview?.status === "PREVIEW_GENERATING" && preview.websiteId) {
+  const unsettled = preview?.status === "PREVIEW_GENERATING" || preview?.status === "IN_REVIEW";
+  if (unsettled && preview?.websiteId) {
     const version = await prisma.websiteVersion.findFirst({ where: { websiteId: preview.websiteId }, select: { id: true } });
     if (version) {
       await prisma.preview.update({ where: { id: preview.id }, data: { status: "PREVIEW_READY", generatedAt: new Date() } }).catch(() => {});

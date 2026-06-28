@@ -67,6 +67,45 @@ export function repInviteEmail(args: { name?: string | null; setPasswordUrl: str
 }
 
 /**
+ * Internal: a sales rep has asked for technical help. Sent to the admin inbox address so the team
+ * sees it even when not in the console. Plain, scannable — links straight to the admin Help inbox.
+ */
+export function adminHelpRequestEmail(args: { repName: string; repEmail?: string | null; message: string; previewUrl?: string; inboxUrl: string }): BuiltEmail {
+  return {
+    category: "ACCOUNT",
+    template: "admin_help_request",
+    subject: `🛠️ Help request from ${args.repName}`,
+    preheader: args.message.slice(0, 120),
+    body:
+      h("A rep needs technical help") +
+      p(`<strong>${escapeHtml(args.repName)}</strong>${args.repEmail ? ` (${escapeHtml(args.repEmail)})` : ""} requested help:`) +
+      panel(escapeHtml(args.message)) +
+      (args.previewUrl ? p(`Preview: <a href="${args.previewUrl}" style="color:#b45309;font-weight:600">${escapeHtml(args.previewUrl)}</a>`) : "") +
+      button("Open the Help inbox", args.inboxUrl),
+  };
+}
+
+/**
+ * A sales rep sends a prospect their free AI website preview. Outreach to a not-yet-customer, so it
+ * dispatches directly (no client opt-in gating) — the link is the unguessable /p/{token} viewer.
+ */
+export function repPreviewToProspectEmail(args: { businessName: string; contactName?: string | null; previewUrl: string }): BuiltEmail {
+  const fn = firstName(args.contactName);
+  return {
+    category: "WEBSITE",
+    template: "rep_preview_to_prospect",
+    subject: `A website preview for ${args.businessName} 🐝`,
+    preheader: "Take a look — built for your business, no signup needed.",
+    body:
+      h(fn ? `Hi ${escapeHtml(fn)} — here's your website 👋` : "Here's your website preview 👋") +
+      p(`We put together a real, working website preview for <strong>${escapeHtml(args.businessName)}</strong> so you can see exactly what we'd build for you — no account or payment needed.`) +
+      button("View your preview", args.previewUrl) +
+      linkFallback(args.previewUrl) +
+      note(`Like what you see? Just reply to this email and we'll get you set up.`),
+  };
+}
+
+/**
  * Confirmation that a rep e-signed their commission agreement. The signed PDF is attached by the
  * caller (sendRepContractSigned); this is the covering message + a link back to the portal copy.
  */

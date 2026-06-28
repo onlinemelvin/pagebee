@@ -34,6 +34,21 @@ describe("createLead", () => {
     expect(writeAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "lead.created", clientId: "c1", entityId: "l1" }));
     expect(emit).toHaveBeenCalledWith("lead.created", { lead });
   });
+
+  it("collapses a rapid duplicate (same clientId+email+name) without re-creating, auditing, or emitting", async () => {
+    const existing = { id: "l0", status: "NEW", createdAt: new Date() };
+    prismaMock.lead.findFirst.mockResolvedValue(existing);
+
+    const result = await createLead({
+      clientId: "c1",
+      input: { type: "CONTACT_FORM", name: "Ada", email: "ada@x.com", phone: "1", source: "site" } as never,
+    });
+
+    expect(result).toBe(existing);
+    expect(prismaMock.lead.create).not.toHaveBeenCalled();
+    expect(writeAudit).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
 });
 
 describe("leadCaptureEnabled", () => {

@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { requireCapability, AuthError } from "@/lib/auth/session";
+import { requireContractedRep, AuthError } from "@/lib/auth/session";
 import { suggestFaqs, FaqUnavailableError } from "@/lib/modules/website";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** POST — suggest FAQ question/answer pairs from the business details (owner reviews/edits them). */
+/**
+ * POST /api/v1/rep/website/faq-suggest — a contracted rep gets AI-suggested FAQs while filling out a
+ * prospect's free preview. Same shared generator as the client form so previews match what the client
+ * would have produced themselves.
+ */
 export async function POST(req: Request) {
   try {
-    await requireCapability("website", "manage");
+    await requireContractedRep();
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     throw err;
@@ -21,7 +25,7 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof FaqUnavailableError) return NextResponse.json({ error: "ai_unavailable" }, { status: 503 });
     if (err instanceof ZodError) return NextResponse.json({ error: "validation_error" }, { status: 400 });
-    console.error("[faq-suggest]", err);
+    console.error("[rep/faq-suggest]", err);
     return NextResponse.json({ error: "generation_failed" }, { status: 500 });
   }
 }

@@ -46,7 +46,7 @@ export {
   clawbackClientCommissions,
 } from "./accrual";
 export { convertQuoteToClient } from "./conversion";
-export { requestPreview, getProspectPreview, markPreviewSent, previewRequestSchema } from "./previews";
+export { requestPreview, getProspectPreview, markPreviewSent, repRegeneratePreview, repRequestChanges, emailPreviewToProspect, previewRequestSchema, assertRepAssignedToProspect } from "./previews";
 export type { PreviewRequestInput } from "./previews";
 export {
   listSettlementQueue,
@@ -60,6 +60,8 @@ export type { RepPerformance, DiscountImpact } from "./analytics";
 export { listRepResources, createRepResource, deleteRepResource } from "./resources";
 export type { ResourceItem, ResourceGroup } from "./resources";
 export { sweepFollowUpReminders } from "./reminders";
+export { createHelpRequest, listHelpRequests, countOpenHelpRequests, resolveHelpRequest } from "./help";
+export type { HelpRequestRow } from "./help";
 export {
   prospectInputSchema,
   prospectUpdateSchema,

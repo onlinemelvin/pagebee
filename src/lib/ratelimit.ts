@@ -71,6 +71,13 @@ export function clientIp(req: Request): string {
   return req.headers.get("x-real-ip") ?? "unknown";
 }
 
+function tooMany(retryAfter: number, extraHeaders?: Record<string, string>): Response {
+  return NextResponse.json(
+    { error: "rate_limited" },
+    { status: 429, headers: { ...(extraHeaders ?? {}), "Retry-After": String(retryAfter) } },
+  );
+}
+
 /**
  * Route guard: returns a 429 Response when the caller (by IP) has exceeded `bucket`'s limit,
  * or null to proceed. Pass the route's CORS headers so the 429 is reachable cross-origin.
@@ -82,9 +89,19 @@ export async function rateLimited(
   extraHeaders?: Record<string, string>,
 ): Promise<Response | null> {
   const r = await rateLimit(`${bucket}:${clientIp(req)}`, opts);
-  if (r.ok) return null;
-  return NextResponse.json(
-    { error: "rate_limited" },
-    { status: 429, headers: { ...(extraHeaders ?? {}), "Retry-After": String(r.retryAfter) } },
-  );
+  return r.ok ? null : tooMany(r.retryAfter, extraHeaders);
+}
+
+/**
+ * Like `rateLimited` but keyed by an arbitrary identity (e.g. a tenant/site token) instead of IP —
+ * for a per-tenant flood cap that holds even when an attacker rotates source IPs. Returns a 429
+ * Response when over the limit, else null.
+ */
+export async function rateLimitedKey(
+  key: string,
+  opts: { limit: number; windowMs: number },
+  extraHeaders?: Record<string, string>,
+): Promise<Response | null> {
+  const r = await rateLimit(key, opts);
+  return r.ok ? null : tooMany(r.retryAfter, extraHeaders);
 }

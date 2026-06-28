@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Inbox, ArrowUpCircle, Globe, Users, FileCheck, DollarSign, Briefcase, Banknote, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Inbox, ArrowUpCircle, Globe, Users, FileCheck, DollarSign, Briefcase, Banknote, LifeBuoy, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface AdminTab {
@@ -28,6 +28,7 @@ const ICONS: Record<string, LucideIcon> = {
   payroll: Banknote,
   upgrades: ArrowUpCircle,
   websites: Globe,
+  help: LifeBuoy,
 };
 
 export function AdminNav({ groups }: { groups: AdminNavGroup[] }) {

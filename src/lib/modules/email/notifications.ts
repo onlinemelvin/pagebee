@@ -174,3 +174,10 @@ export const sendRepInvite = (to: string, args: { name?: string | null; setPassw
 
 export const sendRepContractSigned = (to: string, args: { name?: string | null; portalUrl: string; pdf: EmailAttachment; userId?: string }) =>
   toEmail({ to, recipientUserId: args.userId ?? null, attachments: [args.pdf], build: t.repContractSignedEmail(args) });
+
+export const sendPreviewToProspect = (to: string, args: { businessName: string; contactName?: string | null; previewUrl: string }) =>
+  toEmail({ to, build: t.repPreviewToProspectEmail(args) });
+
+/** Route a rep's help request to the admin inbox address (ADMIN_EMAIL, falling back to support). */
+export const sendAdminHelpRequest = (args: { repName: string; repEmail?: string | null; message: string; previewUrl?: string; inboxUrl: string }) =>
+  toEmail({ to: process.env.ADMIN_EMAIL || process.env.PDF_COMPANY_EMAIL || "hello@pagebee.com", build: t.adminHelpRequestEmail(args) });

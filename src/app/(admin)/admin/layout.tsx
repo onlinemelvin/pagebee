@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { getAuthContext, hasPermission } from "@/lib/auth/session";
+import { countOpenHelpRequests } from "@/lib/modules/sales";
 import { SignOutButton } from "@/components/admin/SignOutButton";
 import { AdminNav, type AdminNavGroup } from "@/components/admin/AdminNav";
 import { LogoMark, Wordmark } from "@/components/brand/Logo";
@@ -10,6 +11,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Admins get everything; a reviewer/contractor (website:review) gets in but only sees Websites.
   const canReview = ctx ? hasPermission(ctx, "website:review") : false;
   if (!ctx || (!ctx.isAdmin && !canReview)) redirect("/login");
+
+  const openHelp = ctx.isAdmin ? await countOpenHelpRequests() : 0;
 
   // Grouped nav so the console scales as more ops surfaces land (Sales / Team / Platform).
   const groups: AdminNavGroup[] = ctx.isAdmin
@@ -27,6 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             { key: "reps", label: "Reps", href: "/admin/reps" },
             { key: "quotes", label: "Quotes", href: "/admin/quotes" },
             { key: "commissions", label: "Commissions", href: "/admin/commissions" },
+            { key: "help", label: "Help requests", href: "/admin/help", badge: openHelp || undefined },
           ],
         },
         {

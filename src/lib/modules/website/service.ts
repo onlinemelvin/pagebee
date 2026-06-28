@@ -33,7 +33,14 @@ import type { WebsiteIntakeForm } from "./schema";
  *  `previewPlan` lets a client preview a DIFFERENT (usually higher) tier's website capabilities for
  *  free — generation builds the site at that tier and records it as the preview's selectedPlan; the
  *  charge only happens at launch/approve. Absent → build at the client's current paid plan. */
-export type GenerationForm = WebsiteIntakeForm & { revisionEdits?: HtmlEditRequest[]; previewPlan?: PlanName };
+export type GenerationForm = WebsiteIntakeForm & {
+  revisionEdits?: HtmlEditRequest[];
+  previewPlan?: PlanName;
+  // When true, the finished version is auto-released (no platform/admin review): the Preview lands in
+  // PREVIEW_READY and the config is marked reviewed. Used by rep-initiated previews and client-
+  // initiated revisions, which are self-serve. Admin-side generations leave it unset (→ IN_REVIEW).
+  autoRelease?: boolean;
+};
 
 /**
  * Generation ALWAYS builds the full site at the TOP tier (max pages, every section + feature) so a
@@ -470,17 +477,26 @@ export async function runGenerationJob(jobId: string): Promise<void> {
     await prisma.website.update({ where: { id: website.id }, data: { status: "preview" } });
   }
   const planName = form.previewPlan ?? client.subscription?.plan.name ?? "NECTAR";
+  // Self-serve generations (rep previews, client revisions) skip platform review and go straight to
+  // the requester; admin-side drafts wait in IN_REVIEW for a reviewer to release.
+  const autoRelease = Boolean(form.autoRelease);
+  const previewStatus = autoRelease ? "PREVIEW_READY" : "IN_REVIEW";
   await prisma.preview.upsert({
     where: { websiteId: website.id },
-    update: { status: "IN_REVIEW", generatedAt: new Date(), selectedPlan: planName, clientId },
+    update: { status: previewStatus, generatedAt: new Date(), selectedPlan: planName, clientId },
     create: {
       websiteId: website.id,
       clientId,
       selectedPlan: planName,
-      status: "IN_REVIEW",
+      status: previewStatus,
       generatedAt: new Date(),
     },
   });
+  if (autoRelease) {
+    await prisma.websiteConfig
+      .updateMany({ where: { versionId: version.id }, data: { adminReviewed: true, reviewedAt: new Date() } })
+      .catch(() => {});
+  }
 
   await writeAudit({
     action: "website.generated",

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getRepWorkspace, getProspect, getProspectPreview, listQuotes, SalesError } from "@/lib/modules/sales";
 import { ProspectDetail, type ProspectDetailData, type TimelineItem } from "@/components/rep/ProspectDetail";
 import { QuotesPanel, type QuoteRow, type PlanPricing } from "@/components/rep/QuotesPanel";
-import { PreviewPanel, type PreviewView } from "@/components/rep/PreviewPanel";
+import { PreviewPanel, type PreviewView, type PlanCaps } from "@/components/rep/PreviewPanel";
 
 async function planPricing(): Promise<PlanPricing> {
   const plans = await prisma.plan.findMany({ select: { name: true, setupFee: true, monthlyFee: true } });
@@ -14,6 +14,18 @@ async function planPricing(): Promise<PlanPricing> {
     if (p.name in fallback) fallback[p.name as keyof PlanPricing] = { setup: p.setupFee, monthly: p.monthlyFee };
   }
   return fallback;
+}
+
+// Per-plan generation capabilities, derived from each plan's feature flags — the same source the client
+// workspace uses (caps.maxPages / caps.forms). Lets the rep's preview form behave like the owner's own.
+async function planCaps(): Promise<PlanCaps> {
+  const plans = await prisma.plan.findMany({ select: { name: true, featureFlags: true } });
+  const caps: PlanCaps = {};
+  for (const p of plans) {
+    const flags = (p.featureFlags ?? {}) as Record<string, unknown>;
+    caps[p.name] = { maxPages: Number(flags.maxPages ?? 5), canUseForms: Boolean(flags.contactForm) };
+  }
+  return caps;
 }
 
 export const dynamic = "force-dynamic";
@@ -63,9 +75,10 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
     timeline,
   };
 
-  const [quotes, pricing, preview] = await Promise.all([
+  const [quotes, pricing, caps, preview] = await Promise.all([
     listQuotes(ws.employee.id, { prospectId: id }),
     planPricing(),
+    planCaps(),
     getProspectPreview(ws.employee.id, id),
   ]);
   const quoteRows: QuoteRow[] = quotes.map((q) => ({
@@ -87,7 +100,14 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
         <ArrowLeft size={15} /> Back to prospects
       </Link>
       <ProspectDetail data={data} />
-      <PreviewPanel prospectId={id} preview={previewView} canRequest={ws.hasActiveContract} appUrl={appUrl} />
+      <PreviewPanel
+        prospectId={id}
+        preview={previewView}
+        canRequest={ws.hasActiveContract}
+        appUrl={appUrl}
+        planCaps={caps}
+        contactDefaults={{ email: prospect.email ?? undefined, phone: prospect.phone ?? undefined }}
+      />
       <QuotesPanel
         prospectId={id}
         quotes={quoteRows}

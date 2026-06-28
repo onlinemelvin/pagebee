@@ -344,6 +344,11 @@ enum AuthTokenType {
   REP_INVITE
 }
 
+enum HelpRequestStatus {
+  OPEN
+  RESOLVED
+}
+
 enum ConsentChannel {
   EMAIL
   SMS
@@ -2352,6 +2357,23 @@ model AuthToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("auth_tokens")
+}
+
+/// A sales rep's request for technical help, routed to admins (in-app inbox + email). Denormalized
+/// (no FK relations) — it's a lightweight internal ticket. See docs/SALES_REP_PROGRAM.md.
+model HelpRequest {
+  id         String            @id @default(cuid())
+  employeeId String // the rep who asked
+  repName    String?
+  previewId  String?
+  prospectId String?
+  message    String
+  status     HelpRequestStatus @default(OPEN)
+  createdAt  DateTime          @default(now())
+  resolvedAt DateTime?
+
+  @@index([status])
+  @@map("help_requests")
 }
 
 model SmsLog {

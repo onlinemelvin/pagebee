@@ -4,6 +4,11 @@ vi.mock("@/lib/auth/site-token", () => ({
   getSiteToken: vi.fn(() => "tok"),
   resolveSite: vi.fn(),
 }));
+// Rate limiting is exercised in ratelimit.test.ts; here it's a pass-through so guards are deterministic.
+vi.mock("@/lib/ratelimit", () => ({
+  rateLimited: vi.fn(async () => null),
+  rateLimitedKey: vi.fn(async () => null),
+}));
 const { leadInputSchema } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- hoisted factory runs before ES imports initialize
   const { z } = require("zod");
@@ -22,6 +27,14 @@ vi.mock("@/lib/modules/lead", () => ({
   createLead: vi.fn(),
   leadCaptureEnabled: vi.fn(),
   leadInputSchema,
+  // Real logic (pure): honeypot filled or implausibly fast submit.
+  looksLikeBotSubmission: (body: unknown) => {
+    if (!body || typeof body !== "object") return false;
+    const b = body as Record<string, unknown>;
+    if (typeof b.company === "string" && b.company.trim().length > 0) return true;
+    const t = Number(b._t);
+    return Number.isFinite(t) && t > 0 && t < 1500;
+  },
 }));
 vi.mock("@/lib/events/subscribers", () => ({}));
 const posthogCapture = vi.hoisted(() => vi.fn());
@@ -90,5 +103,31 @@ describe("POST /api/v1/public/leads", () => {
     expect(createLead).toHaveBeenCalledWith(
       expect.objectContaining({ clientId: "c1", input: valid }),
     );
+  });
+
+  it("silently drops a submission whose honeypot is filled (looks like success, no lead)", async () => {
+    vi.mocked(resolveSite).mockResolvedValue({ websiteId: "w", clientId: "c1", status: "live" });
+    vi.mocked(leadCaptureEnabled).mockResolvedValue(true);
+    const res = await POST(req({ ...valid, company: "Acme Bots Inc" }));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ status: "RECEIVED" });
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("silently drops an implausibly fast submit (_t under the human threshold)", async () => {
+    vi.mocked(resolveSite).mockResolvedValue({ websiteId: "w", clientId: "c1", status: "live" });
+    vi.mocked(leadCaptureEnabled).mockResolvedValue(true);
+    const res = await POST(req({ ...valid, _t: 200 }));
+    expect(res.status).toBe(200);
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("accepts a normal-paced submit (_t above the threshold)", async () => {
+    vi.mocked(resolveSite).mockResolvedValue({ websiteId: "w", clientId: "c1", status: "live" });
+    vi.mocked(leadCaptureEnabled).mockResolvedValue(true);
+    vi.mocked(createLead).mockResolvedValue({ id: "l2", status: "NEW", createdAt: "2026-01-01" } as never);
+    const res = await POST(req({ ...valid, _t: 8000, company: "" }));
+    expect(res.status).toBe(201);
+    expect(createLead).toHaveBeenCalled();
   });
 });
