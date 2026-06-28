@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { getPreviewSiteForClient } from "@/lib/modules/website";
 import { serveTenant } from "@/lib/site/serve";
+import { appBase } from "@/lib/modules/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { token } = await params;
   const preview = await prisma.preview.findUnique({
     where: { publicToken: token },
-    select: { id: true, clientId: true, status: true, viewedAt: true },
+    select: { id: true, clientId: true, status: true, viewedAt: true, setupDiscountPct: true, monthlyDiscountPct: true },
   });
   if (!preview?.clientId) {
     return new Response("Preview not found.", { status: 404, headers: NOINDEX });
@@ -51,7 +52,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const site = await getPreviewSiteForClient(preview.clientId);
   if (!site || !site.html) return generatingPage();
 
-  const res = serveTenant(site, req);
+  // The agreed price for this preview's plan: the provisional subscription carries the list fees;
+  // the rep's setup-fee discount (if any) is applied here so it reflects without touching the sub.
+  const sub = await prisma.subscription.findUnique({
+    where: { clientId: preview.clientId },
+    select: { agreedSetupFee: true, agreedMonthlyFee: true },
+  });
+  const monthlyPct = preview.monthlyDiscountPct ?? 0;
+  const price = sub
+    ? {
+        setupCents: sub.agreedSetupFee,
+        setupAfterDiscountCents: Math.round(sub.agreedSetupFee * (1 - (preview.setupDiscountPct ?? 0) / 100)),
+        monthlyCents: sub.agreedMonthlyFee,
+        monthlyAfterDiscountCents: Math.round(sub.agreedMonthlyFee * (1 - monthlyPct / 100)),
+        promoMonths: monthlyPct > 0 ? 12 : 0,
+      }
+    : undefined;
+
+  // The "Ready to launch" footer CTA starts signup with THIS preview attached — the prospect's new
+  // account adopts the provisional client behind the token (no separate site/account to reconcile).
+  const launchUrl = `${appBase()}/register?previewToken=${encodeURIComponent(token)}`;
+  const res = serveTenant(site, req, undefined, { launchUrl, price });
   res.headers.set("X-Robots-Tag", "noindex, nofollow");
   return res;
 }

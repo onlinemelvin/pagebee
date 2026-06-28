@@ -21,11 +21,23 @@ const ERROR_COPY: Record<string, string> = {
   validation_error: "Please check the form and try again.",
 };
 
-export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) {
+/** Prefill + lock context when arriving from a public preview's "Ready to launch" CTA. */
+export interface PreviewClaim {
+  previewToken: string;
+  plan: PlanName;
+  businessName?: string;
+  businessType?: string;
+  ownerName?: string;
+  email?: string;
+}
+
+export function RegisterForm({ initialPlan, claim }: { initialPlan: PlanName | null; claim?: PreviewClaim }) {
   const router = useRouter();
-  const [step, setStep] = React.useState<"plan" | "details">(initialPlan ? "details" : "plan");
-  const [plan, setPlan] = React.useState<PlanName | null>(initialPlan);
-  const [email, setEmail] = React.useState("");
+  const startPlan = claim?.plan ?? initialPlan;
+  // A preview claim already has a plan + business details → skip straight to the details step.
+  const [step, setStep] = React.useState<"plan" | "details">(startPlan ? "details" : "plan");
+  const [plan, setPlan] = React.useState<PlanName | null>(startPlan);
+  const [email, setEmail] = React.useState(claim?.email ?? "");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -54,6 +66,7 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
       phone: String(data.get("phone") ?? "") || undefined,
       password: String(data.get("password") ?? ""),
       plan,
+      previewToken: claim?.previewToken,
     };
 
     try {
@@ -66,6 +79,8 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(ERROR_COPY[body?.error ?? ""] ?? body?.error ?? `Registration failed (${res.status})`);
       }
+      // Preview claims come back with `next` (the pay-to-launch step); fresh signups land on the dashboard.
+      const result = (await res.json().catch(() => null)) as { next?: string } | null;
       const supabase = createSupabaseBrowserClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: payload.email,
@@ -83,8 +98,9 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
       posthog.capture("client_registered", {
         plan: payload.plan,
         businessType: payload.businessType,
+        adopted: Boolean(claim),
       });
-      router.push("/dashboard");
+      router.push(result?.next ?? "/dashboard");
       router.refresh();
     } catch (err) {
       posthog.captureException(err);
@@ -216,15 +232,19 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
             >
               ← {selectedPlan?.label} plan · {selectedPlan ? `${formatUsd(selectedPlan.monthlyFee)}/mo` : ""} · change
             </button>
-            <h1 className="font-display text-3xl text-stone-900">Create your account</h1>
+            <h1 className="font-display text-3xl text-stone-900">
+              {claim ? "Claim your website 🐝" : "Create your account"}
+            </h1>
             <p className="mt-1 text-stone-500">
-              Tell us about your business and we&apos;ll build your free preview — no credit card required.
+              {claim
+                ? "You're one step from launching your site. Create your account to continue to checkout."
+                : "Tell us about your business and we'll build your free preview — no credit card required."}
             </p>
 
             <div className="mt-8 grid gap-4">
-              <Field label="Business name" name="businessName" required placeholder="Sparkle Cleaning Co." />
-              <Field label="Business type" name="businessType" placeholder="Cleaning service" />
-              <Field label="Your name" name="ownerName" required placeholder="Jane Smith" autoComplete="name" />
+              <Field label="Business name" name="businessName" required placeholder="Sparkle Cleaning Co." defaultValue={claim?.businessName} />
+              <Field label="Business type" name="businessType" placeholder="Cleaning service" defaultValue={claim?.businessType} />
+              <Field label="Your name" name="ownerName" required placeholder="Jane Smith" autoComplete="name" defaultValue={claim?.ownerName} />
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -253,10 +273,12 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
             {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
             <Button type="submit" size="lg" className="mt-6 w-full" disabled={loading}>
-              {loading ? "Creating…" : "Start free — build my preview"}
+              {loading ? "Creating…" : claim ? "Create account & continue to launch" : "Start free — build my preview"}
             </Button>
             <p className="mt-3 text-center text-xs text-stone-500">
-              No credit card required. You only pay once you approve your preview and launch.
+              {claim
+                ? "Next: review your one-time setup + first month, then add payment to go live."
+                : "No credit card required. You only pay once you approve your preview and launch."}
             </p>
             <p className="mt-4 text-center text-sm text-stone-500">
               Already have an account?{" "}
@@ -272,14 +294,14 @@ export function RegisterForm({ initialPlan }: { initialPlan: PlanName | null }) 
 }
 
 function Field({
-  label, name, type = "text", required, placeholder, autoComplete,
+  label, name, type = "text", required, placeholder, autoComplete, defaultValue,
 }: {
-  label: string; name: string; type?: string; required?: boolean; placeholder?: string; autoComplete?: string;
+  label: string; name: string; type?: string; required?: boolean; placeholder?: string; autoComplete?: string; defaultValue?: string;
 }) {
   return (
     <div className="grid gap-2">
       <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} type={type} required={required} placeholder={placeholder} autoComplete={autoComplete} />
+      <Input id={name} name={name} type={type} required={required} placeholder={placeholder} autoComplete={autoComplete} defaultValue={defaultValue} />
     </div>
   );
 }

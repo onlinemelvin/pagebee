@@ -311,11 +311,77 @@ function withClientRouter(doc: string, mode: "path" | "hash"): string {
   return out;
 }
 
-/** Inject noindex + a prominent preview banner into a generated document. */
-function applyPreviewMode(doc: string): string {
+// Public prospect preview head: just noindex. Unlike PREVIEW_HEAD it reserves NO bottom padding —
+// the prospect footer flows in at the end of the document instead of overlaying, so nothing needs
+// to make room for it.
+const PUBLIC_PREVIEW_HEAD = `<meta name="robots" content="noindex"/>`;
+
+// The footer for the universally-shareable prospect link (/p/{token}). Deliberately a plain STATIC
+// block (no position / no z-index, so it creates no stacking context): it sits at the end of the
+// document flow, and the generated site's own fixed widgets (chat bubble, etc.) paint ABOVE it
+// instead of being covered. Carries the "Ready to launch" CTA, which starts signup with this preview
+// attached (?previewToken=…) so the prospect's new account adopts it. Kept compact in height.
+/** Pricing shown in the prospect footer. Cents; the setup fee may be discounted by the rep
+ *  (monthly is never discounted). `setupCents` is the full list price (for a strikethrough). */
+export interface PreviewPrice {
+  setupCents: number;
+  setupAfterDiscountCents: number;
+  monthlyCents: number;
+  // Promotional monthly rate (rep concession): pay `monthlyAfterDiscountCents` for `promoMonths`
+  // months, then revert to `monthlyCents`. Equal to `monthlyCents` (and promoMonths 0) when none.
+  monthlyAfterDiscountCents: number;
+  promoMonths: number;
+}
+
+/** Cents → "$1,299" (whole dollars) or "$12.50". */
+function money(cents: number): string {
+  const dollars = cents / 100;
+  const whole = Number.isInteger(dollars);
+  return `$${dollars.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
+
+/** The "Setup $X + $Y/mo" line for the prospect footer, with a strikethrough when the setup fee
+ *  is discounted. Returns "" when no price is supplied (keeps the footer unpriced). */
+function priceLine(price?: PreviewPrice): string {
+  if (!price) return "";
+  const setupDiscounted = price.setupAfterDiscountCents < price.setupCents;
+  const setup = setupDiscounted
+    ? `<s style="opacity:.6;font-weight:600">${money(price.setupCents)}</s>&nbsp;<strong>${money(price.setupAfterDiscountCents)}</strong>`
+    : `<strong>${money(price.setupCents)}</strong>`;
+  const monthlyPromo = price.monthlyAfterDiscountCents < price.monthlyCents && price.promoMonths > 0;
+  const monthly = monthlyPromo
+    ? `<strong>${money(price.monthlyAfterDiscountCents)}</strong>/mo for ${price.promoMonths} mo, then ${money(price.monthlyCents)}/mo`
+    : `<strong>${money(price.monthlyCents)}</strong>/mo`;
+  return (
+    `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;font-size:13px">` +
+    `<span style="background:#1c1917;color:#fbbf24;padding:2px 8px;border-radius:5px;white-space:nowrap">${setup} setup</span>` +
+    `<span style="white-space:nowrap">+ ${monthly}</span>` +
+    `</span>`
+  );
+}
+
+function launchFooter(launchUrl: string, price?: PreviewPrice): string {
+  return (
+    `<div role="contentinfo" style="background:linear-gradient(90deg,#f59e0b 0%,#fbbf24 100%);color:#1c1917;font:600 14px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;padding:11px 16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 14px;text-align:center;border-top:2px solid #b45309">` +
+    `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center"><strong style="background:#1c1917;color:#fbbf24;padding:2px 8px;border-radius:5px;font-size:11px;letter-spacing:.05em">🐝 FREE PREVIEW</strong><span>Love your new website? Make it yours.</span></span>` +
+    priceLine(price) +
+    `<a href="${launchUrl}" style="display:inline-flex;align-items:center;gap:6px;background:#1c1917;color:#ffffff;font-weight:700;font-size:14px;text-decoration:none;padding:9px 18px;border-radius:8px">Ready to launch&nbsp;→</a>` +
+    `</div>`
+  );
+}
+
+/**
+ * Inject noindex + a preview footer into a generated document.
+ * - With `launchUrl` (the public prospect link): a NON-overlay "Ready to launch" footer in the page
+ *   flow — it never covers the site's own fixed widgets.
+ * - Without it (the signed-in owner's review frame): the existing fixed "FREE PREVIEW" status bar.
+ */
+function applyPreviewMode(doc: string, launchUrl?: string, price?: PreviewPrice): string {
   let out = doc;
-  out = out.includes("</head>") ? out.replace("</head>", `${PREVIEW_HEAD}</head>`) : `${PREVIEW_HEAD}${out}`;
-  const tail = `${PREVIEW_LEAD_GUARD}${PREVIEW_BANNER}`;
+  const head = launchUrl ? PUBLIC_PREVIEW_HEAD : PREVIEW_HEAD;
+  out = out.includes("</head>") ? out.replace("</head>", `${head}</head>`) : `${head}${out}`;
+  const footer = launchUrl ? launchFooter(launchUrl, price) : PREVIEW_BANNER;
+  const tail = `${PREVIEW_LEAD_GUARD}${footer}`;
   out = out.includes("</body>") ? out.replace("</body>", `${tail}</body>`) : out + tail;
   return out;
 }
@@ -388,7 +454,12 @@ export function serveReviewFrame(
 }
 
 /** Serve a renderable tenant site (published or preview), robots/sitemap, or a 404 doc. */
-export function serveTenant(site: ServeSite | null, req: Request, path?: string[]): Response {
+export function serveTenant(
+  site: ServeSite | null,
+  req: Request,
+  path?: string[],
+  opts?: { launchUrl?: string; price?: PreviewPrice },
+): Response {
   const origin = originFromRequest(req);
   const seg = (path ?? []).join("/");
 
@@ -430,7 +501,7 @@ export function serveTenant(site: ServeSite | null, req: Request, path?: string[
   // at the single /preview URL → hash routing, which survives refresh without 404s.
   doc = withClientRouter(doc, site.kind === "preview" ? "hash" : "path");
   if (site.kind === "preview") {
-    doc = applyPreviewMode(doc);
+    doc = applyPreviewMode(doc, opts?.launchUrl, opts?.price);
     return htmlResponse(doc, 200, "private, no-store"); // previews change as the client revises
   }
   return htmlResponse(doc);

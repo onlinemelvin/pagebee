@@ -726,7 +726,9 @@ model Prospect {
   followUps   FollowUp[]
   assignments SalesAssignment[]
   quotes      Quote[]
-  convertedClient Client? @relation("ProspectToClient")
+  // A prospect can spin up several provisional preview clients (one per showcase plan); on close,
+  // one of them is adopted as the paying tenant. See docs/SALES_REP_PROGRAM.md §7.
+  clients     Client[] @relation("ProspectToClient")
 
   @@index([status])
   @@index([dedupeKey])
@@ -908,8 +910,9 @@ model Client {
   stripeConnectAccountId String?  @unique
   paymentsEnabled        Boolean  @default(false) // charges_enabled && payouts_enabled
 
-  // Conversion provenance.
-  prospectId String?   @unique
+  // Conversion provenance. NOT unique: a prospect can have several provisional preview clients at
+  // once (one per showcase plan — e.g. a Nectar and a Hive preview), each its own isTest tenant.
+  prospectId String?
   prospect   Prospect? @relation("ProspectToClient", fields: [prospectId], references: [id])
   sourceQuoteId String? @unique
   sourceQuote   Quote?  @relation("QuoteToClient", fields: [sourceQuoteId], references: [id])
@@ -949,6 +952,7 @@ model Client {
   billingAgreements BillingAgreement[]
 
   @@index([status])
+  @@index([prospectId])
   @@map("clients")
 }
 
@@ -1069,6 +1073,13 @@ model Subscription {
   agreedMonthlyFee Int
   setupFeePaid     Boolean   @default(false)
   setupFeePaidAt   DateTime?
+
+  // Time-boxed promotional monthly rate (e.g. a rep's approved first-year promo): the client pays
+  // `promoMonthlyFee` for `promoMonths` cycles, then reverts to `agreedMonthlyFee`. Null when none.
+  // (Enforcement is a billing concern — like the retention discount, the actual coupon lives on the
+  // Stripe subscription; these fields are the agreed terms recorded at signup.)
+  promoMonthlyFee Int?
+  promoMonths     Int?
 
   // Stripe Billing references (our company billing the client).
   stripeCustomerId     String?
@@ -1430,6 +1441,20 @@ model Preview {
   revisionCount    Int @default(0)
   maxFreeRevisions Int @default(1) // one minor revision before payment
 
+  // Rep-set concession: percentage off the ONE-TIME setup fee (0–100). The monthly fee is never
+  // discounted. Carried onto the subscription's agreedSetupFee when the prospect adopts this preview.
+  // This is the EFFECTIVE (in-force) discount. A discount that takes the setup below the rep's plan
+  // floor (or waives it) doesn't land here directly — it goes to `pendingDiscountPct` + an approval.
+  setupDiscountPct Int @default(0)
+  // A requested discount awaiting admin sign-off (out of rep authority). Null when none is pending.
+  // On approval it replaces `setupDiscountPct`; on rejection it's cleared. See SALES_REP_PROGRAM §5.
+  pendingDiscountPct Int?
+  // Promotional discount off the MONTHLY fee, applied for the first year (see MONTHLY_PROMO_MONTHS).
+  // ANY monthly discount is out of rep authority → it always routes through admin approval, so the
+  // effective value below only ever moves on approval. `pendingMonthlyPct` mirrors the setup pending.
+  monthlyDiscountPct Int @default(0)
+  pendingMonthlyPct  Int?
+
   createdById        String? // employee/user who created it (null = self-serve/system)
   assignedSalesRepId String? // Employee.id when sales-led
   notes              String?
@@ -1439,6 +1464,7 @@ model Preview {
 
   revisions  PreviewRevision[]
   conversion Conversion?
+  discountApprovals PreviewDiscountApproval[]
 
   @@index([status])
   @@index([prospectId])
@@ -1461,6 +1487,26 @@ model PreviewRevision {
 
   @@index([previewId])
   @@map("preview_revisions")
+}
+
+/// A rep-requested setup-fee discount on a preview that exceeds rep authority (takes setup below the
+/// plan floor or waives it) and needs admin sign-off before it takes effect. Mirrors QuoteApproval.
+model PreviewDiscountApproval {
+  id            String         @id @default(cuid())
+  previewId     String
+  preview       Preview        @relation(fields: [previewId], references: [id], onDelete: Cascade)
+  requestedById String? // Employee.id (the rep) who requested it
+  requestedPct  Int // the setup-fee discount % requested (0–100)
+  requestedMonthlyPct Int @default(0) // the monthly-fee promo discount % requested (0–100)
+  status        ApprovalStatus @default(PENDING)
+  approverId    String? // admin User id
+  decisionAt    DateTime?
+  comment       String?
+  createdAt     DateTime       @default(now())
+
+  @@index([previewId])
+  @@index([status])
+  @@map("preview_discount_approvals")
 }
 
 model Conversion {

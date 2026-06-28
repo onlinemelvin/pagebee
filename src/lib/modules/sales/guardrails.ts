@@ -1,5 +1,8 @@
 import type { PlanName } from "@prisma/client";
 
+/** A rep's promotional monthly discount runs for the first year, then reverts to the agreed rate. */
+export const MONTHLY_PROMO_MONTHS = 12;
+
 /** Rep setup-fee floors (cents) — discounts to here need no approval. From FEATURE_FLAGS.md. */
 export const REP_SETUP_FLOOR_CENTS: Record<PlanName, number> = {
   NECTAR: 29900,
