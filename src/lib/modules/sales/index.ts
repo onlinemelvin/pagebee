@@ -46,8 +46,8 @@ export {
   clawbackClientCommissions,
 } from "./accrual";
 export { convertQuoteToClient } from "./conversion";
-export { requestPreview, getProspectPreview, markPreviewSent, repRegeneratePreview, repRequestChanges, emailPreviewToProspect, previewRequestSchema, assertRepAssignedToProspect } from "./previews";
-export type { PreviewRequestInput } from "./previews";
+export { requestPreview, getProspectPreview, listProspectPreviews, setPreviewDiscount, listPreviewDiscountApprovals, decidePreviewDiscountApproval, maxSelfApprovedSetupPct, MONTHLY_PROMO_MONTHS, previewRequestSchema, markPreviewSent, repRegeneratePreview, repRequestChanges, emailPreviewToProspect, assertRepAssignedToProspect } from "./previews";
+export type { PreviewRequestInput, PreviewDiscountApprovalRow } from "./previews";
 export {
   listSettlementQueue,
   approveCommission,

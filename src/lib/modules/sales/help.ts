@@ -45,6 +45,16 @@ export async function createHelpRequest(
     },
   });
 
+  // Surface the request on the prospect's timeline when it's tied to one (fail-soft —
+  // the ticket is the source of truth and must not fail on a timeline write).
+  if (prospectId) {
+    await prisma.prospectActivity
+      .create({
+        data: { prospectId, type: "note", summary: `Technical help requested: ${message}`, createdById: actor?.userId ?? null },
+      })
+      .catch(() => {});
+  }
+
   await sendAdminHelpRequest({
     repName: emp?.user?.name ?? "A sales rep",
     repEmail: emp?.user?.email ?? null,

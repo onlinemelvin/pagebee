@@ -23,8 +23,39 @@ vi.mock("./send", () => ({
   escapeHtml: (s: string) => s,
 }));
 
-import { sendWelcome, sendPaymentFailed, sendPasswordReset, sendRepInvite, clientRecipient } from "./notifications";
+import {
+  sendWelcome,
+  sendPaymentFailed,
+  sendPasswordReset,
+  sendRepInvite,
+  clientRecipient,
+  dashboardUrl,
+  billingUrl,
+  websiteUrl,
+  supportUrl,
+  upgradeUrl,
+  reviewUrl,
+  sendPaymentReceipt,
+  sendRenewalNotice,
+  sendSubscriptionCancelled,
+  sendPlanChanged,
+  sendPreviewReady,
+  sendSitePublished,
+  sendUpdateApproved,
+  sendUpdateRejected,
+  sendQuotaWarning,
+  sendSetupFeePending,
+  sendPreviewAutoReleaseReminder,
+  sendEmailVerify,
+  sendPasswordChanged,
+  sendEmailChanged,
+  sendNewDeviceLogin,
+  sendRepContractSigned,
+  sendPreviewToProspect,
+  sendAdminHelpRequest,
+} from "./notifications";
 import { dispatch } from "./dispatch";
+import { appBase } from "./layout";
 import { createNotificationFromEmail, isEmailAllowed } from "@/lib/modules/notification";
 
 beforeEach(() => {
@@ -161,5 +192,131 @@ describe("sendRepInvite (via toEmail)", () => {
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ to: "rep@example.com", category: "ACCOUNT", template: "rep_invite" }),
     );
+  });
+});
+
+describe("URL builders", () => {
+  // resetAllMocks (global setup) wipes the layout factory's appBase return; re-apply it.
+  beforeEach(() => vi.mocked(appBase).mockReturnValue("http://localhost:3000"));
+
+  it("derive client URLs from the app base", () => {
+    expect(dashboardUrl()).toBe("http://localhost:3000/client");
+    expect(billingUrl()).toBe("http://localhost:3000/client/billing");
+    expect(websiteUrl()).toBe("http://localhost:3000/client/website");
+    expect(supportUrl()).toContain("support=1");
+    expect(upgradeUrl()).toContain("upgrade=1");
+    expect(reviewUrl()).toBe("http://localhost:3000/client/website");
+  });
+});
+
+// The remaining client-addressed senders are thin toClient() wrappers; with a
+// resolvable recipient they each dispatch their template's email.
+describe("remaining toClient senders", () => {
+  beforeEach(() => {
+    prismaMock.client.findUnique.mockResolvedValue({
+      businessName: "Biz",
+      ownerName: "Ada",
+      ownerEmail: "ada@biz.com",
+      users: [],
+    } as never);
+  });
+
+  it("sendPaymentReceipt → payment_receipt", async () => {
+    await sendPaymentReceipt("c1", { amountCents: 4900, description: "Honey", when: "Today", invoiceUrl: "https://x/i" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "payment_receipt" }));
+  });
+
+  it("sendRenewalNotice → renewal_notice", async () => {
+    await sendRenewalNotice("c1", { amountCents: 4900, renewsOn: "Jul 1" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "renewal_notice" }));
+  });
+
+  it("sendSubscriptionCancelled → subscription_cancelled (default args)", async () => {
+    await sendSubscriptionCancelled("c1");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "subscription_cancelled" }));
+  });
+
+  it("sendPlanChanged → plan_changed", async () => {
+    await sendPlanChanged("c1", { fromPlan: "Honey", toPlan: "Hive" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "plan_changed" }));
+  });
+
+  it("sendPreviewReady → preview_ready", async () => {
+    await sendPreviewReady("c1");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "preview_ready" }));
+  });
+
+  it("sendSitePublished → site_published", async () => {
+    await sendSitePublished("c1", "https://acme.com");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "site_published" }));
+  });
+
+  it("sendUpdateApproved → update_approved", async () => {
+    await sendUpdateApproved("c1", "https://acme.com");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "update_approved" }));
+  });
+
+  it("sendUpdateRejected → update_rejected (with reason)", async () => {
+    await sendUpdateRejected("c1", "needs logo");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "update_rejected" }));
+  });
+
+  it("sendQuotaWarning → quota_warning", async () => {
+    await sendQuotaWarning("c1", { metric: "leads", used: 90, limit: 100 });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "quota_warning" }));
+  });
+
+  it("sendSetupFeePending → setup_fee_pending", async () => {
+    await sendSetupFeePending("c1");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "setup_fee_pending" }));
+  });
+
+  it("sendPreviewAutoReleaseReminder → preview_auto_release_reminder", async () => {
+    await sendPreviewAutoReleaseReminder("c1", 12);
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "preview_auto_release_reminder" }));
+  });
+});
+
+describe("remaining toEmail senders", () => {
+  it("sendEmailVerify → email_verify", async () => {
+    await sendEmailVerify("u@x.com", { verifyUrl: "https://x/v" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "email_verify", to: "u@x.com" }));
+  });
+
+  it("sendPasswordChanged → password_changed", async () => {
+    await sendPasswordChanged("u@x.com", { name: "Sam" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "password_changed" }));
+  });
+
+  it("sendEmailChanged → email_changed", async () => {
+    await sendEmailChanged("u@x.com", { newEmail: "new@x.com" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "email_changed" }));
+  });
+
+  it("sendNewDeviceLogin → new_device_login", async () => {
+    await sendNewDeviceLogin("u@x.com", { when: "Today", context: "Chrome" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "new_device_login" }));
+  });
+
+  it("sendRepContractSigned attaches the signed PDF", async () => {
+    const pdf = { filename: "agreement.pdf", content: Buffer.from("x"), contentType: "application/pdf" };
+    await sendRepContractSigned("rep@x.com", { portalUrl: "https://x/p", pdf: pdf as never });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ template: "rep_contract_signed", attachments: [pdf] }),
+    );
+  });
+
+  it("sendPreviewToProspect → rep_preview_to_prospect", async () => {
+    await sendPreviewToProspect("lead@x.com", { businessName: "Acme", previewUrl: "https://x/p/1" });
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ template: "rep_preview_to_prospect" }));
+  });
+
+  it("sendAdminHelpRequest routes to the ADMIN_EMAIL inbox address", async () => {
+    process.env.ADMIN_EMAIL = "admin@pagebee.com";
+    await sendAdminHelpRequest({ repName: "Sam", message: "help", inboxUrl: "https://x/inbox" });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ template: "admin_help_request", to: "admin@pagebee.com" }),
+    );
+    delete process.env.ADMIN_EMAIL;
   });
 });

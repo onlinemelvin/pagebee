@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { getRepWorkspace, getProspect, getProspectPreview, listQuotes, SalesError } from "@/lib/modules/sales";
+import { getRepWorkspace, getProspect, listProspectPreviews, listQuotes, maxSelfApprovedSetupPct, SalesError } from "@/lib/modules/sales";
+import type { PlanName } from "@prisma/client";
 import { ProspectDetail, type ProspectDetailData, type TimelineItem } from "@/components/rep/ProspectDetail";
 import { QuotesPanel, type QuoteRow, type PlanPricing } from "@/components/rep/QuotesPanel";
-import { PreviewPanel, type PreviewView, type PlanCaps } from "@/components/rep/PreviewPanel";
+import { PreviewPanel, type PreviewView, type PlanCaps, type PreviewPricing } from "@/components/rep/PreviewPanel";
 
 async function planPricing(): Promise<PlanPricing> {
   const plans = await prisma.plan.findMany({ select: { name: true, setupFee: true, monthlyFee: true } });
@@ -75,11 +76,11 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
     timeline,
   };
 
-  const [quotes, pricing, caps, preview] = await Promise.all([
+  const [quotes, pricing, caps, previews] = await Promise.all([
     listQuotes(ws.employee.id, { prospectId: id }),
     planPricing(),
     planCaps(),
-    getProspectPreview(ws.employee.id, id),
+    listProspectPreviews(ws.employee.id, id),
   ]);
   const quoteRows: QuoteRow[] = quotes.map((q) => ({
     id: q.id,
@@ -89,9 +90,20 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
     offeredMonthlyFee: q.offeredMonthlyFee,
     requiresApproval: q.requiresApproval,
   }));
-  const previewView: PreviewView | null = preview
-    ? { id: preview.id, status: preview.status, publicToken: preview.publicToken, selectedPlan: preview.selectedPlan, sentAt: preview.sentAt ? preview.sentAt.toISOString() : null }
-    : null;
+  const previewViews: PreviewView[] = previews.map((preview) => ({
+    id: preview.id,
+    status: preview.status,
+    publicToken: preview.publicToken,
+    selectedPlan: preview.selectedPlan,
+    setupDiscountPct: preview.setupDiscountPct,
+    pendingDiscountPct: preview.pendingDiscountPct,
+    monthlyDiscountPct: preview.monthlyDiscountPct,
+    pendingMonthlyPct: preview.pendingMonthlyPct,
+    sentAt: preview.sentAt ? preview.sentAt.toISOString() : null,
+  }));
+  // The largest setup discount each plan allows before it needs admin sign-off — powers the rep tip.
+  const maxSetupDiscount: Record<string, number> = {};
+  for (const [name, p] of Object.entries(pricing)) maxSetupDiscount[name] = maxSelfApprovedSetupPct(name as PlanName, p.setup);
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
 
   return (
@@ -102,10 +114,12 @@ export default async function RepProspectDetailPage({ params }: { params: Promis
       <ProspectDetail data={data} />
       <PreviewPanel
         prospectId={id}
-        preview={previewView}
+        previews={previewViews}
         canRequest={ws.hasActiveContract}
         appUrl={appUrl}
         planCaps={caps}
+        pricing={pricing as unknown as PreviewPricing}
+        maxSetupDiscount={maxSetupDiscount}
         contactDefaults={{ email: prospect.email ?? undefined, phone: prospect.phone ?? undefined }}
       />
       <QuotesPanel

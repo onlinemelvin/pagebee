@@ -20,6 +20,7 @@ describe("createHelpRequest", () => {
     prismaMock.employee.findUnique.mockResolvedValue({ user: { name: "Jane Rep", email: "jane@x.com" } });
     prismaMock.preview.findFirst.mockResolvedValue({ id: "pv1", prospectId: "p1", publicToken: "tok" });
     prismaMock.helpRequest.create.mockResolvedValue({ id: "hr1" });
+    prismaMock.prospectActivity.create.mockResolvedValue({ id: "act1" });
 
     const res = await createHelpRequest("rep1", { message: "AI won't regenerate", previewId: "pv1" }, { userId: "u1" });
 
@@ -30,6 +31,17 @@ describe("createHelpRequest", () => {
     expect(sendAdminHelpRequest).toHaveBeenCalledWith(
       expect.objectContaining({ repName: "Jane Rep", previewUrl: "https://app.test/p/tok", inboxUrl: "https://app.test/admin/help" }),
     );
+    // The request is surfaced on the prospect's timeline.
+    expect(prismaMock.prospectActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ prospectId: "p1", type: "note", summary: "Technical help requested: AI won't regenerate", createdById: "u1" }) }),
+    );
+  });
+
+  it("does not log a timeline activity when the request isn't tied to a prospect", async () => {
+    prismaMock.employee.findUnique.mockResolvedValue({ user: { name: "Jane", email: "jane@x.com" } });
+    prismaMock.helpRequest.create.mockResolvedValue({ id: "hr1" });
+    await createHelpRequest("rep1", { message: "general help" });
+    expect(prismaMock.prospectActivity.create).not.toHaveBeenCalled();
   });
 
   it("still records the ticket if the admin email fails (fail-soft)", async () => {

@@ -15,7 +15,7 @@ vi.mock("@/lib/modules/website", async () => {
 vi.mock("@/lib/modules/email", () => ({ appBase: () => "https://app.test" }));
 vi.mock("@/lib/modules/email/notifications", () => ({ sendPreviewToProspect: vi.fn(async () => {}) }));
 
-import { requestPreview, getProspectPreview, markPreviewSent, repRegeneratePreview, repRequestChanges, emailPreviewToProspect } from "./previews";
+import { requestPreview, getProspectPreview, listProspectPreviews, setPreviewDiscount, decidePreviewDiscountApproval, markPreviewSent, repRegeneratePreview, repRequestChanges, emailPreviewToProspect } from "./previews";
 import { startGeneration, regenerateFromScratch, claimAndRun } from "@/lib/modules/website";
 import { sendPreviewToProspect } from "@/lib/modules/email/notifications";
 
@@ -43,7 +43,7 @@ describe("requestPreview", () => {
       email: "joe@x.com",
       phone: "415",
     });
-    prismaMock.client.findFirst.mockResolvedValue(null);
+    prismaMock.preview.findFirst.mockResolvedValue(null);
     prismaMock.plan.findUnique.mockResolvedValue({ id: "plan1", setupFee: 69900, monthlyFee: 8900 });
     prismaMock.client.create.mockResolvedValue({ id: "c1" });
     prismaMock.subscription.create.mockResolvedValue({});
@@ -78,15 +78,162 @@ describe("requestPreview", () => {
     expect(startGeneration).not.toHaveBeenCalled();
   });
 
-  it("409 when a client already exists for the prospect", async () => {
+  it("409 when a preview already exists for the SAME plan", async () => {
     prismaMock.salesAssignment.findFirst.mockResolvedValue({ id: "a1" });
     prismaMock.prospect.findUnique.mockResolvedValue({ businessName: "Joe's Pizza", businessType: null, contactName: null, email: null, phone: null });
-    prismaMock.client.findFirst.mockResolvedValue({ id: "existing" });
+    prismaMock.preview.findFirst.mockResolvedValue({ id: "existing" });
     await expect(requestPreview("rep1", { prospectId: "p1", selectedPlan: "HONEY", intake })).rejects.toMatchObject({
       code: "preview_exists",
       status: 409,
     });
+    expect(prismaMock.preview.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ prospectId: "p1", selectedPlan: "HONEY" }) }),
+    );
     expect(prismaMock.client.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a second preview for a DIFFERENT plan and applies an in-authority setup discount", async () => {
+    wire();
+    // NECTAR list $399, floor $299 → 10% (→ $359.10) is within rep authority, applies immediately.
+    prismaMock.plan.findUnique.mockResolvedValue({ id: "plan1", setupFee: 39900, monthlyFee: 3900 });
+    await requestPreview("rep1", { prospectId: "p1", selectedPlan: "NECTAR", setupDiscountPct: 10, intake });
+    expect(prismaMock.client.create).toHaveBeenCalled();
+    expect(prismaMock.preview.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ selectedPlan: "NECTAR", setupDiscountPct: 10, pendingDiscountPct: null }) }),
+    );
+  });
+
+  it("sends a below-floor opening discount to admin approval (effective stays 0)", async () => {
+    wire();
+    // NECTAR list $399, floor $299 → 50% (→ $199.50) is below the floor → needs approval.
+    prismaMock.plan.findUnique.mockResolvedValue({ id: "plan1", setupFee: 39900, monthlyFee: 3900 });
+    const res = await requestPreview("rep1", { prospectId: "p1", selectedPlan: "NECTAR", setupDiscountPct: 50, intake });
+    expect(res).toMatchObject({ discountPending: true });
+    expect(prismaMock.preview.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          setupDiscountPct: 0,
+          pendingDiscountPct: 50,
+          discountApprovals: { create: { requestedById: "rep1", requestedPct: 50, requestedMonthlyPct: 0 } },
+        }),
+      }),
+    );
+  });
+
+  it("always routes a monthly promo to approval (even with no setup discount)", async () => {
+    wire();
+    prismaMock.plan.findUnique.mockResolvedValue({ id: "plan1", setupFee: 39900, monthlyFee: 3900 });
+    const res = await requestPreview("rep1", { prospectId: "p1", selectedPlan: "NECTAR", monthlyDiscountPct: 15, intake });
+    expect(res).toMatchObject({ discountPending: true });
+    expect(prismaMock.preview.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          monthlyDiscountPct: 0,
+          pendingMonthlyPct: 15,
+          discountApprovals: { create: { requestedById: "rep1", requestedPct: 0, requestedMonthlyPct: 15 } },
+        }),
+      }),
+    );
+  });
+
+  it("defaults the setup discount to 0 when omitted", async () => {
+    wire();
+    await requestPreview("rep1", { prospectId: "p1", selectedPlan: "NECTAR", intake });
+    expect(prismaMock.preview.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ setupDiscountPct: 0, pendingDiscountPct: null }) }),
+    );
+  });
+});
+
+describe("listProspectPreviews", () => {
+  it("returns every rep-owned preview for the prospect, settling generating ones", async () => {
+    prismaMock.salesAssignment.findFirst.mockResolvedValue({ id: "a1" });
+    prismaMock.preview.findMany.mockResolvedValue([
+      { id: "pv1", status: "PREVIEW_READY", websiteId: "web1" },
+      { id: "pv2", status: "PREVIEW_GENERATING", websiteId: "web2" },
+    ]);
+    prismaMock.websiteVersion.findFirst.mockResolvedValue({ id: "v1" });
+    prismaMock.preview.update.mockResolvedValue({});
+    const rows = await listProspectPreviews("rep1", "p1");
+    expect(rows).toHaveLength(2);
+    expect(rows[1].status).toBe("PREVIEW_READY"); // pv2 settled
+    expect(prismaMock.preview.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { prospectId: "p1", assignedSalesRepId: "rep1" } }),
+    );
+  });
+});
+
+describe("setPreviewDiscount", () => {
+  function wireDiscount() {
+    prismaMock.preview.findFirst.mockResolvedValue({ id: "pv1", selectedPlan: "HONEY" });
+    prismaMock.plan.findUnique.mockResolvedValue({ setupFee: 69900, monthlyFee: 8900 }); // HONEY list $699, floor $599
+    prismaMock.previewDiscountApproval.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.preview.update.mockResolvedValue({});
+    prismaMock.previewDiscountApproval.create.mockResolvedValue({ id: "ap1" });
+  }
+
+  it("applies a within-authority setup discount immediately", async () => {
+    wireDiscount();
+    // 10% → $629.10, still ≥ the $599 floor; no monthly promo.
+    const res = await setPreviewDiscount("rep1", "pv1", 10, 0);
+    expect(res).toEqual({ ok: true, pending: false, setupDiscountPct: 10 });
+    expect(prismaMock.preview.update).toHaveBeenCalledWith({ where: { id: "pv1" }, data: { setupDiscountPct: 10, pendingDiscountPct: null, pendingMonthlyPct: null } });
+    expect(prismaMock.previewDiscountApproval.create).not.toHaveBeenCalled();
+  });
+
+  it("routes a below-floor setup discount to admin approval and leaves the in-force discount untouched", async () => {
+    wireDiscount();
+    // 50% → $349.50, below the $599 floor → needs approval.
+    const res = await setPreviewDiscount("rep1", "pv1", 50, 0);
+    expect(res).toEqual({ ok: true, pending: true, requestedPct: 50, requestedMonthlyPct: 0 });
+    expect(prismaMock.preview.update).toHaveBeenCalledWith({ where: { id: "pv1" }, data: { pendingDiscountPct: 50, pendingMonthlyPct: 0 } });
+    expect(prismaMock.previewDiscountApproval.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { previewId: "pv1", requestedById: "rep1", requestedPct: 50, requestedMonthlyPct: 0 } }),
+    );
+    // The effective setupDiscountPct is never written on the approval path.
+    expect(prismaMock.preview.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ setupDiscountPct: expect.anything() }) }),
+    );
+  });
+
+  it("routes ANY monthly promo to approval, even when the setup discount is within authority", async () => {
+    wireDiscount();
+    // Setup 10% is fine on its own, but the 20% monthly promo forces the whole request to approval.
+    const res = await setPreviewDiscount("rep1", "pv1", 10, 20);
+    expect(res).toEqual({ ok: true, pending: true, requestedPct: 10, requestedMonthlyPct: 20 });
+    expect(prismaMock.preview.update).toHaveBeenCalledWith({ where: { id: "pv1" }, data: { pendingDiscountPct: 10, pendingMonthlyPct: 20 } });
+    expect(prismaMock.previewDiscountApproval.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { previewId: "pv1", requestedById: "rep1", requestedPct: 10, requestedMonthlyPct: 20 } }),
+    );
+  });
+
+  it("404 when the preview isn't the rep's", async () => {
+    prismaMock.preview.findFirst.mockResolvedValue(null);
+    await expect(setPreviewDiscount("rep1", "pv1", 10)).rejects.toMatchObject({ code: "preview_not_found", status: 404 });
+  });
+});
+
+describe("decidePreviewDiscountApproval", () => {
+  it("APPROVED puts both the setup + monthly discounts in force and clears the pending markers", async () => {
+    prismaMock.previewDiscountApproval.findUnique.mockResolvedValue({ id: "ap1", previewId: "pv1", requestedPct: 40, requestedMonthlyPct: 20, status: "PENDING" });
+    prismaMock.previewDiscountApproval.update.mockResolvedValue({ id: "ap1", status: "APPROVED" });
+    prismaMock.preview.update.mockResolvedValue({});
+    const res = await decidePreviewDiscountApproval("ap1", { decision: "APPROVED" }, { userId: "admin1" });
+    expect(res).toMatchObject({ status: "APPROVED" });
+    expect(prismaMock.preview.update).toHaveBeenCalledWith({ where: { id: "pv1" }, data: { pendingDiscountPct: null, pendingMonthlyPct: null, setupDiscountPct: 40, monthlyDiscountPct: 20 } });
+  });
+
+  it("REJECTED clears the pending markers without changing the in-force discounts", async () => {
+    prismaMock.previewDiscountApproval.findUnique.mockResolvedValue({ id: "ap1", previewId: "pv1", requestedPct: 40, requestedMonthlyPct: 20, status: "PENDING" });
+    prismaMock.previewDiscountApproval.update.mockResolvedValue({ id: "ap1", status: "REJECTED" });
+    prismaMock.preview.update.mockResolvedValue({});
+    await decidePreviewDiscountApproval("ap1", { decision: "REJECTED" }, { userId: "admin1" });
+    expect(prismaMock.preview.update).toHaveBeenCalledWith({ where: { id: "pv1" }, data: { pendingDiscountPct: null, pendingMonthlyPct: null } });
+  });
+
+  it("409 when the approval was already decided", async () => {
+    prismaMock.previewDiscountApproval.findUnique.mockResolvedValue({ id: "ap1", previewId: "pv1", requestedPct: 40, requestedMonthlyPct: 0, status: "APPROVED" });
+    await expect(decidePreviewDiscountApproval("ap1", { decision: "APPROVED" }, { userId: "admin1" })).rejects.toMatchObject({ code: "already_decided", status: 409 });
   });
 });
 
@@ -177,6 +324,7 @@ describe("emailPreviewToProspect", () => {
     prismaMock.prospect.findUnique.mockResolvedValue({ email: "joe@x.com", businessName: "Joe's", contactName: "Joe" });
     prismaMock.preview.update.mockResolvedValue({});
     prismaMock.prospect.update.mockResolvedValue({});
+    prismaMock.prospectActivity.create.mockResolvedValue({ id: "act1" });
     const res = await emailPreviewToProspect("rep1", "pv1", { userId: "u1" });
     expect(res).toEqual({ ok: true, to: "joe@x.com" });
     expect(sendPreviewToProspect).toHaveBeenCalledWith(
@@ -185,6 +333,10 @@ describe("emailPreviewToProspect", () => {
     );
     expect(prismaMock.preview.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "PREVIEW_SENT" }) }),
+    );
+    // The send is recorded on the prospect's timeline.
+    expect(prismaMock.prospectActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ prospectId: "p1", type: "email", summary: "Preview emailed to joe@x.com", createdById: "u1" }) }),
     );
   });
 

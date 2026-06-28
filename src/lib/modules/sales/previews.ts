@@ -8,6 +8,10 @@ import { startGeneration, claimAndRun, regenerateFromScratch, websiteIntakeSchem
 import { appBase } from "@/lib/modules/email";
 import { sendPreviewToProspect } from "@/lib/modules/email/notifications";
 import { SalesError } from "./errors";
+import { evaluateGuardrails, REP_SETUP_FLOOR_CENTS, MONTHLY_PROMO_MONTHS } from "./guardrails";
+import { approvalDecisionSchema } from "./schema";
+
+export { MONTHLY_PROMO_MONTHS };
 
 /**
  * Rep-initiated free website preview (the core of PageBee's acquisition pitch). A preview is
@@ -20,12 +24,57 @@ import { SalesError } from "./errors";
 export const previewRequestSchema = z.object({
   prospectId: z.string().min(1),
   selectedPlan: z.enum(["NECTAR", "HONEY", "HIVE"]),
+  // Optional rep concessions applied at creation: % off the one-time setup fee and/or a promotional
+  // % off the monthly fee for the first year (the latter always needs admin approval — see below).
+  setupDiscountPct: z.number().int().min(0).max(100).optional(),
+  monthlyDiscountPct: z.number().int().min(0).max(100).optional(),
   intake: websiteIntakeSchema,
 });
 export type PreviewRequestInput = z.infer<typeof previewRequestSchema>;
 
 function publicToken(): string {
   return randomBytes(24).toString("base64url");
+}
+
+/** Keep a setup-fee discount within 0–100%. Undefined/NaN → 0. */
+function clampDiscount(pct?: number): number {
+  if (typeof pct !== "number" || Number.isNaN(pct)) return 0;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}
+
+/**
+ * Decide whether a requested discount is within rep authority. Reps may discount the SETUP fee down
+ * to the plan floor freely (auto-applies); below the floor (or waiving it) needs approval. ANY
+ * MONTHLY promo discount is always out of authority → it always needs approval. The two are one
+ * request: if either piece needs approval, the whole thing pends. Mirrors the quote guardrails (§5).
+ */
+function gateDiscount(
+  plan: PlanName,
+  listSetupCents: number,
+  listMonthlyCents: number,
+  setupPct: number,
+  monthlyPct: number,
+): { setupPct: number; monthlyPct: number; needsApproval: boolean } {
+  const setup = clampDiscount(setupPct);
+  const monthly = clampDiscount(monthlyPct);
+  if (setup === 0 && monthly === 0) return { setupPct: 0, monthlyPct: 0, needsApproval: false };
+  const guard = evaluateGuardrails({
+    plan,
+    listedSetupCents: listSetupCents,
+    listedMonthlyCents: listMonthlyCents,
+    offeredSetupCents: Math.round(listSetupCents * (1 - setup / 100)),
+    offeredMonthlyCents: Math.round(listMonthlyCents * (1 - monthly / 100)),
+  });
+  return { setupPct: setup, monthlyPct: monthly, needsApproval: guard.requiresApproval };
+}
+
+/** The largest SETUP discount % a rep can give without approval (keeps setup at or above the plan
+ *  floor). Powers the rep-facing "max you can offer" tip. Monthly promos always need approval, so
+ *  there's no equivalent monthly threshold. */
+export function maxSelfApprovedSetupPct(plan: PlanName, listSetupCents: number): number {
+  if (!listSetupCents) return 0;
+  const floor = REP_SETUP_FLOOR_CENTS[plan];
+  return Math.max(0, Math.floor((1 - floor / listSetupCents) * 100));
 }
 
 /** Throws 404 unless `repId` is assigned to `prospectId`. Exported for routes that act on a
@@ -53,9 +102,9 @@ export async function requestPreview(repId: string, input: unknown, actor?: { us
   });
   if (!prospect) throw new SalesError("prospect_not_found", 404);
 
-  // One provisional client per prospect (Client.prospectId is unique). If one already exists the
-  // prospect is already in a preview/converted — surface that rather than colliding.
-  if (await prisma.client.findFirst({ where: { prospectId: parsed.prospectId }, select: { id: true } })) {
+  // A prospect can hold several previews at once — one per showcase plan (e.g. a Nectar AND a Hive
+  // version) — but not two of the SAME plan. A duplicate plan should be regenerated, not re-created.
+  if (await prisma.preview.findFirst({ where: { prospectId: parsed.prospectId, selectedPlan: parsed.selectedPlan as PlanName }, select: { id: true } })) {
     throw new SalesError("preview_exists", 409);
   }
 
@@ -96,6 +145,10 @@ export async function requestPreview(repId: string, input: unknown, actor?: { us
     autoRelease: true, // rep previews skip platform review — the rep is the reviewer
   });
 
+  // Gate the opening discount: a setup discount within rep authority applies on the spot; a setup
+  // discount below the floor OR any monthly promo lands as a pending request (effective stays 0)
+  // with an approval row an admin must sign off.
+  const gate = gateDiscount(parsed.selectedPlan as PlanName, plan.setupFee, plan.monthlyFee, parsed.setupDiscountPct ?? 0, parsed.monthlyDiscountPct ?? 0);
   const preview = await prisma.preview.create({
     data: {
       prospectId: parsed.prospectId,
@@ -103,9 +156,14 @@ export async function requestPreview(repId: string, input: unknown, actor?: { us
       websiteId,
       selectedPlan: parsed.selectedPlan as PlanName,
       status: "PREVIEW_GENERATING",
+      setupDiscountPct: gate.needsApproval ? 0 : gate.setupPct,
+      pendingDiscountPct: gate.needsApproval ? gate.setupPct : null,
+      monthlyDiscountPct: gate.needsApproval ? 0 : gate.monthlyPct,
+      pendingMonthlyPct: gate.needsApproval ? gate.monthlyPct : null,
       createdById: actor?.userId ?? null,
       assignedSalesRepId: repId,
       publicToken: publicToken(),
+      ...(gate.needsApproval ? { discountApprovals: { create: { requestedById: repId, requestedPct: gate.setupPct, requestedMonthlyPct: gate.monthlyPct } } } : {}),
     },
   });
 
@@ -115,10 +173,10 @@ export async function requestPreview(repId: string, input: unknown, actor?: { us
     entityId: preview.id,
     clientId: client.id,
     actorId: actor?.userId ?? null,
-    metadata: { repId, prospectId: parsed.prospectId, plan: parsed.selectedPlan },
+    metadata: { repId, prospectId: parsed.prospectId, plan: parsed.selectedPlan, setupPct: gate.setupPct, monthlyPct: gate.monthlyPct, discountPending: gate.needsApproval },
   });
 
-  return { previewId: preview.id, jobId, clientId: client.id, publicToken: preview.publicToken };
+  return { previewId: preview.id, jobId, clientId: client.id, publicToken: preview.publicToken, discountPending: gate.needsApproval };
 }
 
 /** Mark a preview as sent to the prospect (the rep is sharing the link). Scoped to the rep. */
@@ -169,6 +227,12 @@ export async function emailPreviewToProspect(repId: string, previewId: string, a
   });
   if (preview.prospectId) {
     await prisma.prospect.update({ where: { id: preview.prospectId }, data: { status: "preview_sent" } }).catch(() => {});
+    // Log on the prospect's timeline (fail-soft — the email has already gone out).
+    await prisma.prospectActivity
+      .create({
+        data: { prospectId: preview.prospectId, type: "email", summary: `Preview emailed to ${prospect.email}`, createdById: actor?.userId ?? null },
+      })
+      .catch(() => {});
   }
   await writeAudit({ action: "preview.emailed_to_prospect", entityType: "Preview", entityId: preview.id, actorId: actor?.userId ?? null, metadata: { repId, to: prospect.email } });
   return { ok: true as const, to: prospect.email };
@@ -244,20 +308,195 @@ export async function repRequestChanges(repId: string, previewId: string, note: 
  * for a rep preview the rep is the reviewer — so as soon as a version exists we settle it to
  * PREVIEW_READY. (The public /p/{token} viewer never gated on admin review anyway.)
  */
+const PREVIEW_SELECT = {
+  id: true,
+  status: true,
+  publicToken: true,
+  selectedPlan: true,
+  setupDiscountPct: true,
+  pendingDiscountPct: true,
+  monthlyDiscountPct: true,
+  pendingMonthlyPct: true,
+  sentAt: true,
+  viewedAt: true,
+  websiteId: true,
+  createdAt: true,
+} as const;
+
+type PreviewRow = { id: string; status: string; websiteId: string | null };
+
+/** Settle a still-generating rep preview to PREVIEW_READY once a version exists (rep previews skip
+ *  admin review — the rep is the reviewer). Mutates `preview.status` in place. */
+async function settlePreview(preview: PreviewRow): Promise<void> {
+  const unsettled = preview.status === "PREVIEW_GENERATING" || preview.status === "IN_REVIEW";
+  if (!unsettled || !preview.websiteId) return;
+  const version = await prisma.websiteVersion.findFirst({ where: { websiteId: preview.websiteId }, select: { id: true } });
+  if (version) {
+    await prisma.preview.update({ where: { id: preview.id }, data: { status: "PREVIEW_READY", generatedAt: new Date() } }).catch(() => {});
+    preview.status = "PREVIEW_READY";
+  }
+}
+
 export async function getProspectPreview(repId: string, prospectId: string) {
   await assertRepAssignedToProspect(repId, prospectId);
   const preview = await prisma.preview.findFirst({
     where: { prospectId, assignedSalesRepId: repId },
     orderBy: { createdAt: "desc" },
-    select: { id: true, status: true, publicToken: true, selectedPlan: true, sentAt: true, viewedAt: true, websiteId: true, createdAt: true },
+    select: PREVIEW_SELECT,
   });
-  const unsettled = preview?.status === "PREVIEW_GENERATING" || preview?.status === "IN_REVIEW";
-  if (unsettled && preview?.websiteId) {
-    const version = await prisma.websiteVersion.findFirst({ where: { websiteId: preview.websiteId }, select: { id: true } });
-    if (version) {
-      await prisma.preview.update({ where: { id: preview.id }, data: { status: "PREVIEW_READY", generatedAt: new Date() } }).catch(() => {});
-      preview.status = "PREVIEW_READY";
-    }
-  }
+  if (preview) await settlePreview(preview);
   return preview;
+}
+
+/**
+ * Every preview this rep has for a prospect (newest first), each lazily settled to PREVIEW_READY.
+ * Backs the multi-preview panel — a prospect can hold one preview per showcase plan at once.
+ */
+export async function listProspectPreviews(repId: string, prospectId: string) {
+  await assertRepAssignedToProspect(repId, prospectId);
+  const previews = await prisma.preview.findMany({
+    where: { prospectId, assignedSalesRepId: repId },
+    orderBy: { createdAt: "desc" },
+    select: PREVIEW_SELECT,
+  });
+  await Promise.all(previews.map(settlePreview));
+  return previews;
+}
+
+/**
+ * Rep sets the discount on one of their previews: a setup-fee % and/or a promotional monthly % (for
+ * the first year). A setup discount within rep authority (down to the plan floor) applies
+ * immediately; a below-floor setup discount OR any monthly promo is recorded as a pending request an
+ * admin must approve before it takes effect — the in-force discount is untouched until then. Any
+ * earlier pending request is superseded. Scoped to the rep.
+ */
+export async function setPreviewDiscount(repId: string, previewId: string, setupPct: number, monthlyPct = 0) {
+  const preview = await prisma.preview.findFirst({
+    where: { id: previewId, assignedSalesRepId: repId },
+    select: { id: true, selectedPlan: true },
+  });
+  if (!preview) throw new SalesError("preview_not_found", 404);
+
+  const plan = await prisma.plan.findUnique({ where: { name: preview.selectedPlan }, select: { setupFee: true, monthlyFee: true } });
+  if (!plan) throw new SalesError("invalid_plan", 400);
+
+  const gate = gateDiscount(preview.selectedPlan, plan.setupFee, plan.monthlyFee, setupPct, monthlyPct);
+
+  // Clear any superseded pending request, then either apply or open a fresh approval.
+  await prisma.previewDiscountApproval.updateMany({
+    where: { previewId: preview.id, status: "PENDING" },
+    data: { status: "REJECTED", decisionAt: new Date(), comment: "Superseded by a newer request" },
+  });
+
+  if (gate.needsApproval) {
+    await prisma.preview.update({ where: { id: preview.id }, data: { pendingDiscountPct: gate.setupPct, pendingMonthlyPct: gate.monthlyPct } });
+    await prisma.previewDiscountApproval.create({ data: { previewId: preview.id, requestedById: repId, requestedPct: gate.setupPct, requestedMonthlyPct: gate.monthlyPct } });
+    await writeAudit({ action: "preview.discount_requested", entityType: "Preview", entityId: preview.id, metadata: { repId, requestedPct: gate.setupPct, requestedMonthlyPct: gate.monthlyPct } });
+    return { ok: true as const, pending: true as const, requestedPct: gate.setupPct, requestedMonthlyPct: gate.monthlyPct };
+  }
+
+  // No monthly here (a monthly promo always needs approval) — only the setup applies.
+  await prisma.preview.update({ where: { id: preview.id }, data: { setupDiscountPct: gate.setupPct, pendingDiscountPct: null, pendingMonthlyPct: null } });
+  await writeAudit({ action: "preview.discount_set", entityType: "Preview", entityId: preview.id, metadata: { repId, setupDiscountPct: gate.setupPct } });
+  return { ok: true as const, pending: false as const, setupDiscountPct: gate.setupPct };
+}
+
+// ── Admin approval queue (preview setup-fee discounts) ────────────────────────
+
+export interface PreviewDiscountApprovalRow {
+  id: string;
+  previewId: string;
+  rep: string;
+  prospect: string;
+  plan: PlanName;
+  listedSetupCents: number;
+  requestedPct: number;
+  requestedSetupCents: number;
+  listedMonthlyCents: number;
+  requestedMonthlyPct: number;
+  requestedMonthlyCents: number;
+  promoMonths: number;
+  createdAt: Date;
+}
+
+/** Preview discount requests awaiting admin sign-off (setup below the plan floor and/or a monthly
+ *  promo), enriched with prospect + rep names and the requested prices. (Preview has no prospect/rep
+ *  relation, so we resolve those by id.) */
+export async function listPreviewDiscountApprovals(): Promise<PreviewDiscountApprovalRow[]> {
+  const approvals = await prisma.previewDiscountApproval.findMany({
+    where: { status: "PENDING" },
+    include: { preview: { select: { id: true, selectedPlan: true, prospectId: true, assignedSalesRepId: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!approvals.length) return [];
+
+  const prospectIds = [...new Set(approvals.map((a) => a.preview.prospectId).filter((x): x is string => Boolean(x)))];
+  const repIds = [...new Set(approvals.map((a) => a.preview.assignedSalesRepId).filter((x): x is string => Boolean(x)))];
+  const planNames = [...new Set(approvals.map((a) => a.preview.selectedPlan))];
+
+  const [prospects, reps, plans] = await Promise.all([
+    prospectIds.length ? prisma.prospect.findMany({ where: { id: { in: prospectIds } }, select: { id: true, businessName: true } }) : [],
+    repIds.length ? prisma.employee.findMany({ where: { id: { in: repIds } }, select: { id: true, user: { select: { name: true } } } }) : [],
+    prisma.plan.findMany({ where: { name: { in: planNames } }, select: { name: true, setupFee: true, monthlyFee: true } }),
+  ]);
+  const prospectName = new Map(prospects.map((p) => [p.id, p.businessName]));
+  const repName = new Map(reps.map((r) => [r.id, r.user?.name ?? null]));
+  const setupFee = new Map(plans.map((p) => [p.name, p.setupFee]));
+  const monthlyFee = new Map(plans.map((p) => [p.name, p.monthlyFee]));
+
+  return approvals.map((a) => {
+    const listedSetup = setupFee.get(a.preview.selectedPlan) ?? 0;
+    const listedMonthly = monthlyFee.get(a.preview.selectedPlan) ?? 0;
+    return {
+      id: a.id,
+      previewId: a.preview.id,
+      rep: (a.preview.assignedSalesRepId && repName.get(a.preview.assignedSalesRepId)) || "—",
+      prospect: (a.preview.prospectId && prospectName.get(a.preview.prospectId)) || "—",
+      plan: a.preview.selectedPlan,
+      listedSetupCents: listedSetup,
+      requestedPct: a.requestedPct,
+      requestedSetupCents: Math.round(listedSetup * (1 - a.requestedPct / 100)),
+      listedMonthlyCents: listedMonthly,
+      requestedMonthlyPct: a.requestedMonthlyPct,
+      requestedMonthlyCents: Math.round(listedMonthly * (1 - a.requestedMonthlyPct / 100)),
+      promoMonths: MONTHLY_PROMO_MONTHS,
+      createdAt: a.createdAt,
+    };
+  });
+}
+
+/**
+ * Admin decides a pending preview discount. APPROVED puts the requested % in force (and stamps it as
+ * the preview's effective discount); REJECTED leaves the in-force discount unchanged. Either way the
+ * pending marker is cleared. Recorded + audited.
+ */
+export async function decidePreviewDiscountApproval(approvalId: string, input: unknown, admin: { userId: string }) {
+  const parsed = approvalDecisionSchema.parse(input);
+  const approval = await prisma.previewDiscountApproval.findUnique({ where: { id: approvalId } });
+  if (!approval) throw new SalesError("approval_not_found", 404);
+  if (approval.status !== "PENDING") throw new SalesError("already_decided", 409);
+
+  const [updated] = await prisma.$transaction([
+    prisma.previewDiscountApproval.update({
+      where: { id: approvalId },
+      data: { status: parsed.decision, approverId: admin.userId, decisionAt: new Date(), comment: parsed.comment },
+    }),
+    prisma.preview.update({
+      where: { id: approval.previewId },
+      data: {
+        pendingDiscountPct: null,
+        pendingMonthlyPct: null,
+        ...(parsed.decision === "APPROVED" ? { setupDiscountPct: approval.requestedPct, monthlyDiscountPct: approval.requestedMonthlyPct } : {}),
+      },
+    }),
+  ]);
+
+  await writeAudit({
+    action: parsed.decision === "APPROVED" ? "preview.discount_approved" : "preview.discount_rejected",
+    entityType: "Preview",
+    entityId: approval.previewId,
+    actorId: admin.userId,
+    metadata: { approvalId, requestedPct: approval.requestedPct, requestedMonthlyPct: approval.requestedMonthlyPct, comment: parsed.comment ?? null },
+  });
+  return updated;
 }

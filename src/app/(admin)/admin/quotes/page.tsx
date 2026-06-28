@@ -1,10 +1,26 @@
-import { listPendingApprovals } from "@/lib/modules/sales";
+import { listPendingApprovals, listPreviewDiscountApprovals } from "@/lib/modules/sales";
 import { ApprovalQueue, type ApprovalRow } from "@/components/admin/ApprovalQueue";
+import { PreviewDiscountQueue, type PreviewDiscountRow } from "@/components/admin/PreviewDiscountQueue";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminQuotesPage() {
-  const approvals = await listPendingApprovals();
+  const [approvals, previewDiscounts] = await Promise.all([listPendingApprovals(), listPreviewDiscountApprovals()]);
+  const previewDiscountRows: PreviewDiscountRow[] = previewDiscounts.map((d) => ({
+    id: d.id,
+    previewId: d.previewId,
+    rep: d.rep,
+    prospect: d.prospect,
+    plan: d.plan,
+    listedSetupCents: d.listedSetupCents,
+    requestedPct: d.requestedPct,
+    requestedSetupCents: d.requestedSetupCents,
+    listedMonthlyCents: d.listedMonthlyCents,
+    requestedMonthlyPct: d.requestedMonthlyPct,
+    requestedMonthlyCents: d.requestedMonthlyCents,
+    promoMonths: d.promoMonths,
+    createdAt: d.createdAt.toISOString(),
+  }));
   const rows: ApprovalRow[] = approvals.map((a) => {
     const q = a.quote;
     const reasons: string[] = [];
@@ -34,6 +50,12 @@ export default async function AdminQuotesPage() {
       <p className="mt-1 text-sm text-stone-500">Out-of-guardrail offers awaiting sign-off.</p>
       <div className="mt-6">
         <ApprovalQueue initial={rows} />
+      </div>
+
+      <h2 className="mt-10 font-display text-2xl text-stone-900">Preview discount approvals</h2>
+      <p className="mt-1 text-sm text-stone-500">Setup-fee discounts on rep previews that fall below the plan floor.</p>
+      <div className="mt-6">
+        <PreviewDiscountQueue initial={previewDiscountRows} />
       </div>
     </div>
   );
